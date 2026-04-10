@@ -5,10 +5,12 @@ import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import NewLeadPage from './pages/NewLeadPage';
+import ClientsPage from './pages/ClientsPage';
 import PipelinePage from './pages/PipelinePage';
-import AnalytiquePage from './pages/AnalytiquePage';
-import StatsPage from './pages/StatsPage';
-import HistoriquePage from './pages/HistoriquePage';
+import PerformancePage from './pages/PerformancePage';
+import AcquisitionPage from './pages/AcquisitionPage';
+import EquipePage from './pages/EquipePage';
+import ExportsPage from './pages/ExportsPage';
 
 export default function App() {
   return (
@@ -20,10 +22,12 @@ export default function App() {
             <Route path="/leads" element={<LeadsPage />} />
             <Route path="/leads/new" element={<NewLeadPage />} />
             <Route path="/leads/:id" element={<LeadDetailPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
-            <Route path="/analytique" element={<AnalytiquePage />} />
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/historique" element={<HistoriquePage />} />
+            <Route path="/performance" element={<PerformancePage />} />
+            <Route path="/acquisition" element={<AcquisitionPage />} />
+            <Route path="/equipe" element={<EquipePage />} />
+            <Route path="/exports" element={<ExportsPage />} />
           </Route>
         </Routes>
       </AppProvider>

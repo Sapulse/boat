@@ -2,10 +2,12 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
+  UserCheck,
   Kanban,
   BarChart3,
-  PieChart,
-  CalendarRange,
+  Megaphone,
+  UsersRound,
+  Download,
   Anchor,
   X,
 } from 'lucide-react';
@@ -13,11 +15,13 @@ import { cn } from '../../lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Leads', href: '/leads', icon: Users },
+  { name: 'Leads / Prospects', href: '/leads', icon: Users },
+  { name: 'Clients', href: '/clients', icon: UserCheck },
   { name: 'Pipeline', href: '/pipeline', icon: Kanban },
-  { name: 'Analytique', href: '/analytique', icon: BarChart3 },
-  { name: 'Stats du mois', href: '/stats', icon: PieChart },
-  { name: 'Historique', href: '/historique', icon: CalendarRange },
+  { name: 'Performance', href: '/performance', icon: BarChart3 },
+  { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
+  { name: 'Equipe', href: '/equipe', icon: UsersRound },
+  { name: 'Exports', href: '/exports', icon: Download },
 ];
 
 interface SidebarProps {
@@ -76,7 +80,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
         <div className="px-4 py-4 border-t border-white/10">
           <p className="text-xs text-gray-400">Pilotage Commercial</p>
-          <p className="text-xs text-gray-500 mt-1">v1.0 - Nautisme</p>
+          <p className="text-xs text-gray-500 mt-1">v2.0 - Nautisme</p>
         </div>
       </aside>
     </>

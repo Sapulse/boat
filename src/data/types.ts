@@ -31,6 +31,7 @@ export interface Commercial {
   id: string;
   name: string;
   active: boolean;
+  createdAt?: string;
 }
 
 export interface LeadAction {
