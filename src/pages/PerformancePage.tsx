@@ -7,7 +7,7 @@ import {
 import { useApp } from '../context/AppContext';
 import KpiCard from '../components/ui/KpiCard';
 import { formatCurrency } from '../lib/utils';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES } from '../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
 import type { LeadStatus } from '../data/types';
 import { useSearchParams } from 'react-router-dom';
 
@@ -84,13 +84,70 @@ export default function PerformancePage() {
       { name: 'Signe', value: byStatus('signe').length, fill: '#22c55e' },
     ].filter(f => f.value > 0);
 
+    const signedLeads = byStatus('signe');
+    const lostLeads = byStatus('perdu');
+    const conversionDenom = signedLeads.length + lostLeads.length;
+    const conversionRate = conversionDenom > 0
+      ? Math.round((signedLeads.length / conversionDenom) * 1000) / 10
+      : null;
+
+    const avgSignedAmount = signedLeads.length > 0
+      ? amountByStatus('signe') / signedLeads.length
+      : 0;
+
+    const signedWithDates = signedLeads.filter(l => l.signedAt && l.createdAt);
+    const avgDaysToSign = signedWithDates.length > 0
+      ? Math.round(
+          signedWithDates.reduce((sum, l) => {
+            const daysBetween = (new Date(l.signedAt).getTime() - new Date(l.createdAt).getTime()) / 86400000;
+            return sum + daysBetween;
+          }, 0) / signedWithDates.length
+        )
+      : null;
+
+    const activeCount = filtered.filter(l => ACTIVE_STATUSES.includes(l.status)).length;
+
+    const sourceConversionMap = new Map<string, { signed: number; total: number }>();
+    filtered.forEach(l => {
+      if (!l.source) return;
+      const entry = sourceConversionMap.get(l.source) ?? { signed: 0, total: 0 };
+      entry.total += 1;
+      if (l.status === 'signe') entry.signed += 1;
+      sourceConversionMap.set(l.source, entry);
+    });
+    const sourceConversion = Array.from(sourceConversionMap.entries())
+      .map(([name, { signed, total }]) => ({
+        name,
+        rate: Math.round((signed / total) * 1000) / 10,
+        signed,
+        total,
+      }))
+      .sort((a, b) => b.rate - a.rate);
+
+    const commercialConversionMap = new Map<string, { signed: number; total: number }>();
+    filtered.forEach(l => {
+      const name = state.commercials.find(c => c.id === l.commercialId)?.name ?? l.commercialId;
+      const entry = commercialConversionMap.get(name) ?? { signed: 0, total: 0 };
+      entry.total += 1;
+      if (l.status === 'signe') entry.signed += 1;
+      commercialConversionMap.set(name, entry);
+    });
+    const commercialConversion = Array.from(commercialConversionMap.entries())
+      .map(([name, { signed, total }]) => ({
+        name,
+        rate: Math.round((signed / total) * 1000) / 10,
+      }))
+      .sort((a, b) => b.rate - a.rate);
+
     return {
       total: filtered.length,
       nouveau: byStatus('nouveau').length, contacte: byStatus('contacte').length,
       devisEnvoye: byStatus('devis_envoye').length, enConclusion: byStatus('en_conclusion').length,
-      signe: byStatus('signe').length, reporte: byStatus('reporte').length, perdu: byStatus('perdu').length,
+      signe: signedLeads.length, reporte: byStatus('reporte').length, perdu: lostLeads.length,
       amountDevis: amountByStatus('devis_envoye'), amountConclusion: amountByStatus('en_conclusion'),
       amountSigne: amountByStatus('signe'), amountPerdu: amountByStatus('perdu'),
+      conversionRate, avgSignedAmount, avgDaysToSign, activeCount,
+      sourceConversion, commercialConversion,
       byCommercial, bySource, byBoatType, byCondition, statusData, funnel,
     };
   }, [filtered, state.commercials]);
@@ -180,6 +237,17 @@ export default function PerformancePage() {
         <KpiCard title="Montant perdus" value={formatCurrency(analytics.amountPerdu)} color="text-danger-600" />
       </div>
 
+      {/* Conversion KPIs */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Conversion</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard title="Taux de conversion" value={analytics.conversionRate !== null ? `${analytics.conversionRate}%` : '-'} color="text-primary-600" />
+          <KpiCard title="Montant moyen signe" value={formatCurrency(analytics.avgSignedAmount)} color="text-success-600" />
+          <KpiCard title="Delai moyen signature" value={analytics.avgDaysToSign !== null ? `${analytics.avgDaysToSign}j` : '-'} color="text-sky-600" />
+          <KpiCard title="Leads actifs total" value={analytics.activeCount} color="text-gray-700" />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Par commercial</h3>
@@ -196,6 +264,28 @@ export default function PerformancePage() {
             <BarChart data={analytics.bySource.slice(0, 10)} layout="vertical" barSize={16}>
               <XAxis type="number" tick={{ fontSize: 12 }} /><YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} /><Tooltip />
               <Bar dataKey="value" name="Leads" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Taux de conversion par commercial</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={analytics.commercialConversion} barSize={28}>
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
+              <Tooltip formatter={(v) => [`${v}%`, 'Conversion']} />
+              <Bar dataKey="rate" name="Taux" fill="#6366f1" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Taux de conversion par source</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={analytics.sourceConversion.slice(0, 8)} layout="vertical" barSize={16}>
+              <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
+              <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v) => [`${v}%`, 'Conversion']} />
+              <Bar dataKey="rate" name="Taux" fill="#22c55e" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
