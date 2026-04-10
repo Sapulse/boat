@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial } from '../data/types';
 import { DEFAULT_COMMERCIALS } from '../data/constants';
 import { loadState, saveState } from '../lib/storage';
 import { generateId } from '../lib/utils';
@@ -18,7 +18,10 @@ type Action =
   | { type: 'UPDATE_LEAD_STATUS'; payload: { id: string; status: LeadStatus } }
   | { type: 'ADD_ACTION'; payload: LeadAction }
   | { type: 'SAVE_MONTHLY_STATS'; payload: MonthlyStat[] }
-  | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] };
+  | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] }
+  | { type: 'ADD_COMMERCIAL'; payload: Commercial }
+  | { type: 'UPDATE_COMMERCIAL'; payload: { id: string; data: Partial<Commercial> } }
+  | { type: 'TOGGLE_COMMERCIAL'; payload: string };
 
 function getInitialState(): AppState {
   const stored = loadState();
@@ -89,6 +92,25 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SAVE_ACQUISITION_VOLUMES':
       return { ...state, acquisitionVolumes: action.payload };
+
+    case 'ADD_COMMERCIAL':
+      return { ...state, commercials: [...state.commercials, action.payload] };
+
+    case 'UPDATE_COMMERCIAL':
+      return {
+        ...state,
+        commercials: state.commercials.map(c =>
+          c.id === action.payload.id ? { ...c, ...action.payload.data } : c
+        ),
+      };
+
+    case 'TOGGLE_COMMERCIAL':
+      return {
+        ...state,
+        commercials: state.commercials.map(c =>
+          c.id === action.payload ? { ...c, active: !c.active } : c
+        ),
+      };
 
     default:
       return state;

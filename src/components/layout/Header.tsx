@@ -5,11 +5,13 @@ import { getAlertLevel } from '../../lib/utils';
 
 const titles: Record<string, string> = {
   '/': 'Dashboard',
-  '/leads': 'Leads',
+  '/leads': 'Leads / Prospects',
+  '/clients': 'Clients',
   '/pipeline': 'Pipeline',
-  '/analytique': 'Dashboard Analytique',
-  '/stats': 'Stats du mois',
-  '/historique': 'Historique acquisition',
+  '/performance': 'Performance',
+  '/acquisition': 'Acquisition',
+  '/equipe': 'Equipe',
+  '/exports': 'Exports',
 };
 
 interface HeaderProps {
@@ -21,7 +23,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const location = useLocation();
   const { state } = useApp();
 
-  const title = titles[location.pathname] || 'CRM Nautisme';
+  const basePath = '/' + (location.pathname.split('/')[1] || '');
+  const title = titles[basePath] || 'CRM Nautisme';
 
   const urgentCount = state.leads.filter(l => getAlertLevel(l) === 'red').length;
 
