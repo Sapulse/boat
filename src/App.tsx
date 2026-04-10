@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import AppLayout from './components/layout/AppLayout';
 import DashboardPage from './pages/DashboardPage';
@@ -12,7 +12,7 @@ import HistoriquePage from './pages/HistoriquePage';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AppProvider>
         <Routes>
           <Route element={<AppLayout />}>
@@ -27,6 +27,6 @@ export default function App() {
           </Route>
         </Routes>
       </AppProvider>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
