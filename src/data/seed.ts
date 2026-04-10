@@ -27,6 +27,7 @@ const lastNames = ['Martin', 'Dupont', 'Bernard', 'Robert', 'Richard', 'Moreau',
 
 const statuses = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion', 'signe', 'perdu', 'reporte'] as const;
 const temperatures = ['froid', 'tiede', 'chaud'] as const;
+const priorities = ['basse', 'normale', 'haute', 'critique'] as const;
 const boatTypes = ['Moteur', 'Voile', 'Semi-rigide'] as const;
 const boatConditions = ['Neuf', 'BO', 'DV'] as const;
 
@@ -74,6 +75,7 @@ export function generateSeedLeads(count: number = 35): Lead[] {
       ]),
       deliveryDate: isSigned ? randomDate(-90, -10) : '',
       temperature: temp,
+      priority: temp === 'chaud' ? pick(['haute', 'critique'] as const) : pick([...priorities]),
       nextActionType: ['signe', 'perdu'].includes(status) ? '' : pick(['appel', 'email', 'rdv', 'relance', 'devis'] as const),
       nextActionDate: ['signe', 'perdu'].includes(status) ? '' : randomDate(-5, 14),
       lastActionDate: randomDate(0, 30),

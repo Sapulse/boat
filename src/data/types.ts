@@ -13,6 +13,7 @@ export type LeadStatus =
 export type BoatType = 'Moteur' | 'Voile' | 'Semi-rigide';
 export type BoatCondition = 'Neuf' | 'BO' | 'DV';
 export type Temperature = 'froid' | 'tiede' | 'chaud';
+export type Priority = 'basse' | 'normale' | 'haute' | 'critique';
 export type AlertLevel = 'none' | 'orange' | 'red';
 
 export type ActionType =
@@ -69,6 +70,7 @@ export interface Lead {
   comments: string;
   deliveryDate: string;
   temperature: Temperature;
+  priority: Priority;
   nextActionType: ActionType | '';
   nextActionDate: string;
   lastActionDate: string;

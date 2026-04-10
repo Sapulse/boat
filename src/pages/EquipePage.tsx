@@ -6,11 +6,13 @@ import { formatCurrency, generateId } from '../lib/utils';
 import { ACTIVE_STATUSES } from '../data/constants';
 
 export default function EquipePage() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, updateLead } = useApp();
 
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [reassignFrom, setReassignFrom] = useState<string | null>(null);
+  const [reassignTo, setReassignTo] = useState('');
 
   const commercialStats = useMemo(() => {
     return state.commercials.map(c => {
@@ -21,7 +23,11 @@ export default function EquipePage() {
       const montantSigne = allLeads
         .filter(l => l.status === 'signe')
         .reduce((sum, l) => sum + (l.quoteAmount ?? l.budget ?? 0), 0);
-      return { ...c, actifs, signes, perdus, montantSigne };
+      const total = allLeads.length;
+      const tauxConversion = (signes + perdus) > 0
+        ? Math.round((signes / (signes + perdus)) * 100) + '%'
+        : '-';
+      return { ...c, actifs, signes, perdus, montantSigne, total, tauxConversion };
     });
   }, [state.commercials, state.leads]);
 
@@ -61,7 +67,27 @@ export default function EquipePage() {
   };
 
   const toggleActive = (id: string) => {
+    const commercial = state.commercials.find(c => c.id === id);
+    if (commercial?.active) {
+      const activeLeadCount = state.leads.filter(l => l.commercialId === id && ACTIVE_STATUSES.includes(l.status)).length;
+      if (activeLeadCount > 0) {
+        setReassignFrom(id);
+        return;
+      }
+    }
     dispatch({ type: 'TOGGLE_COMMERCIAL', payload: id });
+  };
+
+  const handleReassign = () => {
+    if (!reassignFrom || !reassignTo) return;
+    state.leads.forEach(l => {
+      if (l.commercialId === reassignFrom && ACTIVE_STATUSES.includes(l.status)) {
+        updateLead(l.id, { commercialId: reassignTo });
+      }
+    });
+    dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom });
+    setReassignFrom(null);
+    setReassignTo('');
   };
 
   return (
@@ -103,7 +129,9 @@ export default function EquipePage() {
               <th className="px-5 py-3 text-right font-medium text-gray-600">Leads actifs</th>
               <th className="px-5 py-3 text-right font-medium text-gray-600">Signés</th>
               <th className="px-5 py-3 text-right font-medium text-gray-600">Perdus</th>
+              <th className="px-5 py-3 text-right font-medium text-gray-600">Total leads</th>
               <th className="px-5 py-3 text-right font-medium text-gray-600">Montant signé</th>
+              <th className="px-5 py-3 text-right font-medium text-gray-600">Taux conversion</th>
               <th className="px-5 py-3 text-right font-medium text-gray-600">Statut</th>
               <th className="px-5 py-3 text-right font-medium text-gray-600">Actions</th>
             </tr>
@@ -149,9 +177,11 @@ export default function EquipePage() {
                 <td className="px-5 py-3 text-right text-gray-600">{c.actifs}</td>
                 <td className="px-5 py-3 text-right text-success-600 font-medium">{c.signes}</td>
                 <td className="px-5 py-3 text-right text-danger-600">{c.perdus}</td>
+                <td className="px-5 py-3 text-right text-gray-600">{c.total}</td>
                 <td className="px-5 py-3 text-right font-semibold text-gray-900">
                   {formatCurrency(c.montantSigne)}
                 </td>
+                <td className="px-5 py-3 text-right text-gray-600">{c.tauxConversion}</td>
                 <td className="px-5 py-3 text-right">
                   <span className={`badge ${c.active ? 'bg-success-100 text-success-700' : 'bg-gray-100 text-gray-500'}`}>
                     {c.active ? 'Actif' : 'Inactif'}
@@ -181,7 +211,7 @@ export default function EquipePage() {
             ))}
             {state.commercials.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={9} className="px-5 py-10 text-center text-gray-400">
                   Aucun commercial enregistré
                 </td>
               </tr>
@@ -217,6 +247,29 @@ export default function EquipePage() {
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
               <span className="w-3 h-3 rounded-sm bg-red-500 inline-block" /> Perdus
             </span>
+          </div>
+        </div>
+      )}
+      {reassignFrom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setReassignFrom(null)} />
+          <div className="relative bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Reassigner les leads</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Ce commercial a {state.leads.filter(l => l.commercialId === reassignFrom && ACTIVE_STATUSES.includes(l.status)).length} lead(s) actif(s).
+              Choisissez un commercial pour les reassigner avant la desactivation.
+            </p>
+            <select className="select mb-4" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
+              <option value="">Choisir un commercial...</option>
+              {state.commercials.filter(c => c.active && c.id !== reassignFrom).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => { setReassignFrom(null); setReassignTo(''); }} className="btn-secondary btn-sm">Annuler</button>
+              <button onClick={() => { dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom }); setReassignFrom(null); }} className="btn-ghost btn-sm text-gray-500">Desactiver sans reassigner</button>
+              <button onClick={handleReassign} disabled={!reassignTo} className="btn-primary btn-sm">Reassigner et desactiver</button>
+            </div>
           </div>
         </div>
       )}

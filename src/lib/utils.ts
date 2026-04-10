@@ -72,6 +72,34 @@ export function toISODate(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+export type RiskItem = { label: string; severity: 'warning' | 'danger' };
+
+export function getLeadRisks(lead: Lead): RiskItem[] {
+  const risks: RiskItem[] = [];
+  if (!isLeadActive(lead.status)) return risks;
+
+  const days = daysSince(lead.lastActionDate || lead.createdAt);
+
+  if (!lead.nextActionDate && !lead.nextActionType) {
+    risks.push({ label: 'Aucune prochaine action planifiee', severity: lead.temperature === 'chaud' ? 'danger' : 'warning' });
+  }
+  if (lead.temperature === 'chaud' && days > 3) {
+    risks.push({ label: 'Lead chaud inactif depuis ' + days + 'j', severity: 'danger' });
+  }
+  if (lead.status === 'devis_envoye' && days > 5) {
+    risks.push({ label: 'Devis envoye sans relance depuis ' + days + 'j', severity: days > 10 ? 'danger' : 'warning' });
+  }
+  if (days >= 14) {
+    risks.push({ label: 'Aucune action depuis ' + days + ' jours', severity: 'danger' });
+  } else if (days >= 7) {
+    risks.push({ label: 'Derniere action il y a ' + days + ' jours', severity: 'warning' });
+  }
+  if (lead.priority === 'critique' && days > 2) {
+    risks.push({ label: 'Lead critique sans action recente', severity: 'danger' });
+  }
+  return risks;
+}
+
 export function safeParseJSON<T>(json: string, fallback: T): T {
   try {
     return JSON.parse(json) as T;

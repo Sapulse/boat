@@ -3,15 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Trash2, Plus, Phone, Mail, Calendar,
   Ship, DollarSign, User, Clock, FileText, MessageSquare,
-  AlertTriangle, Flame, ExternalLink,
+  AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
 import ActionForm from '../components/leads/ActionForm';
-import { ACTION_TYPES, LEAD_STATUSES } from '../data/constants';
-import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
+import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
+import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks } from '../lib/utils';
 import type { Lead, LeadStatus } from '../data/types';
 
 export default function LeadDetailPage() {
@@ -35,6 +35,8 @@ export default function LeadDetailPage() {
   const alert = getAlertLevel(lead);
   const days = daysSince(lead.lastActionDate || lead.createdAt);
   const isActive = isLeadActive(lead.status);
+  const risks = getLeadRisks(lead);
+  const nextStatus = getNextStatus(lead.status);
 
   const handleSave = (data: Omit<Lead, 'id'>) => {
     updateLead(lead.id, data);
@@ -65,6 +67,9 @@ export default function LeadDetailPage() {
             <h2 className="text-xl font-bold text-gray-900">{getLeadFullName(lead)}</h2>
             <StatusBadge status={lead.status} />
             <TemperatureBadge temperature={lead.temperature} />
+            <span className={cn('badge', getPriorityInfo(lead.priority).color)}>
+              {getPriorityInfo(lead.priority).label}
+            </span>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             Cree le {formatDate(lead.createdAt)} · {getCommercialName(lead.commercialId)}
@@ -95,6 +100,23 @@ export default function LeadDetailPage() {
         </div>
       )}
 
+      {/* Risk / blocage detection */}
+      {isActive && risks.length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-warning-600" /> Risques detectes
+          </h3>
+          <div className="space-y-1.5">
+            {risks.map((r, i) => (
+              <div key={i} className={cn('text-xs px-3 py-1.5 rounded-lg flex items-center gap-2', r.severity === 'danger' ? 'bg-danger-50 text-danger-700' : 'bg-warning-50 text-warning-700')}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', r.severity === 'danger' ? 'bg-danger-500' : 'bg-warning-500')} />
+                {r.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Quick actions bar */}
       {isActive && (
         <div className="card p-3">
@@ -103,14 +125,12 @@ export default function LeadDetailPage() {
             <button onClick={() => setShowActionForm(true)} className="btn-primary btn-sm"><Plus className="w-3 h-3" /> Ajouter action</button>
             {lead.phone && <a href={`tel:${lead.phone}`} className="btn-secondary btn-sm"><Phone className="w-3 h-3" /> Appeler</a>}
             {lead.email && <a href={`mailto:${lead.email}`} className="btn-secondary btn-sm"><Mail className="w-3 h-3" /> Email</a>}
-            <div className="ml-auto flex items-center gap-1">
-              <span className="text-xs text-gray-400 mr-1">Changer statut :</span>
-              {LEAD_STATUSES.filter(s => s.value !== lead.status).slice(0, 4).map(s => (
-                <button key={s.value} onClick={() => quickStatusChange(s.value)} className="btn-ghost btn-sm text-[10px] px-2 py-1">
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <button onClick={() => { setShowActionForm(true); }} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
+            {nextStatus && (
+              <button onClick={() => quickStatusChange(nextStatus)} className="btn-primary btn-sm ml-auto">
+                Passer a : {getStatusLabel(nextStatus)}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -241,6 +261,10 @@ export default function LeadDetailPage() {
                 <span className={cn(days > 14 ? 'text-danger-600 font-medium' : days > 7 ? 'text-warning-600' : 'text-gray-900')}>
                   {days === Infinity ? '-' : days === 0 ? "Aujourd'hui" : `il y a ${days}j`}
                 </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Priorite</span>
+                <span className={cn('badge', getPriorityInfo(lead.priority).color)}>{getPriorityInfo(lead.priority).label}</span>
               </div>
             </div>
           </div>

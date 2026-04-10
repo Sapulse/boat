@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType } from '../../data/types';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTION_TYPES } from '../../data/constants';
+import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Priority } from '../../data/types';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
 import { useApp } from '../../context/AppContext';
 import { toISODate } from '../../lib/utils';
 
@@ -8,9 +8,10 @@ interface LeadFormProps {
   lead?: Lead;
   onSave: (data: Omit<Lead, 'id'>) => void;
   onCancel: () => void;
+  quickMode?: boolean;
 }
 
-export default function LeadForm({ lead, onSave, onCancel }: LeadFormProps) {
+export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: LeadFormProps) {
   const { state } = useApp();
   const [form, setForm] = useState({
     firstName: lead?.firstName ?? '',
@@ -26,6 +27,7 @@ export default function LeadForm({ lead, onSave, onCancel }: LeadFormProps) {
     budget: lead?.budget ?? null as number | null,
     status: lead?.status ?? 'nouveau' as LeadStatus,
     temperature: lead?.temperature ?? 'tiede' as Temperature,
+    priority: lead?.priority ?? 'normale' as Priority,
     contactDate: lead?.contactDate ?? '',
     quoteAmount: lead?.quoteAmount ?? null as number | null,
     probability: lead?.probability ?? null as number | null,
@@ -52,6 +54,86 @@ export default function LeadForm({ lead, onSave, onCancel }: LeadFormProps) {
       reportedAt: lead?.reportedAt ?? '',
     } as Omit<Lead, 'id'>);
   };
+
+  if (quickMode) {
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Prénom *</label>
+            <input className="input" value={form.firstName} onChange={e => update('firstName', e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">Nom *</label>
+            <input className="input" value={form.lastName} onChange={e => update('lastName', e.target.value)} required />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Téléphone</label>
+            <input className="input" value={form.phone} onChange={e => update('phone', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Email</label>
+            <input className="input" type="email" value={form.email} onChange={e => update('email', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Source</label>
+            <select className="select" value={form.source} onChange={e => update('source', e.target.value)}>
+              <option value="">--</option>
+              {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Commercial *</label>
+            <select className="select" value={form.commercialId} onChange={e => update('commercialId', e.target.value)} required>
+              {state.commercials.filter(c => c.active).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="label">Type de bateau</label>
+            <select className="select" value={form.boatType} onChange={e => update('boatType', e.target.value)}>
+              <option value="">--</option>
+              {BOAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Température</label>
+            <select className="select" value={form.temperature} onChange={e => update('temperature', e.target.value as Temperature)}>
+              {TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Priorité</label>
+            <select className="select" value={form.priority} onChange={e => update('priority', e.target.value as Priority)}>
+              {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Commentaires</label>
+          <textarea className="input min-h-[80px]" value={form.comments} onChange={e => update('comments', e.target.value)} />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+          <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
+          <button type="submit" className="btn-primary">
+            {lead ? 'Enregistrer' : 'Créer le lead'}
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -117,7 +199,7 @@ export default function LeadForm({ lead, onSave, onCancel }: LeadFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label className="label">Type de bateau</label>
           <select className="select" value={form.boatType} onChange={e => update('boatType', e.target.value)}>
@@ -136,6 +218,12 @@ export default function LeadForm({ lead, onSave, onCancel }: LeadFormProps) {
           <label className="label">Température</label>
           <select className="select" value={form.temperature} onChange={e => update('temperature', e.target.value as Temperature)}>
             {TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Priorité</label>
+          <select className="select" value={form.priority} onChange={e => update('priority', e.target.value as Priority)}>
+            {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
       </div>

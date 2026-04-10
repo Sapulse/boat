@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ChevronUp, ChevronDown, Download, Eye, Edit2, Phone } from 'lucide-react';
+import { Search, Plus, ChevronUp, ChevronDown, Download, Eye, Edit2, Phone, Bookmark } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
+
+type SavedView = { label: string; key: string; apply: () => void };
 
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
 type SortDir = 'asc' | 'desc';
@@ -37,6 +39,19 @@ export default function LeadsPage() {
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [viewMode, setViewMode] = useState<'prospects' | 'all'>('prospects');
+  const [activeView, setActiveView] = useState('');
+
+  const clearAllFilters = () => {
+    setFilterCommercial(''); setFilterStatus(''); setFilterBoatType(''); setFilterCondition('');
+    setFilterSource(''); setFilterAlert(''); setFilterTemp(''); setActiveView('');
+  };
+
+  const savedViews: SavedView[] = [
+    { label: 'Urgents', key: 'urgent', apply: () => { clearAllFilters(); setFilterAlert('red'); setActiveView('urgent'); } },
+    { label: 'Chauds', key: 'chaud', apply: () => { clearAllFilters(); setFilterTemp('chaud'); setActiveView('chaud'); } },
+    { label: 'Sans action', key: 'no-action', apply: () => { clearAllFilters(); setActiveView('no-action'); } },
+    { label: 'Devis a relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
+  ];
 
   const filtered = useMemo(() => {
     let leads = [...state.leads];
@@ -63,6 +78,7 @@ export default function LeadsPage() {
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterAlert) leads = leads.filter(l => getAlertLevel(l) === filterAlert);
     if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
+    if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !l.nextActionType && !l.nextActionDate);
 
     leads.sort((a, b) => {
       let cmp = 0;
@@ -78,7 +94,7 @@ export default function LeadsPage() {
     });
 
     return leads;
-  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, sortField, sortDir, viewMode]);
+  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, sortField, sortDir, viewMode, activeView]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -90,11 +106,7 @@ export default function LeadsPage() {
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
   };
 
-  const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp;
-  const clearFilters = () => {
-    setFilterCommercial(''); setFilterStatus(''); setFilterBoatType(''); setFilterCondition('');
-    setFilterSource(''); setFilterAlert(''); setFilterTemp('');
-  };
+  const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || activeView;
 
   const exportCSV = () => {
     const headers = ['Nom', 'Prenom', 'Email', 'Telephone', 'Commercial', 'Source', 'Statut', 'Type', 'Etat', 'Interet', 'Budget', 'Devis', 'Temperature', 'Date creation'];
@@ -130,6 +142,20 @@ export default function LeadsPage() {
         </button>
       </div>
 
+      {/* Saved views */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Bookmark className="w-3.5 h-3.5 text-gray-400" />
+        <span className="text-xs text-gray-400">Vues :</span>
+        {savedViews.map(v => (
+          <button key={v.key} onClick={v.apply} className={cn('px-2.5 py-1 text-xs rounded-full border transition-colors', activeView === v.key ? 'bg-primary-50 border-primary-300 text-primary-700 font-medium' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}>
+            {v.label}
+          </button>
+        ))}
+        {hasFilters && (
+          <button onClick={clearAllFilters} className="text-xs text-gray-400 hover:text-gray-600 ml-1">Reinitialiser</button>
+        )}
+      </div>
+
       {/* Always-visible filters */}
       <div className="card p-3">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -163,7 +189,7 @@ export default function LeadsPage() {
             <option value="red">Rouge</option>
           </select>
           {hasFilters ? (
-            <button onClick={clearFilters} className="btn-ghost btn-sm text-xs">Reinitialiser</button>
+            <button onClick={clearAllFilters} className="btn-ghost btn-sm text-xs">Reinitialiser</button>
           ) : (
             <div />
           )}

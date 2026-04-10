@@ -1,4 +1,4 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial } from './types';
+import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority } from './types';
 
 export const LEAD_STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'nouveau', label: 'Nouveau', color: 'bg-gray-100 text-gray-800' },
@@ -39,6 +39,13 @@ export const ACTIVE_STATUSES: LeadStatus[] = [
 export const BOAT_TYPES: BoatType[] = ['Moteur', 'Voile', 'Semi-rigide'];
 
 export const BOAT_CONDITIONS: BoatCondition[] = ['Neuf', 'BO', 'DV'];
+
+export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
+  { value: 'basse', label: 'Basse', color: 'bg-gray-100 text-gray-600' },
+  { value: 'normale', label: 'Normale', color: 'bg-blue-100 text-blue-700' },
+  { value: 'haute', label: 'Haute', color: 'bg-orange-100 text-orange-700' },
+  { value: 'critique', label: 'Critique', color: 'bg-red-100 text-red-700' },
+];
 
 export const TEMPERATURES: { value: Temperature; label: string; color: string; dot: string }[] = [
   { value: 'froid', label: 'Froid', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
@@ -123,4 +130,19 @@ export function getStatusColor(status: LeadStatus): string {
 
 export function getTemperatureInfo(temp: Temperature) {
   return TEMPERATURES.find(t => t.value === temp) ?? TEMPERATURES[0];
+}
+
+export function getPriorityInfo(p: Priority) {
+  return PRIORITIES.find(pr => pr.value === p) ?? PRIORITIES[1];
+}
+
+export const STATUS_ORDER: LeadStatus[] = [
+  'nouveau', 'a_contacter', 'contacte', 'qualifie',
+  'devis_envoye', 'negociation', 'en_conclusion', 'signe',
+];
+
+export function getNextStatus(current: LeadStatus): LeadStatus | null {
+  const idx = STATUS_ORDER.indexOf(current);
+  if (idx === -1 || idx >= STATUS_ORDER.length - 1) return null;
+  return STATUS_ORDER[idx + 1];
 }
