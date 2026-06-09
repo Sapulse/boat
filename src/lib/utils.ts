@@ -107,3 +107,21 @@ export function safeParseJSON<T>(json: string, fallback: T): T {
     return fallback;
   }
 }
+
+/**
+ * Source de verite unique des dates de transition de statut.
+ * Pose signedAt / lostAt / reportedAt a l'entree du statut concerne si elle
+ * n'est pas deja definie (preserve l'historique), et la nettoie des qu'on
+ * quitte ce statut. A appeler dans le reducer pour chaque changement de statut.
+ */
+export function statusTransitionDates(
+  prev: Pick<Lead, 'signedAt' | 'lostAt' | 'reportedAt'>,
+  newStatus: LeadStatus,
+  date: string,
+): Pick<Lead, 'signedAt' | 'lostAt' | 'reportedAt'> {
+  return {
+    signedAt: newStatus === 'signe' ? (prev.signedAt || date) : '',
+    lostAt: newStatus === 'perdu' ? (prev.lostAt || date) : '',
+    reportedAt: newStatus === 'reporte' ? (prev.reportedAt || date) : '',
+  };
+}

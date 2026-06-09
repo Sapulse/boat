@@ -2,7 +2,7 @@ import { createContext, useContext, useReducer, useEffect, type ReactNode } from
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial } from '../data/types';
 import { DEFAULT_COMMERCIALS } from '../data/constants';
 import { loadState, saveState } from '../lib/storage';
-import { generateId } from '../lib/utils';
+import { generateId, statusTransitionDates, toISODate } from '../lib/utils';
 import {
   generateSeedLeads,
   generateSeedActions,
@@ -49,9 +49,16 @@ function reducer(state: AppState, action: Action): AppState {
     case 'UPDATE_LEAD':
       return {
         ...state,
-        leads: state.leads.map(l =>
-          l.id === action.payload.id ? { ...l, ...action.payload.data } : l
-        ),
+        leads: state.leads.map(l => {
+          if (l.id !== action.payload.id) return l;
+          const merged = { ...l, ...action.payload.data };
+          // Les dates de transition restent pilotees par le helper (source de
+          // verite), en se basant sur l'ancien lead `l` pour preserver une date
+          // deja posee (ex: signedAt historique conservee lors d'une edition
+          // d'un champ non-statut).
+          const dates = statusTransitionDates(l, merged.status, toISODate(new Date()));
+          return { ...merged, ...dates };
+        }),
       };
 
     case 'DELETE_LEAD':
@@ -65,7 +72,13 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         leads: state.leads.map(l =>
-          l.id === action.payload.id ? { ...l, status: action.payload.status } : l
+          l.id === action.payload.id
+            ? {
+                ...l,
+                status: action.payload.status,
+                ...statusTransitionDates(l, action.payload.status, toISODate(new Date())),
+              }
+            : l
         ),
       };
 
@@ -81,9 +94,16 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         actions: [act, ...state.actions],
-        leads: state.leads.map(l =>
-          l.id === act.leadId ? { ...l, ...updates } : l
-        ),
+        leads: state.leads.map(l => {
+          if (l.id !== act.leadId) return l;
+          // Si l'action change le statut, on aligne les dates de transition via
+          // le helper en utilisant la date de l'action (date semantique de la
+          // signature / perte / report).
+          const dates = act.newStatus
+            ? statusTransitionDates(l, act.newStatus, act.date)
+            : null;
+          return { ...l, ...updates, ...dates };
+        }),
       };
     }
 

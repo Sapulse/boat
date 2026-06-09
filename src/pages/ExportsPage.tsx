@@ -1,24 +1,9 @@
 import { Download, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatDate, formatCurrency } from '../lib/utils';
+import { exportCSV } from '../lib/csv';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
 import type { ReactNode } from 'react';
-
-function exportCSV(filename: string, headers: string[], rows: string[][]): void {
-  const BOM = '\uFEFF';
-  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const lines = [
-    headers.map(escape).join(';'),
-    ...rows.map(row => row.map(escape).join(';')),
-  ];
-  const blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 interface ExportCardProps {
   icon: ReactNode;

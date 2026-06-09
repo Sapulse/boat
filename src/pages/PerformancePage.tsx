@@ -7,23 +7,12 @@ import {
 import { useApp } from '../context/AppContext';
 import KpiCard from '../components/ui/KpiCard';
 import { formatCurrency } from '../lib/utils';
+import { exportCSV } from '../lib/csv';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
 import type { LeadStatus } from '../data/types';
 import { useSearchParams } from 'react-router-dom';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316', '#84cc16', '#a855f7'];
-
-function downloadCSV(headers: string[], rows: string[][], filename: string) {
-  const bom = '\uFEFF';
-  const csv = bom + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function PerformancePage() {
   const { state } = useApp();
@@ -168,7 +157,7 @@ export default function PerformancePage() {
       ['Montant devis', String(analytics.amountDevis)],
       ['Montant signes', String(analytics.amountSigne)],
     ];
-    downloadCSV(headers, rows, `performance-${new Date().toISOString().slice(0, 10)}.csv`);
+    exportCSV(`performance-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
 
   return (

@@ -4,24 +4,13 @@ import { Search, Plus, ChevronUp, ChevronDown, Download, Eye, Edit2, Phone, Book
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
+import { exportCSV } from '../lib/csv';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
 
 type SavedView = { label: string; key: string; apply: () => void };
 
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
 type SortDir = 'asc' | 'desc';
-
-function downloadCSV(headers: string[], rows: string[][], filename: string) {
-  const bom = '\uFEFF';
-  const csv = bom + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function LeadsPage() {
   const { state, getCommercialName } = useApp();
@@ -108,14 +97,14 @@ export default function LeadsPage() {
 
   const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || activeView;
 
-  const exportCSV = () => {
+  const handleExportCSV = () => {
     const headers = ['Nom', 'Prenom', 'Email', 'Telephone', 'Commercial', 'Source', 'Statut', 'Type', 'Etat', 'Interet', 'Budget', 'Devis', 'Temperature', 'Date creation'];
     const rows = filtered.map(l => [
       l.lastName, l.firstName, l.email, l.phone, getCommercialName(l.commercialId),
       l.source, l.status, l.boatType, l.boatCondition, l.boatInterest,
       String(l.budget ?? ''), String(l.quoteAmount ?? ''), l.temperature, l.createdAt,
     ]);
-    downloadCSV(headers, rows, `leads-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`);
+    exportCSV(`leads-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
 
   return (
@@ -134,7 +123,7 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input className="input pl-9" placeholder="Rechercher un lead..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button onClick={exportCSV} className="btn-secondary btn-sm">
+        <button onClick={handleExportCSV} className="btn-secondary btn-sm">
           <Download className="w-4 h-4" /> Export CSV
         </button>
         <button onClick={() => navigate('/leads/new')} className="btn-primary btn-sm">
