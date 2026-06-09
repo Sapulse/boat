@@ -11,7 +11,7 @@ const titles: Record<string, string> = {
   '/relances': 'À relancer',
   '/performance': 'Performance',
   '/acquisition': 'Acquisition',
-  '/equipe': 'Equipe',
+  '/equipe': 'Équipe',
   '/templates': "Modèles d'email",
   '/exports': 'Exports',
 };

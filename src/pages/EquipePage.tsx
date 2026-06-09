@@ -257,10 +257,10 @@ export default function EquipePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/50" onClick={() => setReassignFrom(null)} />
           <div className="relative bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Reassigner les leads</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Réassigner les leads</h3>
             <p className="text-sm text-gray-600 mb-4">
               Ce commercial a {state.leads.filter(l => l.commercialId === reassignFrom && ACTIVE_STATUSES.includes(l.status)).length} lead(s) actif(s).
-              Choisissez un commercial pour les reassigner avant la desactivation.
+              Choisissez un commercial pour les réassigner avant la désactivation.
             </p>
             <select className="select mb-4" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
               <option value="">Choisir un commercial...</option>
@@ -270,8 +270,8 @@ export default function EquipePage() {
             </select>
             <div className="flex justify-end gap-3">
               <button onClick={() => { setReassignFrom(null); setReassignTo(''); }} className="btn-secondary btn-sm">Annuler</button>
-              <button onClick={() => { dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom }); setReassignFrom(null); }} className="btn-ghost btn-sm text-gray-500">Desactiver sans reassigner</button>
-              <button onClick={handleReassign} disabled={!reassignTo} className="btn-primary btn-sm">Reassigner et desactiver</button>
+              <button onClick={() => { dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom }); setReassignFrom(null); }} className="btn-ghost btn-sm text-gray-500">Désactiver sans réassigner</button>
+              <button onClick={handleReassign} disabled={!reassignTo} className="btn-primary btn-sm">Réassigner et désactiver</button>
             </div>
           </div>
         </div>

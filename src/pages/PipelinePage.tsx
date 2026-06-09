@@ -229,7 +229,7 @@ export default function PipelinePage() {
         </button>
         {hasFilters && (
           <button onClick={() => { setFilterCommercial(''); setFilterSource(''); setFilterBoatType(''); setFilterCondition(''); setFilterTemp(''); setFilterAlert(''); }} className="btn-ghost btn-sm text-xs text-gray-500">
-            Reinitialiser
+            Réinitialiser
           </button>
         )}
         <span className="text-xs text-gray-400 ml-auto">{filteredLeads.length} leads</span>
@@ -251,7 +251,7 @@ export default function PipelinePage() {
               {BOAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <select className="select text-xs" value={filterCondition} onChange={e => setFilterCondition(e.target.value)}>
-              <option value="">Etat</option>
+              <option value="">État</option>
               {BOAT_CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <select className="select text-xs" value={filterTemp} onChange={e => setFilterTemp(e.target.value)}>

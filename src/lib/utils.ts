@@ -81,21 +81,21 @@ export function getLeadRisks(lead: Lead): RiskItem[] {
   const days = daysSince(lead.lastActionDate || lead.createdAt);
 
   if (!lead.nextActionDate && !lead.nextActionType) {
-    risks.push({ label: 'Aucune prochaine action planifiee', severity: lead.temperature === 'chaud' ? 'danger' : 'warning' });
+    risks.push({ label: 'Aucune prochaine action planifiée', severity: lead.temperature === 'chaud' ? 'danger' : 'warning' });
   }
   if (lead.temperature === 'chaud' && days > 3) {
     risks.push({ label: 'Lead chaud inactif depuis ' + days + 'j', severity: 'danger' });
   }
   if (lead.status === 'devis_envoye' && days > 5) {
-    risks.push({ label: 'Devis envoye sans relance depuis ' + days + 'j', severity: days > 10 ? 'danger' : 'warning' });
+    risks.push({ label: 'Devis envoyé sans relance depuis ' + days + 'j', severity: days > 10 ? 'danger' : 'warning' });
   }
   if (days >= 14) {
     risks.push({ label: 'Aucune action depuis ' + days + ' jours', severity: 'danger' });
   } else if (days >= 7) {
-    risks.push({ label: 'Derniere action il y a ' + days + ' jours', severity: 'warning' });
+    risks.push({ label: 'Dernière action il y a ' + days + ' jours', severity: 'warning' });
   }
   if (lead.priority === 'critique' && days > 2) {
-    risks.push({ label: 'Lead critique sans action recente', severity: 'danger' });
+    risks.push({ label: 'Lead critique sans action récente', severity: 'danger' });
   }
   return risks;
 }

@@ -115,7 +115,7 @@ export default function LeadsPage() {
   const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || activeView;
 
   const handleExportCSV = () => {
-    const headers = ['Nom', 'Prenom', 'Email', 'Telephone', 'Commercial', 'Source', 'Statut', 'Type', 'Etat', 'Interet', 'Budget', 'Devis', 'Temperature', 'Date creation'];
+    const headers = ['Nom', 'Prénom', 'Email', 'Téléphone', 'Commercial', 'Source', 'Statut', 'Type', 'État', 'Intérêt', 'Budget', 'Devis', 'Température', 'Date création'];
     const rows = filtered.map(l => [
       l.lastName, l.firstName, l.email, l.phone, getCommercialName(l.commercialId),
       l.source, l.status, l.boatType, l.boatCondition, l.boatInterest,
@@ -183,7 +183,7 @@ export default function LeadsPage() {
           </button>
         ))}
         {hasFilters && (
-          <button onClick={clearAllFilters} className="text-xs text-gray-400 hover:text-gray-600 ml-1">Reinitialiser</button>
+          <button onClick={clearAllFilters} className="text-xs text-gray-400 hover:text-gray-600 ml-1">Réinitialiser</button>
         )}
       </div>
 
@@ -203,7 +203,7 @@ export default function LeadsPage() {
             {BOAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <select className="select text-xs" value={filterCondition} onChange={e => setFilterCondition(e.target.value)}>
-            <option value="">Etat</option>
+            <option value="">État</option>
             {BOAT_CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select className="select text-xs" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
@@ -220,7 +220,7 @@ export default function LeadsPage() {
             <option value="red">Rouge</option>
           </select>
           {hasFilters ? (
-            <button onClick={clearAllFilters} className="btn-ghost btn-sm text-xs">Reinitialiser</button>
+            <button onClick={clearAllFilters} className="btn-ghost btn-sm text-xs">Réinitialiser</button>
           ) : (
             <div />
           )}

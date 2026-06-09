@@ -23,14 +23,14 @@ const mainNav: NavItem[] = [
   { name: 'Leads / Prospects', href: '/leads', icon: Users },
   { name: 'Clients', href: '/clients', icon: UserCheck },
   { name: 'Pipeline', href: '/pipeline', icon: Kanban },
-  { name: 'A relancer', href: '/relances', icon: CalendarClock },
+  { name: 'À relancer', href: '/relances', icon: CalendarClock },
   { name: 'Performance', href: '/performance', icon: BarChart3 },
   { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
 ];
 
 const settingsNav: NavItem[] = [
-  { name: 'Equipe', href: '/equipe', icon: UsersRound },
-  { name: 'Modeles email', href: '/templates', icon: Mail },
+  { name: 'Équipe', href: '/equipe', icon: UsersRound },
+  { name: 'Modèles email', href: '/templates', icon: Mail },
   { name: 'Exports', href: '/exports', icon: Download },
 ];
 

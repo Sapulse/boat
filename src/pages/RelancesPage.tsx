@@ -47,7 +47,7 @@ export default function RelancesPage() {
           </select>
           {hasFilters && (
             <button onClick={() => { setFilterCommercial(''); setFilterSeverity(''); }} className="btn-ghost btn-sm text-xs text-gray-500">
-              Reinitialiser
+              Réinitialiser
             </button>
           )}
         </div>

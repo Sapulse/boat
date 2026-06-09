@@ -69,11 +69,11 @@ export default function PerformancePage() {
 
     const funnel = [
       { name: 'Nouveau', value: byStatus('nouveau').length + byStatus('a_contacter').length, fill: '#3b82f6' },
-      { name: 'Contacte', value: byStatus('contacte').length + byStatus('qualifie').length, fill: '#0ea5e9' },
+      { name: 'Contacté', value: byStatus('contacte').length + byStatus('qualifie').length, fill: '#0ea5e9' },
       { name: 'Devis', value: byStatus('devis_envoye').length, fill: '#8b5cf6' },
-      { name: 'Negociation', value: byStatus('negociation').length, fill: '#f59e0b' },
+      { name: 'Négociation', value: byStatus('negociation').length, fill: '#f59e0b' },
       { name: 'Conclusion', value: byStatus('en_conclusion').length, fill: '#f97316' },
-      { name: 'Signe', value: byStatus('signe').length, fill: '#22c55e' },
+      { name: 'Signé', value: byStatus('signe').length, fill: '#22c55e' },
     ].filter(f => f.value > 0);
 
     const signedLeads = byStatus('signe');
@@ -151,14 +151,14 @@ export default function PerformancePage() {
     const rows = [
       ['Total leads', String(analytics.total)],
       ['Nouveaux', String(analytics.nouveau)],
-      ['Contactes', String(analytics.contacte)],
-      ['Devis envoyes', String(analytics.devisEnvoye)],
+      ['Contactés', String(analytics.contacte)],
+      ['Devis envoyés', String(analytics.devisEnvoye)],
       ['En conclusion', String(analytics.enConclusion)],
-      ['Signes', String(analytics.signe)],
-      ['Reportes', String(analytics.reporte)],
+      ['Signés', String(analytics.signe)],
+      ['Reportés', String(analytics.reporte)],
       ['Perdus', String(analytics.perdu)],
       ['Montant devis', String(analytics.amountDevis)],
-      ['Montant signes', String(analytics.amountSigne)],
+      ['Montant signés', String(analytics.amountSigne)],
     ];
     exportCSV(`performance-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
@@ -178,7 +178,7 @@ export default function PerformancePage() {
           <div className="ml-auto flex items-center gap-2">
             {hasFilters && (
               <button onClick={() => { setFilterCommercial(''); setFilterBoatType(''); setFilterCondition(''); setFilterStatus(''); setFilterSource(''); setFilterPeriod(''); }} className="btn-ghost btn-sm text-xs">
-                Reinitialiser
+                Réinitialiser
               </button>
             )}
             <PrintButton />
@@ -218,11 +218,11 @@ export default function PerformancePage() {
       {/* Volume KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <KpiCard title="Nouveaux" value={analytics.nouveau} color="text-gray-700" />
-        <KpiCard title="Contactes" value={analytics.contacte} color="text-sky-600" />
-        <KpiCard title="Devis envoyes" value={analytics.devisEnvoye} color="text-purple-600" />
+        <KpiCard title="Contactés" value={analytics.contacte} color="text-sky-600" />
+        <KpiCard title="Devis envoyés" value={analytics.devisEnvoye} color="text-purple-600" />
         <KpiCard title="En conclusion" value={analytics.enConclusion} color="text-orange-600" />
-        <KpiCard title="Signes" value={analytics.signe} color="text-success-600" />
-        <KpiCard title="Reportes" value={analytics.reporte} color="text-warning-600" />
+        <KpiCard title="Signés" value={analytics.signe} color="text-success-600" />
+        <KpiCard title="Reportés" value={analytics.reporte} color="text-warning-600" />
         <KpiCard title="Perdus" value={analytics.perdu} color="text-danger-600" />
       </div>
 
@@ -230,7 +230,7 @@ export default function PerformancePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard title="Montant devis" value={formatCurrency(analytics.amountDevis)} color="text-purple-600" />
         <KpiCard title="Montant conclusion" value={formatCurrency(analytics.amountConclusion)} color="text-orange-600" />
-        <KpiCard title="Montant signes" value={formatCurrency(analytics.amountSigne)} color="text-success-600" />
+        <KpiCard title="Montant signés" value={formatCurrency(analytics.amountSigne)} color="text-success-600" />
         <KpiCard title="Montant perdus" value={formatCurrency(analytics.amountPerdu)} color="text-danger-600" />
       </div>
 
@@ -239,8 +239,8 @@ export default function PerformancePage() {
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Conversion</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard title="Taux de conversion" value={analytics.conversionRate !== null ? `${analytics.conversionRate}%` : '-'} color="text-primary-600" />
-          <KpiCard title="Montant moyen signe" value={formatCurrency(analytics.avgSignedAmount)} color="text-success-600" />
-          <KpiCard title="Delai moyen signature" value={analytics.avgDaysToSign !== null ? `${analytics.avgDaysToSign}j` : '-'} color="text-sky-600" />
+          <KpiCard title="Montant moyen signé" value={formatCurrency(analytics.avgSignedAmount)} color="text-success-600" />
+          <KpiCard title="Délai moyen signature" value={analytics.avgDaysToSign !== null ? `${analytics.avgDaysToSign}j` : '-'} color="text-sky-600" />
           <KpiCard title="Leads actifs total" value={analytics.activeCount} color="text-gray-700" />
         </div>
       </div>
@@ -298,7 +298,7 @@ export default function PerformancePage() {
           </ResponsiveContainer>
         </div>
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Par etat</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Par état</h3>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie data={analytics.byCondition} cx="50%" cy="50%" outerRadius={85} dataKey="value" label={({ name, value }) => `${name} (${value})`}>

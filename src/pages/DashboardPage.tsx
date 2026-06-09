@@ -106,7 +106,7 @@ export default function DashboardPage() {
             {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           {hasFilters && (
-            <button onClick={() => { setFilterCommercial(''); setFilterSource(''); setFilterPeriod(''); }} className="btn-ghost btn-sm text-xs text-gray-500">Reinitialiser</button>
+            <button onClick={() => { setFilterCommercial(''); setFilterSource(''); setFilterPeriod(''); }} className="btn-ghost btn-sm text-xs text-gray-500">Réinitialiser</button>
           )}
           <span className="text-xs text-gray-400 ml-auto">{filtered.length} leads</span>
           <PrintButton />
@@ -119,7 +119,7 @@ export default function DashboardPage() {
           <KpiCard title="Leads actifs" value={stats.active} icon={<Users className="w-5 h-5" />} color="text-primary-600" />
         </div>
         <div className="cursor-pointer" onClick={() => navigate('/leads?status=signe')}>
-          <KpiCard title="Signes" value={stats.signed} icon={<CheckCircle2 className="w-5 h-5" />} color="text-success-600" />
+          <KpiCard title="Signés" value={stats.signed} icon={<CheckCircle2 className="w-5 h-5" />} color="text-success-600" />
         </div>
         <div className="cursor-pointer" onClick={() => navigate('/leads?alert=red')}>
           <KpiCard title="Urgences" value={stats.urgent} icon={<AlertTriangle className="w-5 h-5" />} color="text-danger-600" />
@@ -128,7 +128,7 @@ export default function DashboardPage() {
           <KpiCard title="Volume devis" value={formatCurrency(stats.totalQuotes)} icon={<FileText className="w-5 h-5" />} color="text-purple-600" />
         </div>
         <div className="cursor-pointer" onClick={() => navigate('/clients')}>
-          <KpiCard title="Volume signe" value={formatCurrency(stats.totalSigned)} icon={<DollarSign className="w-5 h-5" />} color="text-success-600" />
+          <KpiCard title="Volume signé" value={formatCurrency(stats.totalSigned)} icon={<DollarSign className="w-5 h-5" />} color="text-success-600" />
         </div>
         <KpiCard title="Sans action >7j" value={stats.noRecentAction} icon={<Clock className="w-5 h-5" />} color="text-warning-600" />
       </div>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
         {/* Pipeline overview */}
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Target className="w-4 h-4 text-primary-600" /> Repartition pipeline
+            <Target className="w-4 h-4 text-primary-600" /> Répartition pipeline
           </h3>
           {stats.byStatus.length > 0 ? (
             <>
@@ -260,7 +260,7 @@ export default function DashboardPage() {
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Bar dataKey="actifs" name="Actifs" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="signes" name="Signes" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="signes" name="Signés" fill="#22c55e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -296,7 +296,7 @@ export default function DashboardPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-4 py-2.5 text-left font-medium text-gray-600">Commercial</th>
                 <th className="px-4 py-2.5 text-right font-medium text-gray-600">Actifs</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600">Signes</th>
+                <th className="px-4 py-2.5 text-right font-medium text-gray-600">Signés</th>
                 <th className="px-4 py-2.5 text-right font-medium text-gray-600">Montant</th>
               </tr>
             </thead>

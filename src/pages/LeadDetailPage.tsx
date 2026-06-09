@@ -107,7 +107,7 @@ export default function LeadDetailPage() {
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
-            Cree le {formatDate(lead.createdAt)} · {getCommercialName(lead.commercialId)}
+            Créé le {formatDate(lead.createdAt)} · {getCommercialName(lead.commercialId)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -123,11 +123,11 @@ export default function LeadDetailPage() {
           <AlertTriangle className={cn('w-5 h-5 shrink-0', alert === 'red' ? 'text-danger-600' : 'text-warning-600')} />
           <div>
             <p className={cn('text-sm font-medium', alert === 'red' ? 'text-danger-800' : 'text-warning-800')}>
-              {alert === 'red' ? 'Attention urgente requise' : 'Action recommandee'}
+              {alert === 'red' ? 'Attention urgente requise' : 'Action recommandée'}
             </p>
             <p className={cn('text-xs mt-0.5', alert === 'red' ? 'text-danger-600' : 'text-warning-600')}>
-              {lead.temperature === 'chaud' && !lead.nextActionDate ? 'Lead chaud sans prochaine action planifiee' :
-               days >= 14 ? `Aucune action depuis ${days} jours` : `${days} jours depuis la derniere action`}
+              {lead.temperature === 'chaud' && !lead.nextActionDate ? 'Lead chaud sans prochaine action planifiée' :
+               days >= 14 ? `Aucune action depuis ${days} jours` : `${days} jours depuis la dernière action`}
             </p>
           </div>
           <button onClick={() => setShowActionForm(true)} className="btn-primary btn-sm ml-auto shrink-0">
@@ -140,7 +140,7 @@ export default function LeadDetailPage() {
       {isActive && risks.length > 0 && (
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-warning-600" /> Risques detectes
+            <ShieldAlert className="w-4 h-4 text-warning-600" /> Risques détectés
           </h3>
           <div className="space-y-1.5">
             {risks.map((r, i) => (
@@ -183,7 +183,7 @@ export default function LeadDetailPage() {
             <button onClick={() => { setShowActionForm(true); }} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
             {nextStatus && (
               <button onClick={() => quickStatusChange(nextStatus)} className="btn-primary btn-sm ml-auto">
-                Passer a : {getStatusLabel(nextStatus)}
+                Passer à : {getStatusLabel(nextStatus)}
               </button>
             )}
           </div>
@@ -225,9 +225,9 @@ export default function LeadDetailPage() {
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               <div><span className="text-gray-400 text-xs">Type</span><p className="text-gray-700">{lead.boatType || '-'}</p></div>
-              <div><span className="text-gray-400 text-xs">Etat</span><p className="text-gray-700">{lead.boatCondition || '-'}</p></div>
+              <div><span className="text-gray-400 text-xs">État</span><p className="text-gray-700">{lead.boatCondition || '-'}</p></div>
               <div><span className="text-gray-400 text-xs">Marque</span><p className="text-gray-700">{lead.brand || '-'}</p></div>
-              <div><span className="text-gray-400 text-xs">Interet</span><p className="text-gray-700 font-medium">{lead.boatInterest || '-'}</p></div>
+              <div><span className="text-gray-400 text-xs">Intérêt</span><p className="text-gray-700 font-medium">{lead.boatInterest || '-'}</p></div>
               <div><span className="text-gray-400 text-xs">Budget</span><p className="text-gray-700 font-semibold">{formatCurrency(lead.budget)}</p></div>
               <div><span className="text-gray-400 text-xs">Livraison</span><p className="text-gray-700">{formatDate(lead.deliveryDate)}</p></div>
             </div>
@@ -240,7 +240,7 @@ export default function LeadDetailPage() {
             </h3>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div><span className="text-gray-400 text-xs">Montant devis</span><p className="text-gray-700 font-semibold">{formatCurrency(lead.quoteAmount)}</p></div>
-              <div><span className="text-gray-400 text-xs">% Realisation</span><p className="text-gray-700">{lead.probability !== null ? `${lead.probability}%` : '-'}</p></div>
+              <div><span className="text-gray-400 text-xs">% Réalisation</span><p className="text-gray-700">{lead.probability !== null ? `${lead.probability}%` : '-'}</p></div>
               <div><span className="text-gray-400 text-xs">Budget</span><p className="text-gray-700">{formatCurrency(lead.budget)}</p></div>
             </div>
           </div>
@@ -300,7 +300,7 @@ export default function LeadDetailPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-warning-600">Aucune action planifiee</p>
+              <p className="text-sm text-warning-600">Aucune action planifiée</p>
             )}
           </div>
 
@@ -312,13 +312,13 @@ export default function LeadDetailPage() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Date contact</span><span className="text-gray-900">{formatDate(lead.contactDate)}</span></div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Derniere action</span>
+                <span className="text-gray-500">Dernière action</span>
                 <span className={cn(days > 14 ? 'text-danger-600 font-medium' : days > 7 ? 'text-warning-600' : 'text-gray-900')}>
                   {days === Infinity ? '-' : days === 0 ? "Aujourd'hui" : `il y a ${days}j`}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Priorite</span>
+                <span className="text-gray-500">Priorité</span>
                 <span className={cn('badge', getPriorityInfo(lead.priority).color)}>{getPriorityInfo(lead.priority).label}</span>
               </div>
             </div>
@@ -330,11 +330,11 @@ export default function LeadDetailPage() {
               <Calendar className="w-4 h-4 text-primary-600" /> Jalons
             </h3>
             <div className="space-y-2 text-sm">
-              <TimelineItem label="Creation" date={lead.createdAt} active />
+              <TimelineItem label="Création" date={lead.createdAt} active />
               <TimelineItem label="Contact" date={lead.contactDate} active={!!lead.contactDate} />
-              <TimelineItem label="Signe" date={lead.signedAt} active={!!lead.signedAt} success />
+              <TimelineItem label="Signé" date={lead.signedAt} active={!!lead.signedAt} success />
               <TimelineItem label="Perdu" date={lead.lostAt} active={!!lead.lostAt} danger />
-              <TimelineItem label="Reporte" date={lead.reportedAt} active={!!lead.reportedAt} />
+              <TimelineItem label="Reporté" date={lead.reportedAt} active={!!lead.reportedAt} />
               {lead.deliveryDate && <TimelineItem label="Livraison" date={lead.deliveryDate} active />}
             </div>
             {lead.lossReason && (
