@@ -9,6 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { useApp } from '../context/AppContext';
 import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
+import PrintButton from '../components/print/PrintButton';
+import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 
@@ -82,8 +84,10 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <PrintHeader title="Tableau de bord commercial" />
+
       {/* Filters */}
-      <div className="card p-3">
+      <div className="card p-3 no-print">
         <div className="flex items-center gap-3 flex-wrap">
           <Filter className="w-4 h-4 text-gray-400" />
           <select className="select text-xs w-auto" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
@@ -105,6 +109,7 @@ export default function DashboardPage() {
             <button onClick={() => { setFilterCommercial(''); setFilterSource(''); setFilterPeriod(''); }} className="btn-ghost btn-sm text-xs text-gray-500">Reinitialiser</button>
           )}
           <span className="text-xs text-gray-400 ml-auto">{filtered.length} leads</span>
+          <PrintButton />
         </div>
       </div>
 

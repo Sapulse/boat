@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import { useApp } from '../context/AppContext';
 import KpiCard from '../components/ui/KpiCard';
+import PrintButton from '../components/print/PrintButton';
+import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
@@ -165,8 +167,10 @@ export default function PerformancePage() {
 
   return (
     <div className="space-y-6">
+      <PrintHeader title="Performance commerciale" />
+
       {/* Filters */}
-      <div className="card p-4">
+      <div className="card p-4 no-print">
         <div className="flex items-center gap-2 mb-3">
           <Filter className="w-4 h-4 text-gray-500" />
           <span className="text-sm font-medium text-gray-700">Filtres</span>
@@ -177,6 +181,7 @@ export default function PerformancePage() {
                 Reinitialiser
               </button>
             )}
+            <PrintButton />
             <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm disabled:opacity-70">{exportDone ? <><Check className="w-3.5 h-3.5" /> Exporté ✓</> : <><Download className="w-3.5 h-3.5" /> Export</>}</button>
           </div>
         </div>

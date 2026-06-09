@@ -120,6 +120,9 @@ export const MONTHS = [
   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
 ];
 
+// Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
+export const COMPANY_NAME = 'Ocean Boat';
+
 // Variables interpolables dans les sujets / corps de templates (affichage de
 // l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().
 export const EMAIL_TEMPLATE_VARIABLES = [

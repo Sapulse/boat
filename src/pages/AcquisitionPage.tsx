@@ -12,6 +12,8 @@ import {
   Line,
 } from 'recharts';
 import { useApp } from '../context/AppContext';
+import PrintButton from '../components/print/PrintButton';
+import PrintHeader from '../components/print/PrintHeader';
 import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, MONTHS } from '../data/constants';
 import { formatCurrency, generateId } from '../lib/utils';
 import type { MonthlyStat, AcquisitionVolume } from '../data/types';
@@ -736,18 +738,25 @@ const TABS: { id: Tab; label: string }[] = [
 export default function AcquisitionPage() {
   const [activeTab, setActiveTab] = useState<Tab>('budget');
 
+  const activeLabel = TABS.find(t => t.id === activeTab)?.label ?? '';
+
   return (
     <div className="space-y-6">
+      <PrintHeader title="Acquisition" subtitle={activeLabel} />
+
       {/* Page title */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Acquisition</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Suivi des budgets, CPL et volumes de leads par plateforme
-        </p>
+      <div className="flex items-start justify-between gap-3 no-print">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Acquisition</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Suivi des budgets, CPL et volumes de leads par plateforme
+          </p>
+        </div>
+        <PrintButton />
       </div>
 
       {/* Tab bar */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 no-print">
         <nav className="-mb-px flex gap-1" aria-label="Onglets">
           {TABS.map((tab) => (
             <button

@@ -57,6 +57,42 @@
   }
 }
 
+/* En-tete de rapport : masque a l'ecran, visible uniquement a l'impression. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  /* Paysage A4 : plus de largeur -> moins de debord des graphes Recharts. */
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  /* Chrome non pertinent en PDF : sidebar, header, boutons, filtres. */
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* Forcer le rendu des couleurs (fills SVG des graphes, badges de statut...). */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Ne pas couper une carte / un graphe en deux entre deux pages. */
+  .card {
+    break-inside: avoid;
+  }
+}
+
 @layer components {
   .card {
     @apply bg-white rounded-xl border border-gray-200 shadow-sm;

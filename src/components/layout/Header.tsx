@@ -41,7 +41,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const urgentCount = state.leads.filter(l => getAlertLevel(l) === 'red').length;
 
   return (
-    <header className="h-16 border-b border-gray-200 bg-white flex items-center px-4 lg:px-6 gap-4 shrink-0">
+    <header className="h-16 border-b border-gray-200 bg-white flex items-center px-4 lg:px-6 gap-4 shrink-0 print:hidden">
       <button
         onClick={onMenuClick}
         className="lg:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
