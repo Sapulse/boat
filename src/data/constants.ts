@@ -1,4 +1,4 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority } from './types';
+import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, EmailTemplate } from './types';
 
 export const LEAD_STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'nouveau', label: 'Nouveau', color: 'bg-gray-100 text-gray-800' },
@@ -118,6 +118,51 @@ export const DEFAULT_COMMERCIALS: Commercial[] = [
 export const MONTHS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+];
+
+// Variables interpolables dans les sujets / corps de templates (affichage de
+// l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().
+export const EMAIL_TEMPLATE_VARIABLES = [
+  { key: 'prenom', label: 'Prénom du lead' },
+  { key: 'nom', label: 'Nom du lead' },
+  { key: 'bateau', label: 'Type de bateau' },
+  { key: 'modele', label: 'Modèle / intérêt' },
+  { key: 'commercial', label: 'Nom du commercial' },
+  { key: 'signature', label: 'Signature du commercial' },
+];
+
+// Modeles par defaut (volontairement concis : un mailto: pre-rempli encode est
+// limite a ~2000 caracteres, surtout sous Outlook/Windows).
+export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
+  {
+    id: 'contact',
+    title: 'Premier contact',
+    subject: 'Votre projet bateau — {{modele}}',
+    body:
+      'Bonjour {{prenom}} {{nom}},\n\n' +
+      'Suite à votre intérêt pour un bateau de type {{bateau}} ({{modele}}), je reste à votre disposition pour échanger sur votre projet et répondre à vos questions.\n\n' +
+      'Quand seriez-vous disponible pour en discuter ?\n\n' +
+      'Cordialement,\n{{commercial}}\n{{signature}}',
+  },
+  {
+    id: 'relance',
+    title: 'Relance',
+    subject: 'Suite à notre échange — {{modele}}',
+    body:
+      'Bonjour {{prenom}} {{nom}},\n\n' +
+      'Je me permets de revenir vers vous concernant votre projet de bateau {{bateau}} ({{modele}}). Avez-vous pu avancer dans votre réflexion ?\n\n' +
+      'Je reste disponible pour toute information complémentaire.\n\n' +
+      'Cordialement,\n{{commercial}}\n{{signature}}',
+  },
+  {
+    id: 'suivi',
+    title: 'Suivi de dossier',
+    subject: 'Suivi de votre dossier — {{modele}}',
+    body:
+      'Bonjour {{prenom}} {{nom}},\n\n' +
+      'Je souhaitais faire un point sur l\'avancement de votre dossier pour le {{modele}} ({{bateau}}). N\'hésitez pas à me contacter si vous avez la moindre question.\n\n' +
+      'Bien cordialement,\n{{commercial}}\n{{signature}}',
+  },
 ];
 
 export function getStatusLabel(status: LeadStatus): string {

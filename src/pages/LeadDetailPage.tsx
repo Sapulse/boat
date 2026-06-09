@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Trash2, Plus, Phone, Mail, Calendar,
   Ship, DollarSign, User, Clock, FileText, MessageSquare,
-  AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw,
+  AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
@@ -11,8 +11,9 @@ import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
 import ActionForm from '../components/leads/ActionForm';
 import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
-import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks } from '../lib/utils';
-import type { Lead, LeadStatus } from '../data/types';
+import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate } from '../lib/utils';
+import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
+import type { Lead, LeadStatus, EmailTemplate } from '../data/types';
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,7 @@ export default function LeadDetailPage() {
   const { state, updateLead, deleteLead, addAction, getLeadActions, getCommercialName, updateLeadStatus } = useApp();
   const [editMode, setEditMode] = useState(false);
   const [showActionForm, setShowActionForm] = useState(false);
+  const [showEmailMenu, setShowEmailMenu] = useState(false);
 
   const lead = state.leads.find(l => l.id === id);
   if (!lead) {
@@ -52,6 +54,25 @@ export default function LeadDetailPage() {
 
   const quickStatusChange = (status: LeadStatus) => {
     updateLeadStatus(lead.id, status);
+  };
+
+  // Envoi pre-rempli : interpole le template avec les variables du lead + la
+  // signature du commercial ASSIGNE, ouvre un mailto: encode, et journalise une
+  // action 'email' dans l'historique.
+  const sendEmail = (template: EmailTemplate) => {
+    const commercial = state.commercials.find(c => c.id === lead.commercialId);
+    const vars = buildLeadVars(lead, commercial);
+    const { subject, body } = renderEmail(template, vars);
+    window.location.href = buildMailto(lead.email, subject, body);
+    addAction({
+      leadId: lead.id,
+      type: 'email',
+      date: toISODate(new Date()),
+      result: `Email envoyé — ${template.title}`,
+      notes: subject,
+      authorId: lead.commercialId,
+    });
+    setShowEmailMenu(false);
   };
 
   return (
@@ -124,7 +145,26 @@ export default function LeadDetailPage() {
             <span className="text-xs font-medium text-gray-500 mr-2">Actions rapides :</span>
             <button onClick={() => setShowActionForm(true)} className="btn-primary btn-sm"><Plus className="w-3 h-3" /> Ajouter action</button>
             {lead.phone && <a href={`tel:${lead.phone}`} className="btn-secondary btn-sm"><Phone className="w-3 h-3" /> Appeler</a>}
-            {lead.email && <a href={`mailto:${lead.email}`} className="btn-secondary btn-sm"><Mail className="w-3 h-3" /> Email</a>}
+            {lead.email && (
+              <div className="relative">
+                <button onClick={() => setShowEmailMenu(v => !v)} className="btn-secondary btn-sm">
+                  <Mail className="w-3 h-3" /> Email <ChevronDown className="w-3 h-3" />
+                </button>
+                {showEmailMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowEmailMenu(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                      {state.emailTemplates.map(t => (
+                        <button key={t.id} onClick={() => sendEmail(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                          {t.title}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             <button onClick={() => { setShowActionForm(true); }} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
             {nextStatus && (
               <button onClick={() => quickStatusChange(nextStatus)} className="btn-primary btn-sm ml-auto">

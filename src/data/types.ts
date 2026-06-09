@@ -33,6 +33,19 @@ export interface Commercial {
   name: string;
   active: boolean;
   createdAt?: string;
+  // Optionnels : absents des commerciaux crees avant le Lot 2 (migration-safe,
+  // fallback '' partout ou ils sont consommes).
+  email?: string;
+  signature?: string;
+}
+
+export type EmailTemplateId = 'contact' | 'relance' | 'suivi';
+
+export interface EmailTemplate {
+  id: EmailTemplateId;
+  title: string;
+  subject: string;
+  body: string;
 }
 
 export interface LeadAction {
@@ -104,4 +117,5 @@ export interface AppState {
   commercials: Commercial[];
   monthlyStats: MonthlyStat[];
   acquisitionVolumes: AcquisitionVolume[];
+  emailTemplates: EmailTemplate[];
 }

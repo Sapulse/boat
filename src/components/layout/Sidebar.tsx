@@ -7,6 +7,7 @@ import {
   BarChart3,
   Megaphone,
   UsersRound,
+  Mail,
   Download,
   Anchor,
   X,
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Performance', href: '/performance', icon: BarChart3 },
   { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
   { name: 'Equipe', href: '/equipe', icon: UsersRound },
+  { name: 'Modeles email', href: '/templates', icon: Mail },
   { name: 'Exports', href: '/exports', icon: Download },
 ];
 

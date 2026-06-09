@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial } from '../data/types';
-import { DEFAULT_COMMERCIALS } from '../data/constants';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, EmailTemplate, EmailTemplateId } from '../data/types';
+import { DEFAULT_COMMERCIALS, DEFAULT_EMAIL_TEMPLATES } from '../data/constants';
 import { loadState, saveState } from '../lib/storage';
 import { generateId, statusMilestoneDates, toISODate } from '../lib/utils';
 import {
@@ -21,11 +21,21 @@ type Action =
   | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] }
   | { type: 'ADD_COMMERCIAL'; payload: Commercial }
   | { type: 'UPDATE_COMMERCIAL'; payload: { id: string; data: Partial<Commercial> } }
-  | { type: 'TOGGLE_COMMERCIAL'; payload: string };
+  | { type: 'TOGGLE_COMMERCIAL'; payload: string }
+  | { type: 'UPDATE_EMAIL_TEMPLATE'; payload: { id: EmailTemplateId; data: Partial<EmailTemplate> } };
 
 function getInitialState(): AppState {
   const stored = loadState();
-  if (stored && stored.leads && stored.leads.length > 0) return stored;
+  if (stored && stored.leads && stored.leads.length > 0) {
+    // Migration des states stockes avant le Lot 2 : emailTemplates peut etre
+    // undefined OU un tableau vide -> on retombe sur les defauts pour ne jamais
+    // laisser l'utilisateur sans aucun modele. Les champs optionnels de
+    // Commercial (email/signature) restent geres par fallback '' a la lecture.
+    return {
+      ...stored,
+      emailTemplates: stored.emailTemplates?.length ? stored.emailTemplates : DEFAULT_EMAIL_TEMPLATES,
+    };
+  }
 
   const leads = generateSeedLeads(35);
   const actions = generateSeedActions(leads);
@@ -35,6 +45,7 @@ function getInitialState(): AppState {
     commercials: DEFAULT_COMMERCIALS,
     monthlyStats: generateSeedMonthlyStats(),
     acquisitionVolumes: generateSeedAcquisitionVolumes(),
+    emailTemplates: DEFAULT_EMAIL_TEMPLATES,
   };
 }
 
@@ -134,6 +145,14 @@ function reducer(state: AppState, action: Action): AppState {
         ),
       };
 
+    case 'UPDATE_EMAIL_TEMPLATE':
+      return {
+        ...state,
+        emailTemplates: state.emailTemplates.map(t =>
+          t.id === action.payload.id ? { ...t, ...action.payload.data } : t
+        ),
+      };
+
     default:
       return state;
   }
@@ -151,6 +170,7 @@ interface AppContextType {
   getCommercialName: (id: string) => string;
   saveMonthlyStats: (stats: MonthlyStat[]) => void;
   saveAcquisitionVolumes: (volumes: AcquisitionVolume[]) => void;
+  updateEmailTemplate: (id: EmailTemplateId, data: Partial<EmailTemplate>) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -202,6 +222,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SAVE_ACQUISITION_VOLUMES', payload: volumes });
   };
 
+  const updateEmailTemplate = (id: EmailTemplateId, data: Partial<EmailTemplate>) => {
+    dispatch({ type: 'UPDATE_EMAIL_TEMPLATE', payload: { id, data } });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -216,6 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getCommercialName,
         saveMonthlyStats,
         saveAcquisitionVolumes,
+        updateEmailTemplate,
       }}
     >
       {children}

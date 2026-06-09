@@ -9,8 +9,7 @@ export default function EquipePage() {
   const { state, dispatch, updateLead } = useApp();
 
   const [newName, setNewName] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
+  const [editDraft, setEditDraft] = useState<{ id: string; name: string; email: string; signature: string } | null>(null);
   const [reassignFrom, setReassignFrom] = useState<string | null>(null);
   const [reassignTo, setReassignTo] = useState('');
 
@@ -47,24 +46,22 @@ export default function EquipePage() {
     setNewName('');
   };
 
-  const startEdit = (id: string, name: string) => {
-    setEditingId(id);
-    setEditingName(name);
+  const openEdit = (id: string, name: string, email?: string, signature?: string) => {
+    setEditDraft({ id, name, email: email ?? '', signature: signature ?? '' });
   };
 
-  const confirmEdit = (id: string) => {
-    const name = editingName.trim();
-    if (name) {
-      dispatch({ type: 'UPDATE_COMMERCIAL', payload: { id, data: { name } } });
-    }
-    setEditingId(null);
-    setEditingName('');
+  const confirmEdit = () => {
+    if (!editDraft) return;
+    const name = editDraft.name.trim();
+    if (!name) return;
+    dispatch({
+      type: 'UPDATE_COMMERCIAL',
+      payload: { id: editDraft.id, data: { name, email: editDraft.email.trim(), signature: editDraft.signature } },
+    });
+    setEditDraft(null);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingName('');
-  };
+  const cancelEdit = () => setEditDraft(null);
 
   const toggleActive = (id: string) => {
     const commercial = state.commercials.find(c => c.id === id);
@@ -143,36 +140,11 @@ export default function EquipePage() {
                 className={`border-b border-gray-100 ${!c.active ? 'opacity-50' : ''}`}
               >
                 <td className="px-5 py-3">
-                  {editingId === c.id ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="input py-1 text-sm w-40"
-                        value={editingName}
-                        onChange={e => setEditingName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') confirmEdit(c.id);
-                          if (e.key === 'Escape') cancelEdit();
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => confirmEdit(c.id)}
-                        className="btn-ghost btn-sm text-success-600 p-1"
-                        title="Valider"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="btn-ghost btn-sm text-gray-400 p-1"
-                        title="Annuler"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="font-medium text-gray-900">{c.name}</span>
-                  )}
+                  <span className="font-medium text-gray-900">{c.name}</span>
+                  <div className="text-xs text-gray-400 flex items-center gap-2">
+                    <span>{c.email || 'pas d\'email'}</span>
+                    {c.signature ? <span className="text-success-600">· signature ✓</span> : null}
+                  </div>
                 </td>
                 <td className="px-5 py-3 text-right text-gray-600">{c.actifs}</td>
                 <td className="px-5 py-3 text-right text-success-600 font-medium">{c.signes}</td>
@@ -189,15 +161,13 @@ export default function EquipePage() {
                 </td>
                 <td className="px-5 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    {editingId !== c.id && (
-                      <button
-                        onClick={() => startEdit(c.id, c.name)}
-                        className="btn-ghost btn-sm p-1.5 text-gray-400 hover:text-gray-600"
-                        title="Modifier le nom"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openEdit(c.id, c.name, c.email, c.signature)}
+                      className="btn-ghost btn-sm p-1.5 text-gray-400 hover:text-gray-600"
+                      title="Modifier (nom, email, signature)"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => toggleActive(c.id)}
                       className={`btn-ghost btn-sm p-1.5 ${c.active ? 'text-gray-400 hover:text-danger-600' : 'text-gray-400 hover:text-success-600'}`}
@@ -247,6 +217,39 @@ export default function EquipePage() {
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
               <span className="w-3 h-3 rounded-sm bg-red-500 inline-block" /> Perdus
             </span>
+          </div>
+        </div>
+      )}
+      {editDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={cancelEdit} />
+          <div className="relative bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Modifier le commercial</h3>
+              <button onClick={cancelEdit} className="btn-ghost btn-sm p-1 text-gray-400"><X className="w-4 h-4" /></button>
+            </div>
+            <div>
+              <label className="label">Nom *</label>
+              <input className="input" value={editDraft.name} autoFocus
+                onChange={e => setEditDraft(d => d && { ...d, name: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') cancelEdit(); }} />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input className="input" type="email" value={editDraft.email} placeholder="prenom@oceanboat.fr"
+                onChange={e => setEditDraft(d => d && { ...d, email: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Signature</label>
+              <textarea className="input min-h-[90px]" value={editDraft.signature}
+                placeholder={'Prénom Nom\nOcean Boat\n06 00 00 00 00'}
+                onChange={e => setEditDraft(d => d && { ...d, signature: e.target.value })} />
+              <p className="text-xs text-gray-400 mt-1">Injectée via la variable <code className="font-mono text-primary-600">{'{{signature}}'}</code> des modèles d'email.</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+              <button onClick={cancelEdit} className="btn-secondary btn-sm">Annuler</button>
+              <button onClick={confirmEdit} disabled={!editDraft.name.trim()} className="btn-primary btn-sm"><Check className="w-3.5 h-3.5" /> Enregistrer</button>
+            </div>
           </div>
         </div>
       )}

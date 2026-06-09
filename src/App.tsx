@@ -11,6 +11,7 @@ import PerformancePage from './pages/PerformancePage';
 import AcquisitionPage from './pages/AcquisitionPage';
 import EquipePage from './pages/EquipePage';
 import ExportsPage from './pages/ExportsPage';
+import TemplatesPage from './pages/TemplatesPage';
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/acquisition" element={<AcquisitionPage />} />
             <Route path="/equipe" element={<EquipePage />} />
+            <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/exports" element={<ExportsPage />} />
           </Route>
         </Routes>
