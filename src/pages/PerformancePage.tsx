@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Filter, Download } from 'lucide-react';
+import { Filter, Download, Check } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import KpiCard from '../components/ui/KpiCard';
 import { formatCurrency } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
+import { useExportFeedback } from '../lib/useExportFeedback';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
 import type { LeadStatus } from '../data/types';
 import { useSearchParams } from 'react-router-dom';
@@ -160,6 +161,8 @@ export default function PerformancePage() {
     exportCSV(`performance-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
 
+  const { done: exportDone, trigger: triggerExport } = useExportFeedback(exportData);
+
   return (
     <div className="space-y-6">
       {/* Filters */}
@@ -174,7 +177,7 @@ export default function PerformancePage() {
                 Reinitialiser
               </button>
             )}
-            <button onClick={exportData} className="btn-secondary btn-sm"><Download className="w-3.5 h-3.5" /> Export</button>
+            <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm disabled:opacity-70">{exportDone ? <><Check className="w-3.5 h-3.5" /> Exporté ✓</> : <><Download className="w-3.5 h-3.5" /> Export</>}</button>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

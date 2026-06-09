@@ -1,7 +1,8 @@
-import { Download, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
+import { Download, Check, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatDate, formatCurrency } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
+import { useExportFeedback } from '../lib/useExportFeedback';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
 import type { ReactNode } from 'react';
 
@@ -15,6 +16,7 @@ interface ExportCardProps {
 }
 
 function ExportCard({ icon, title, description, onExport, count, countLabel }: ExportCardProps) {
+  const { done, trigger } = useExportFeedback(onExport);
   return (
     <div className="card p-6 flex flex-col gap-4">
       <div className="flex items-start gap-4">
@@ -31,9 +33,9 @@ function ExportCard({ icon, title, description, onExport, count, countLabel }: E
           )}
         </div>
       </div>
-      <button onClick={onExport} className="btn-primary btn-sm w-full justify-center">
-        <Download className="w-4 h-4" />
-        Exporter CSV
+      <button onClick={trigger} disabled={done} className="btn-primary btn-sm w-full justify-center disabled:opacity-70">
+        {done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+        {done ? 'Exporté ✓' : 'Exporter CSV'}
       </button>
     </div>
   );

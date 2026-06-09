@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Download, Users, Euro } from 'lucide-react';
+import { Search, Download, Check, Users, Euro } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatDate, formatCurrency, getLeadFullName } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
+import { useExportFeedback } from '../lib/useExportFeedback';
 import { BOAT_TYPES, SOURCES } from '../data/constants';
 
 export default function ClientsPage() {
@@ -64,6 +65,8 @@ export default function ClientsPage() {
     exportCSV('clients.csv', headers, rows);
   };
 
+  const { done: exportDone, trigger: triggerExport } = useExportFeedback(handleExport);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -111,9 +114,9 @@ export default function ClientsPage() {
           ))}
         </select>
 
-        <button onClick={handleExport} className="btn-secondary btn-sm ml-auto">
-          <Download className="w-4 h-4" />
-          Exporter CSV
+        <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm ml-auto disabled:opacity-70">
+          {exportDone ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+          {exportDone ? 'Exporté ✓' : 'Exporter CSV'}
         </button>
       </div>
 

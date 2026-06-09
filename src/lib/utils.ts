@@ -109,17 +109,37 @@ export function safeParseJSON<T>(json: string, fallback: T): T {
 }
 
 /**
- * Source de verite unique des dates de transition de statut.
- * Pose signedAt / lostAt / reportedAt a l'entree du statut concerne si elle
- * n'est pas deja definie (preserve l'historique), et la nettoie des qu'on
- * quitte ce statut. A appeler dans le reducer pour chaque changement de statut.
+ * Statuts dont l'atteinte implique qu'un contact a eu lieu -> posent contactDate.
+ * Volontairement SANS perdu / reporte : un lead peut etre perdu ou reporte sans
+ * contact (mauvais numero, doublon), on ne presume donc pas de contact.
  */
-export function statusTransitionDates(
-  prev: Pick<Lead, 'signedAt' | 'lostAt' | 'reportedAt'>,
+const CONTACT_IMPLIED_STATUSES: LeadStatus[] = [
+  'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion', 'signe',
+];
+
+/**
+ * Source de verite unique des dates de jalon pilotees par le statut.
+ *
+ * - signedAt / lostAt / reportedAt : jalons "terminaux". Poses a l'entree du
+ *   statut concerne si pas deja definis (preserve l'historique), et NETTOYES des
+ *   qu'on quitte ce statut.
+ * - contactDate : jalon "amont". Pose (si vide) des qu'on atteint un statut
+ *   impliquant un contact (cf. CONTACT_IMPLIED_STATUSES), et JAMAIS nettoye :
+ *   un contact passe reste un fait acquis meme si le lead recule ou devient
+ *   perdu/reporte. Une date deja saisie est toujours preservee.
+ *
+ * A appeler dans le reducer pour chaque changement de statut.
+ */
+export function statusMilestoneDates(
+  prev: Pick<Lead, 'contactDate' | 'signedAt' | 'lostAt' | 'reportedAt'>,
   newStatus: LeadStatus,
   date: string,
-): Pick<Lead, 'signedAt' | 'lostAt' | 'reportedAt'> {
+): Pick<Lead, 'contactDate' | 'signedAt' | 'lostAt' | 'reportedAt'> {
   return {
+    contactDate:
+      CONTACT_IMPLIED_STATUSES.includes(newStatus) && !prev.contactDate
+        ? date
+        : prev.contactDate,
     signedAt: newStatus === 'signe' ? (prev.signedAt || date) : '',
     lostAt: newStatus === 'perdu' ? (prev.lostAt || date) : '',
     reportedAt: newStatus === 'reporte' ? (prev.reportedAt || date) : '',

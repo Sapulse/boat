@@ -1,7 +1,7 @@
 import { Menu, Plus, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { getAlertLevel } from '../../lib/utils';
+import { getAlertLevel, getLeadFullName } from '../../lib/utils';
 
 const titles: Record<string, string> = {
   '/': 'Dashboard',
@@ -23,8 +23,18 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const location = useLocation();
   const { state } = useApp();
 
-  const basePath = '/' + (location.pathname.split('/')[1] || '');
-  const title = titles[basePath] || 'CRM Nautisme';
+  const segments = location.pathname.split('/').filter(Boolean);
+  let title = titles['/' + (segments[0] || '')] || 'CRM Nautisme';
+  // Sur la fiche lead (/leads/:id), afficher le nom du lead plutot que le titre
+  // generique de la section.
+  if (segments[0] === 'leads' && segments[1]) {
+    if (segments[1] === 'new') {
+      title = 'Nouveau lead';
+    } else {
+      const lead = state.leads.find(l => l.id === segments[1]);
+      title = lead ? getLeadFullName(lead) : 'Fiche lead';
+    }
+  }
 
   const urgentCount = state.leads.filter(l => getAlertLevel(l) === 'red').length;
 
@@ -44,7 +54,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <button
             onClick={() => navigate('/leads?alert=red')}
             className="relative p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
-            title={`${urgentCount} lead(s) urgent(s)`}
+            title={`Voir les ${urgentCount} lead${urgentCount > 1 ? 's' : ''} urgent${urgentCount > 1 ? 's' : ''}`}
           >
             <Bell className="w-5 h-5" />
             <span className="absolute -top-0.5 -right-0.5 bg-danger-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -57,8 +57,14 @@ function LeadCard({ lead, overlay }: { lead: Lead; overlay?: boolean }) {
   );
 }
 
+// Seuil (px) en deca duquel un relachement est considere comme un clic et non un
+// drag. Superieur au seuil d'activation du PointerSensor (5px) pour qu'un vrai
+// drag (qui depasse forcement 5px) ne declenche jamais la navigation.
+const CLICK_MOVE_THRESHOLD = 6;
+
 function SortableCard({ lead }: { lead: Lead }) {
   const navigate = useNavigate();
+  const pointerDownAt = useRef<{ x: number; y: number } | null>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: lead.id,
     data: { type: 'lead', lead },
@@ -70,13 +76,25 @@ function SortableCard({ lead }: { lead: Lead }) {
     opacity: isDragging ? 0.3 : 1,
   };
 
+  // onPointerDownCapture s'execute en phase capture, AVANT le onPointerDown des
+  // listeners dnd, sans le remplacer -> on memorise l'origine du geste sans
+  // casser le drag. Au clic, on ne navigue que si le pointeur a peu bouge.
+  const handleClick = (e: React.MouseEvent) => {
+    const start = pointerDownAt.current;
+    pointerDownAt.current = null;
+    if (!start) return;
+    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    if (moved < CLICK_MOVE_THRESHOLD) navigate(`/leads/${lead.id}`);
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
-      onDoubleClick={() => navigate(`/leads/${lead.id}`)}
+      onPointerDownCapture={e => { pointerDownAt.current = { x: e.clientX, y: e.clientY }; }}
+      onClick={handleClick}
     >
       <LeadCard lead={lead} />
     </div>

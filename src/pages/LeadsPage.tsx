@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ChevronUp, ChevronDown, Download, Eye, Edit2, Phone, Bookmark } from 'lucide-react';
+import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phone, Bookmark } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
+import { useExportFeedback } from '../lib/useExportFeedback';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
 
 type SavedView = { label: string; key: string; apply: () => void };
@@ -107,6 +108,8 @@ export default function LeadsPage() {
     exportCSV(`leads-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
 
+  const { done: exportDone, trigger: triggerExport } = useExportFeedback(handleExportCSV);
+
   return (
     <div className="space-y-4">
       {/* View toggle + search + actions */}
@@ -123,8 +126,8 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input className="input pl-9" placeholder="Rechercher un lead..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button onClick={handleExportCSV} className="btn-secondary btn-sm">
-          <Download className="w-4 h-4" /> Export CSV
+        <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm disabled:opacity-70">
+          {exportDone ? <><Check className="w-4 h-4" /> Exporté ✓</> : <><Download className="w-4 h-4" /> Export CSV</>}
         </button>
         <button onClick={() => navigate('/leads/new')} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> Nouveau lead
