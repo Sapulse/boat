@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3** (tag `v3.0.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3** (dernier tag `v3.0.2`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -21,6 +21,13 @@ auto). Commits sémantiques, sans Co-Authored-By.
 - **vCard** : export contact .vcf + import multiple avec détection de doublons
 - **Branding** : logo Brest Ocean Boat, sidebar réorganisée (groupe Paramètres),
   renommage app, version affichée
+
+### Patchs post-V3
+- **`v3.0.1`** — correctifs audit : lien Dashboard « Signés » (ouvrait une liste vide),
+  `saveState` try/catch (robustesse quota localStorage), compat vCard Safari < 16.4
+  (parser sans lookbehind regex)
+- **`v3.0.2`** — finition UI : libellés KPI non tronqués (`truncate` retiré) + accents
+  harmonisés sur tous les libellés affichés et en-têtes d'export CSV
 
 ---
 
@@ -69,6 +76,15 @@ auto). Commits sémantiques, sans Co-Authored-By.
 
 - [ ] `npm audit fix` (F1/F3 du rapport sécurité : react-router CVE non exploitables ici,
   postcss/brace-expansion build-time) — lot dépendances dédié
+- [ ] **Lint React-Compiler** : 8 erreurs `react-hooks/*` (`SortIcon` créé pendant le
+  render dans LeadsPage, `Date.now()`/`new Date()` pendant le render Dashboard/Performance,
+  immutability). N'ont jamais bloqué le build/déploiement (la CI ne lance que `build`),
+  mais `npm run lint` sort en erreur — à nettoyer
+- [ ] **Bundle monolithique ~845 kB** (gzip ~243) : code-splitting par route (`React.lazy`)
+  pour alléger le 1er chargement
+- [ ] **Acquisition (onglets Volumes / Saisie)** : copient `state` dans un `useState` local
+  au montage → désync si l'état change ailleurs + perte de saisie si on quitte sans
+  « Enregistrer » — à refactorer
 - [ ] Le Dashboard refait des filtres "à relancer" inline au lieu de réutiliser
   `getLeadRisks` (redondance logique avec la vue À relancer) — à unifier un jour
 - [ ] Lockfile : `name` = "boat-temp" (cosmétique)
