@@ -12,6 +12,7 @@ import AcquisitionPage from './pages/AcquisitionPage';
 import EquipePage from './pages/EquipePage';
 import ExportsPage from './pages/ExportsPage';
 import TemplatesPage from './pages/TemplatesPage';
+import RelancesPage from './pages/RelancesPage';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/leads/:id" element={<LeadDetailPage />} />
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/relances" element={<RelancesPage />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/acquisition" element={<AcquisitionPage />} />
             <Route path="/equipe" element={<EquipePage />} />
