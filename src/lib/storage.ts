@@ -10,7 +10,13 @@ export function loadState(): AppState | null {
 }
 
 export function saveState(state: AppState): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Encapsule l'ecriture : un echec (quota plein, navigation privee Safari,
+  // stockage indisponible) ne doit pas faire planter l'action utilisateur en cours.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Echec de sauvegarde locale (quota plein ou stockage indisponible) :', e);
+  }
 }
 
 export function clearState(): void {

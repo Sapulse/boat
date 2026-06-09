@@ -15,6 +15,11 @@ type SavedView = { label: string; key: string; apply: () => void };
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
 type SortDir = 'asc' | 'desc';
 
+// Statuts terminaux : exclus de la vue "Prospects". Si un lien arrive avec un de
+// ces statuts en filtre (ex. KPI "Signés" du dashboard), on ouvre en vue "Tous"
+// pour ne pas afficher une liste vide.
+const TERMINAL_STATUSES = ['signe', 'perdu', 'reporte'];
+
 function reasonLabel(reason: DuplicateMatch['reason']): string {
   return reason === 'both' ? 'même email et téléphone' : reason === 'email' ? 'même email' : 'même téléphone';
 }
@@ -37,7 +42,9 @@ export default function LeadsPage() {
   const [filterTemp, setFilterTemp] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [viewMode, setViewMode] = useState<'prospects' | 'all'>('prospects');
+  const [viewMode, setViewMode] = useState<'prospects' | 'all'>(
+    TERMINAL_STATUSES.includes(searchParams.get('status') ?? '') ? 'all' : 'prospects'
+  );
   const [activeView, setActiveView] = useState('');
 
   const clearAllFilters = () => {

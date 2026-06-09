@@ -69,9 +69,29 @@ function unescapeText(v: string): string {
     .replace(/\\\\/g, '\\');
 }
 
-/** Decoupe sur les ';' NON echappes (pour le champ structure N). */
+/**
+ * Decoupe sur les ';' NON echappes (pour le champ structure N). Scanner manuel
+ * sans lookbehind regex -> compatible tous navigateurs (dont Safari < 16.4). Une
+ * sequence echappee (\; \, \\) est conservee telle quelle dans la part courante,
+ * unescapeText la normalisera ensuite.
+ */
 function splitUnescaped(v: string): string[] {
-  return v.split(/(?<!\\);/);
+  const parts: string[] = [];
+  let current = '';
+  for (let i = 0; i < v.length; i++) {
+    const ch = v[i];
+    if (ch === '\\' && i + 1 < v.length) {
+      current += ch + v[i + 1];
+      i++;
+    } else if (ch === ';') {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts;
 }
 
 /**
