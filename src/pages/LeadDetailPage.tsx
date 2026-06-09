@@ -14,14 +14,17 @@ import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '..
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate } from '../lib/utils';
 import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
 import { generateVCard } from '../lib/vcard';
-import type { Lead, LeadStatus, EmailTemplate } from '../data/types';
+import type { Lead, LeadStatus, EmailTemplate, ActionType } from '../data/types';
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, updateLead, deleteLead, addAction, getLeadActions, getCommercialName, updateLeadStatus } = useApp();
+  const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, setNextAction, getLeadActions, getCommercialName, updateLeadStatus } = useApp();
   const [editMode, setEditMode] = useState(false);
   const [showActionForm, setShowActionForm] = useState(false);
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editingNextAction, setEditingNextAction] = useState(false);
+  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string }>({ type: '', date: '' });
   const [showEmailMenu, setShowEmailMenu] = useState(false);
 
   const lead = state.leads.find(l => l.id === id);
@@ -87,6 +90,27 @@ export default function LeadDetailPage() {
       authorId: lead.commercialId,
     });
     setShowEmailMenu(false);
+  };
+
+  // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
+  const openNextActionEditor = () => {
+    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate });
+    setEditingNextAction(true);
+  };
+  const saveNextAction = () => {
+    setNextAction(lead.id, nextActionDraft.type, nextActionDraft.type ? nextActionDraft.date : '');
+    setEditingNextAction(false);
+  };
+  const clearNextAction = () => {
+    setNextAction(lead.id, '', '');
+    setEditingNextAction(false);
+  };
+
+  // --- Historique (Amelioration 2) : suppression confirmee, sans effet sur le lead ---
+  const handleDeleteAction = (actionId: string) => {
+    if (confirm("Supprimer cette action de l'historique ? (sans effet sur le statut ni les dates du lead)")) {
+      deleteAction(actionId);
+    }
   };
 
   return (
@@ -261,17 +285,36 @@ export default function LeadDetailPage() {
             {actions.length > 0 ? (
               <div className="space-y-3">
                 {actions.map(action => (
-                  <div key={action.id} className="flex gap-3 text-sm border-l-2 border-primary-200 pl-4 py-1">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{ACTION_TYPES.find(a => a.value === action.type)?.label ?? action.type}</span>
-                        <span className="text-xs text-gray-400">{formatDate(action.date)}</span>
-                        <span className="text-xs text-gray-400">par {getCommercialName(action.authorId)}</span>
-                      </div>
-                      {action.result && <p className="text-gray-600 mt-0.5">{action.result}</p>}
-                      {action.notes && <p className="text-gray-400 text-xs mt-0.5">{action.notes}</p>}
+                  editingActionId === action.id ? (
+                    <div key={action.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <ActionForm
+                        leadId={lead.id}
+                        action={action}
+                        onSave={(data) => { updateAction(action.id, data); setEditingActionId(null); }}
+                        onCancel={() => setEditingActionId(null)}
+                      />
                     </div>
-                  </div>
+                  ) : (
+                    <div key={action.id} className="group flex gap-3 text-sm border-l-2 border-primary-200 pl-4 py-1">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{ACTION_TYPES.find(a => a.value === action.type)?.label ?? action.type}</span>
+                          <span className="text-xs text-gray-400">{formatDate(action.date)}</span>
+                          <span className="text-xs text-gray-400">par {getCommercialName(action.authorId)}</span>
+                        </div>
+                        {action.result && <p className="text-gray-600 mt-0.5">{action.result}</p>}
+                        {action.notes && <p className="text-gray-400 text-xs mt-0.5">{action.notes}</p>}
+                      </div>
+                      <div className="flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditingActionId(action.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Modifier l'action">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteAction(action.id)} className="p-1 text-gray-400 hover:text-danger-600 rounded" title="Supprimer l'action">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
                 ))}
               </div>
             ) : (
@@ -288,19 +331,49 @@ export default function LeadDetailPage() {
               {lead.temperature === 'chaud' && <Flame className="w-4 h-4 text-danger-500" />}
               <ExternalLink className="w-4 h-4 text-primary-600" /> Prochaine action
             </h3>
-            {lead.nextActionType ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Action</span>
-                  <span className="text-gray-900 font-medium">{ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label}</span>
+            {editingNextAction ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Type</label>
+                  <select className="select" value={nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, type: e.target.value as ActionType | '' }))}>
+                    <option value="">--</option>
+                    {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                  </select>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Date</span>
-                  <span className="text-gray-900">{formatDate(lead.nextActionDate)}</span>
+                <div>
+                  <label className="label">Date</label>
+                  <input className="input" type="date" value={nextActionDraft.date} disabled={!nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, date: e.target.value }))} />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button onClick={() => setEditingNextAction(false)} className="btn-secondary btn-sm">Annuler</button>
+                  <button onClick={saveNextAction} disabled={!nextActionDraft.type} className="btn-primary btn-sm disabled:opacity-50">Enregistrer</button>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-warning-600">Aucune action planifiée</p>
+              <>
+                {lead.nextActionType ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Action</span>
+                      <span className="text-gray-900 font-medium">{ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Date</span>
+                      <span className="text-gray-900">{formatDate(lead.nextActionDate)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-warning-600">Aucune action planifiée</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={openNextActionEditor} className="btn-secondary btn-sm">
+                    {lead.nextActionType ? 'Modifier' : 'Définir'}
+                  </button>
+                  {lead.nextActionType && (
+                    <button onClick={clearNextAction} className="btn-ghost btn-sm text-gray-500">Effacer</button>
+                  )}
+                </div>
+              </>
             )}
           </div>
 

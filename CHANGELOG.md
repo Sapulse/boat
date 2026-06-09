@@ -7,6 +7,20 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.0] — 2026-06-09 — Gestion des actions d'un lead
+
+### Ajouté
+- **Prochaine action éditable** depuis la fiche lead : définir / modifier / effacer le
+  type et la date (action reducer dédiée `SET_NEXT_ACTION`, confinée à
+  `nextActionType`/`nextActionDate` — aucun effet de bord sur les jalons).
+- **Historique des actions modifiable et supprimable** : édition d'une action
+  (type, date, auteur, résultat, notes) via le formulaire existant en mode édition ;
+  suppression d'une ligne avec confirmation. Les actions `UPDATE_ACTION` / `DELETE_ACTION`
+  sont **confinées au tableau des actions** — pas de rollback du statut ni des dates du
+  lead (comportement voulu). Couvert par un harnais d'isolation des effets de bord (18/18).
+
+---
+
 ## [3.0.2] — 2026-06-09 — Finition UI
 
 ### Corrigé

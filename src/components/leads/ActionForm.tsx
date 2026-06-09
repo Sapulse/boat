@@ -8,19 +8,24 @@ interface ActionFormProps {
   leadId: string;
   onSave: (action: Omit<LeadAction, 'id'>) => void;
   onCancel: () => void;
+  // Si fournie -> mode edition : le formulaire est pre-rempli et le bloc
+  // "Changer statut / Prochaine action" (declencheurs d'effets de bord propres a
+  // l'ajout) est masque. On n'edite que les champs de l'action elle-meme.
+  action?: LeadAction;
 }
 
-export default function ActionForm({ leadId, onSave, onCancel }: ActionFormProps) {
+export default function ActionForm({ leadId, onSave, onCancel, action }: ActionFormProps) {
   const { state } = useApp();
+  const isEdit = !!action;
   const [form, setForm] = useState({
-    type: 'appel' as ActionType,
-    date: toISODate(new Date()),
-    result: '',
-    notes: '',
-    authorId: state.commercials[0]?.id ?? '',
-    newStatus: '' as LeadStatus | '',
-    nextActionType: '' as ActionType | '',
-    nextActionDate: '',
+    type: action?.type ?? 'appel' as ActionType,
+    date: action?.date ?? toISODate(new Date()),
+    result: action?.result ?? '',
+    notes: action?.notes ?? '',
+    authorId: action?.authorId ?? state.commercials[0]?.id ?? '',
+    newStatus: (action?.newStatus ?? '') as LeadStatus | '',
+    nextActionType: (action?.nextActionType ?? '') as ActionType | '',
+    nextActionDate: action?.nextActionDate ?? '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -72,30 +77,32 @@ export default function ActionForm({ leadId, onSave, onCancel }: ActionFormProps
         <textarea className="input min-h-[60px]" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-gray-50 rounded-lg">
-        <div>
-          <label className="label">Changer statut</label>
-          <select className="select" value={form.newStatus} onChange={e => setForm(f => ({ ...f, newStatus: e.target.value as LeadStatus }))}>
-            <option value="">Ne pas changer</option>
-            {LEAD_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+      {!isEdit && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-gray-50 rounded-lg">
+          <div>
+            <label className="label">Changer statut</label>
+            <select className="select" value={form.newStatus} onChange={e => setForm(f => ({ ...f, newStatus: e.target.value as LeadStatus }))}>
+              <option value="">Ne pas changer</option>
+              {LEAD_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Prochaine action</label>
+            <select className="select" value={form.nextActionType} onChange={e => setForm(f => ({ ...f, nextActionType: e.target.value as ActionType }))}>
+              <option value="">--</option>
+              {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Date prochaine action</label>
+            <input className="input" type="date" value={form.nextActionDate} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} />
+          </div>
         </div>
-        <div>
-          <label className="label">Prochaine action</label>
-          <select className="select" value={form.nextActionType} onChange={e => setForm(f => ({ ...f, nextActionType: e.target.value as ActionType }))}>
-            <option value="">--</option>
-            {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Date prochaine action</label>
-          <input className="input" type="date" value={form.nextActionDate} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} />
-        </div>
-      </div>
+      )}
 
       <div className="flex justify-end gap-3 pt-2">
         <button type="button" onClick={onCancel} className="btn-secondary btn-sm">Annuler</button>
-        <button type="submit" className="btn-primary btn-sm">Ajouter l'action</button>
+        <button type="submit" className="btn-primary btn-sm">{isEdit ? 'Enregistrer' : "Ajouter l'action"}</button>
       </div>
     </form>
   );

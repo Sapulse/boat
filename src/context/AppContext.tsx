@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, EmailTemplate, EmailTemplateId } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, EmailTemplate, EmailTemplateId, ActionType } from '../data/types';
 import { DEFAULT_COMMERCIALS, DEFAULT_EMAIL_TEMPLATES } from '../data/constants';
 import { loadState, saveState } from '../lib/storage';
 import { generateId, statusMilestoneDates, toISODate } from '../lib/utils';
@@ -17,6 +17,9 @@ type Action =
   | { type: 'DELETE_LEAD'; payload: string }
   | { type: 'UPDATE_LEAD_STATUS'; payload: { id: string; status: LeadStatus } }
   | { type: 'ADD_ACTION'; payload: LeadAction }
+  | { type: 'UPDATE_ACTION'; payload: { id: string; data: Partial<LeadAction> } }
+  | { type: 'DELETE_ACTION'; payload: string }
+  | { type: 'SET_NEXT_ACTION'; payload: { id: string; nextActionType: ActionType | ''; nextActionDate: string } }
   | { type: 'SAVE_MONTHLY_STATS'; payload: MonthlyStat[] }
   | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] }
   | { type: 'ADD_COMMERCIAL'; payload: Commercial }
@@ -49,7 +52,8 @@ function getInitialState(): AppState {
   };
 }
 
-function reducer(state: AppState, action: Action): AppState {
+// Exporte pour le harnais d'isolation des effets de bord (UPDATE/DELETE/SET_NEXT).
+export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
       return action.payload;
@@ -120,6 +124,37 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // Edition d'une action : confine au tableau `actions`. AUCUN effet de bord
+    // sur le lead (pas de statusMilestoneDates, pas de recalcul lastActionDate /
+    // nextAction / statut) -> state.leads est retourne inchange (meme reference).
+    case 'UPDATE_ACTION':
+      return {
+        ...state,
+        actions: state.actions.map(a =>
+          a.id === action.payload.id ? { ...a, ...action.payload.data } : a
+        ),
+      };
+
+    // Suppression d'une action : retire la ligne d'historique uniquement. Pas de
+    // rollback du statut/des dates du lead (comportement voulu). state.leads inchange.
+    case 'DELETE_ACTION':
+      return {
+        ...state,
+        actions: state.actions.filter(a => a.id !== action.payload),
+      };
+
+    // Definition/modification/effacement de la prochaine action : touche
+    // UNIQUEMENT nextActionType / nextActionDate du lead cible (pas de jalons).
+    case 'SET_NEXT_ACTION':
+      return {
+        ...state,
+        leads: state.leads.map(l =>
+          l.id === action.payload.id
+            ? { ...l, nextActionType: action.payload.nextActionType, nextActionDate: action.payload.nextActionDate }
+            : l
+        ),
+      };
+
     case 'SAVE_MONTHLY_STATS':
       return { ...state, monthlyStats: action.payload };
 
@@ -166,6 +201,9 @@ interface AppContextType {
   deleteLead: (id: string) => void;
   updateLeadStatus: (id: string, status: LeadStatus) => void;
   addAction: (action: Omit<LeadAction, 'id'>) => void;
+  updateAction: (id: string, data: Partial<LeadAction>) => void;
+  deleteAction: (id: string) => void;
+  setNextAction: (id: string, nextActionType: ActionType | '', nextActionDate: string) => void;
   getLeadActions: (leadId: string) => LeadAction[];
   getCommercialName: (id: string) => string;
   saveMonthlyStats: (stats: MonthlyStat[]) => void;
@@ -204,6 +242,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'ADD_ACTION', payload: { ...action, id: generateId() } });
   };
 
+  const updateAction = (id: string, data: Partial<LeadAction>) => {
+    dispatch({ type: 'UPDATE_ACTION', payload: { id, data } });
+  };
+
+  const deleteAction = (id: string) => {
+    dispatch({ type: 'DELETE_ACTION', payload: id });
+  };
+
+  const setNextAction = (id: string, nextActionType: ActionType | '', nextActionDate: string) => {
+    dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate } });
+  };
+
   const getLeadActions = (leadId: string): LeadAction[] => {
     return state.actions
       .filter(a => a.leadId === leadId)
@@ -236,6 +286,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteLead,
         updateLeadStatus,
         addAction,
+        updateAction,
+        deleteAction,
+        setNextAction,
         getLeadActions,
         getCommercialName,
         saveMonthlyStats,
