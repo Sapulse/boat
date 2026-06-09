@@ -121,7 +121,7 @@ export const MONTHS = [
 ];
 
 // Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
-export const COMPANY_NAME = 'Ocean Boat';
+export const COMPANY_NAME = 'Brest Ocean Boat';
 
 // Variables interpolables dans les sujets / corps de templates (affichage de
 // l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().

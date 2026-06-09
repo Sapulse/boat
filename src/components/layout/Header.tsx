@@ -26,7 +26,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const { state } = useApp();
 
   const segments = location.pathname.split('/').filter(Boolean);
-  let title = titles['/' + (segments[0] || '')] || 'CRM Nautisme';
+  let title = titles['/' + (segments[0] || '')] || 'CRM Brest Ocean Boat';
   // Sur la fiche lead (/leads/:id), afficher le nom du lead plutot que le titre
   // generique de la section.
   if (segments[0] === 'leads' && segments[1]) {

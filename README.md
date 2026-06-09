@@ -1,4 +1,4 @@
-# CRM Nautisme - Outil de Pilotage Commercial
+# CRM Brest Ocean Boat - Outil de Pilotage Commercial
 
 Application web de suivi commercial pour le secteur nautique.
 
