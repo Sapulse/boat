@@ -1,11 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phone, Bookmark } from 'lucide-react';
+import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phone, Bookmark, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
+import Modal from '../components/ui/Modal';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
+import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
 
 type SavedView = { label: string; key: string; apply: () => void };
@@ -13,10 +15,17 @@ type SavedView = { label: string; key: string; apply: () => void };
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
 type SortDir = 'asc' | 'desc';
 
+function reasonLabel(reason: DuplicateMatch['reason']): string {
+  return reason === 'both' ? 'même email et téléphone' : reason === 'email' ? 'même email' : 'même téléphone';
+}
+
 export default function LeadsPage() {
-  const { state, getCommercialName } = useApp();
+  const { state, getCommercialName, addLead } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<{ fresh: ParsedContact[]; duplicates: DuplicateMatch[] } | null>(null);
 
   const [search, setSearch] = useState('');
   const [filterCommercial, setFilterCommercial] = useState('');
@@ -110,6 +119,25 @@ export default function LeadsPage() {
 
   const { done: exportDone, trigger: triggerExport } = useExportFeedback(handleExportCSV);
 
+  // --- Import vCard (.vcf) ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permet de re-selectionner le meme fichier
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      const contacts = parseVCards(text);
+      setImportResult(splitNewVsDuplicates(contacts, state.leads));
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const runImport = (contacts: ParsedContact[]) => {
+    contacts.forEach(c => addLead(createLeadFromContact(c)));
+    setImportResult(null);
+  };
+
   return (
     <div className="space-y-4">
       {/* View toggle + search + actions */}
@@ -128,6 +156,10 @@ export default function LeadsPage() {
         </div>
         <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm disabled:opacity-70">
           {exportDone ? <><Check className="w-4 h-4" /> Exporté ✓</> : <><Download className="w-4 h-4" /> Export CSV</>}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".vcf,text/vcard" className="hidden" onChange={handleFileChange} />
+        <button onClick={() => fileInputRef.current?.click()} className="btn-secondary btn-sm">
+          <Upload className="w-4 h-4" /> Importer (.vcf)
         </button>
         <button onClick={() => navigate('/leads/new')} className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> Nouveau lead
@@ -270,6 +302,60 @@ export default function LeadsPage() {
           </table>
         </div>
       </div>
+
+      <Modal open={!!importResult} onClose={() => setImportResult(null)} title="Import de contacts (.vcf)" size="lg">
+        {importResult && (
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="flex-1 rounded-lg bg-success-50 border border-success-100 p-3">
+                <p className="text-2xl font-bold text-success-700">{importResult.fresh.length}</p>
+                <p className="text-xs text-success-700">nouveau(x) contact(s)</p>
+              </div>
+              <div className="flex-1 rounded-lg bg-warning-50 border border-warning-100 p-3">
+                <p className="text-2xl font-bold text-warning-700">{importResult.duplicates.length}</p>
+                <p className="text-xs text-warning-700">doublon(s) détecté(s)</p>
+              </div>
+            </div>
+
+            {importResult.duplicates.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Doublons (déjà présents dans le CRM) :</p>
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {importResult.duplicates.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 text-xs rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+                      <span className="font-medium text-gray-900 truncate">{`${d.contact.firstName} ${d.contact.lastName}`.trim() || 'Sans nom'}</span>
+                      <span className="text-gray-500 shrink-0">{reasonLabel(d.reason)} · existant : {getLeadFullName(d.existing)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {importResult.fresh.length === 0 && importResult.duplicates.length === 0 && (
+              <p className="text-sm text-gray-500">Aucun contact valide trouvé dans le fichier.</p>
+            )}
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
+              <button onClick={() => setImportResult(null)} className="btn-secondary btn-sm">Annuler</button>
+              <button
+                onClick={() => runImport([...importResult.fresh, ...importResult.duplicates.map(d => d.contact)])}
+                disabled={importResult.fresh.length + importResult.duplicates.length === 0}
+                className="btn-ghost btn-sm text-gray-600 disabled:opacity-50"
+                title="Crée aussi les doublons (choix explicite)"
+              >
+                Tout importer ({importResult.fresh.length + importResult.duplicates.length})
+              </button>
+              <button
+                onClick={() => runImport(importResult.fresh)}
+                disabled={importResult.fresh.length === 0}
+                className="btn-primary btn-sm disabled:opacity-50"
+              >
+                Importer les nouveaux ({importResult.fresh.length})
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

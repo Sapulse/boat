@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Trash2, Plus, Phone, Mail, Calendar,
   Ship, DollarSign, User, Clock, FileText, MessageSquare,
-  AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown,
+  AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown, Contact,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
@@ -13,6 +13,7 @@ import ActionForm from '../components/leads/ActionForm';
 import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate } from '../lib/utils';
 import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
+import { generateVCard } from '../lib/vcard';
 import type { Lead, LeadStatus, EmailTemplate } from '../data/types';
 
 export default function LeadDetailPage() {
@@ -56,6 +57,19 @@ export default function LeadDetailPage() {
     updateLeadStatus(lead.id, status);
   };
 
+  // Export du contact au format vCard 3.0 (.vcf) : genere la carte (helper pur)
+  // puis declenche le telechargement.
+  const exportContact = () => {
+    const vcf = generateVCard(lead, getCommercialName(lead.commercialId));
+    const blob = new Blob([vcf], { type: 'text/vcard;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${getLeadFullName(lead).replace(/\s+/g, '-') || 'contact'}.vcf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Envoi pre-rempli : interpole le template avec les variables du lead + la
   // signature du commercial ASSIGNE, ouvre un mailto: encode, et journalise une
   // action 'email' dans l'historique.
@@ -97,6 +111,7 @@ export default function LeadDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={exportContact} className="btn-secondary btn-sm"><Contact className="w-4 h-4" /> Exporter contact (.vcf)</button>
           <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm"><Edit2 className="w-4 h-4" /> Modifier</button>
           <button onClick={handleDelete} className="btn-ghost btn-sm text-danger-600 hover:text-danger-700 hover:bg-danger-50"><Trash2 className="w-4 h-4" /></button>
         </div>
