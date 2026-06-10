@@ -7,6 +7,32 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.1] — 2026-06-10 — Intégrité des données
+
+### Corrigé
+- **Re-seed destructif sur liste vide (N1)** : supprimer son dernier lead puis recharger
+  faisait croire à un premier lancement → 35 leads bidon régénérés et commerciaux /
+  modèles d'email / stats écrasés. Le state stocké est désormais restauré dès qu'il
+  existe (hydratation champ par champ avec fallback) ; le seed ne se déclenche que sur
+  un vrai premier lancement (clé absente ou JSON invalide).
+- **Action antidatée faisait reculer `lastActionDate` (N2)** : saisir a posteriori une
+  action ancienne (rattrapage d'historique) faisait reculer la dernière activité du lead
+  → fausse urgence (alerte rouge, vue À relancer). `lastActionDate` retient maintenant
+  la date la plus récente ; les jalons d'un changement de statut restent posés à la date
+  sémantique de l'action.
+- **Lead créé en statut avancé sans jalons (N3)** : un lead créé directement « Signé »
+  (mode complet) restait sans `signedAt`/`contactDate` (exclu du délai moyen de
+  signature, date vide à l'export Clients, puis « auto-réparé » avec une date fausse à
+  la première édition). `ADD_LEAD` pose désormais les jalons selon le statut choisi,
+  date de référence = date de création ; une date de contact saisie est préservée.
+
+### Ajouté
+- **Harnais committé** (`scripts/harness-reducer.ts`, `npx tsx`) : 47 assertions —
+  cas N1/N2/N3 + non-régression de l'isolation `UPDATE_ACTION` / `DELETE_ACTION` /
+  `SET_NEXT_ACTION` du lot précédent. Hors typecheck app et hors bundle.
+
+---
+
 ## [3.1.0] — 2026-06-09 — Gestion des actions d'un lead
 
 ### Ajouté
@@ -76,6 +102,8 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.1.1]: https://github.com/Sapulse/boat/releases/tag/v3.1.1
+[3.1.0]: https://github.com/Sapulse/boat/releases/tag/v3.1.0
 [3.0.2]: https://github.com/Sapulse/boat/releases/tag/v3.0.2
 [3.0.1]: https://github.com/Sapulse/boat/releases/tag/v3.0.1
 [3.0.0]: https://github.com/Sapulse/boat/releases/tag/v3.0.0

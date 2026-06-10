@@ -27,15 +27,26 @@ type Action =
   | { type: 'TOGGLE_COMMERCIAL'; payload: string }
   | { type: 'UPDATE_EMAIL_TEMPLATE'; payload: { id: EmailTemplateId; data: Partial<EmailTemplate> } };
 
-function getInitialState(): AppState {
+// Exporte pour le harnais (scripts/harness-reducer.ts) : teste le vrai code de
+// restauration / seed, pas une copie.
+export function getInitialState(): AppState {
   const stored = loadState();
-  if (stored && stored.leads && stored.leads.length > 0) {
-    // Migration des states stockes avant le Lot 2 : emailTemplates peut etre
-    // undefined OU un tableau vide -> on retombe sur les defauts pour ne jamais
+  // Restauration des qu'un state existe (meme avec 0 lead) : le seed ne doit se
+  // declencher QUE sur un vrai premier lancement (cle absente ou JSON invalide).
+  // Supprimer son dernier lead puis recharger ne doit JAMAIS re-seeder ni
+  // ecraser commerciaux / templates / stats.
+  if (stored) {
+    // Hydratation champ par champ avec fallback : un state partiel (version
+    // ancienne ou corrompu mais parsable) se charge sans crash ni re-seed.
+    // emailTemplates : undefined OU tableau vide -> defauts, pour ne jamais
     // laisser l'utilisateur sans aucun modele. Les champs optionnels de
     // Commercial (email/signature) restent geres par fallback '' a la lecture.
     return {
-      ...stored,
+      leads: stored.leads ?? [],
+      actions: stored.actions ?? [],
+      commercials: stored.commercials ?? DEFAULT_COMMERCIALS,
+      monthlyStats: stored.monthlyStats ?? [],
+      acquisitionVolumes: stored.acquisitionVolumes ?? [],
       emailTemplates: stored.emailTemplates?.length ? stored.emailTemplates : DEFAULT_EMAIL_TEMPLATES,
     };
   }
@@ -58,8 +69,19 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_STATE':
       return action.payload;
 
-    case 'ADD_LEAD':
-      return { ...state, leads: [action.payload, ...state.leads] };
+    case 'ADD_LEAD': {
+      // Un lead cree directement dans un statut avance (ex. "Signe" en mode
+      // complet) doit avoir ses jalons poses des la creation, sinon signedAt/
+      // contactDate restent vides et une edition ulterieure les "repare" avec
+      // une date fausse. Date de reference = createdAt (pas la date du jour).
+      // Le helper preserve une contactDate deja saisie au formulaire.
+      const lead = action.payload;
+      const withMilestones = {
+        ...lead,
+        ...statusMilestoneDates(lead, lead.status, lead.createdAt),
+      };
+      return { ...state, leads: [withMilestones, ...state.leads] };
+    }
 
     case 'UPDATE_LEAD':
       return {
@@ -101,9 +123,7 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'ADD_ACTION': {
       const act = action.payload;
-      const updates: Partial<Lead> = {
-        lastActionDate: act.date,
-      };
+      const updates: Partial<Lead> = {};
       if (act.newStatus) updates.status = act.newStatus;
       if (act.nextActionType) updates.nextActionType = act.nextActionType;
       if (act.nextActionDate) updates.nextActionDate = act.nextActionDate;
@@ -113,13 +133,19 @@ export function reducer(state: AppState, action: Action): AppState {
         actions: [act, ...state.actions],
         leads: state.leads.map(l => {
           if (l.id !== act.leadId) return l;
+          // lastActionDate = activite la plus recente : une action antidatee
+          // (rattrapage d'historique) ne doit pas faire reculer la derniere
+          // activite, sinon le lead bascule en fausse urgence. Comparaison de
+          // chaines ISO (YYYY-MM-DD) ; '' perd toujours.
+          const lastActionDate =
+            act.date > (l.lastActionDate || '') ? act.date : l.lastActionDate;
           // Si l'action change le statut, on aligne les dates de jalon via le
           // helper en utilisant la date de l'action (date semantique de la
           // signature / perte / report / contact).
           const dates = act.newStatus
             ? statusMilestoneDates(l, act.newStatus, act.date)
             : null;
-          return { ...l, ...updates, ...dates };
+          return { ...l, ...updates, lastActionDate, ...dates };
         }),
       };
     }
