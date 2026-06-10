@@ -312,7 +312,11 @@ export default function LeadsPage() {
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Masque-jusqu'au-survol UNIQUEMENT sur pointeur fin
+                          (souris) : au tactile il n'y a pas de hover, les
+                          actions restent visibles. focus-within : visibles
+                          aussi au clavier sur desktop. */}
+                      <div className="flex items-center gap-1 justify-center transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100">
                         <button onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Voir">
                           <Eye className="w-3.5 h-3.5" />
                         </button>

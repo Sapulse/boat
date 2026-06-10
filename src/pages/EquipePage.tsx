@@ -119,6 +119,9 @@ export default function EquipePage() {
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="text-sm font-semibold text-gray-900">Équipe commerciale</h2>
         </div>
+        {/* 9 colonnes : scroll horizontal sur petit ecran (meme pattern que
+            les autres tableaux larges), sinon le card overflow-hidden coupe. */}
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
@@ -188,6 +191,7 @@ export default function EquipePage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Performance chart */}

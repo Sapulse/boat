@@ -142,8 +142,9 @@ export default function LeadDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
+      {/* Header — flex-wrap : sous ~500px les boutons passent a la ligne au
+          lieu d'ecraser le titre / deborder. */}
+      <div className="flex items-center gap-4 flex-wrap">
         <button onClick={() => navigate(-1)} className="btn-ghost btn-sm">
           <ArrowLeft className="w-4 h-4" /> Retour
         </button>
@@ -161,7 +162,7 @@ export default function LeadDetailPage() {
             Créé le {formatDate(lead.createdAt)} · {getCommercialName(lead.commercialId)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={exportContact} className="btn-secondary btn-sm"><Contact className="w-4 h-4" /> Exporter contact (.vcf)</button>
           <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm"><Edit2 className="w-4 h-4" /> Modifier</button>
           <button onClick={handleDelete} className="btn-ghost btn-sm text-danger-600 hover:text-danger-700 hover:bg-danger-50"><Trash2 className="w-4 h-4" /></button>
@@ -365,7 +366,10 @@ export default function LeadDetailPage() {
                         {action.result && <p className="text-gray-600 mt-0.5">{action.result}</p>}
                         {action.notes && <p className="text-gray-400 text-xs mt-0.5">{action.notes}</p>}
                       </div>
-                      <div className="flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Comme sur la liste Leads : cache-jusqu'au-survol
+                          seulement sur pointeur fin — au doigt, modifier/
+                          supprimer une action doivent rester accessibles. */}
+                      <div className="flex items-start gap-1 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100">
                         <button onClick={() => setEditingActionId(action.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Modifier l'action">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
