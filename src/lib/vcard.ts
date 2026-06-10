@@ -70,6 +70,32 @@ function unescapeText(v: string): string {
 }
 
 /**
+ * Decode une valeur QUOTED-PRINTABLE (vCard 2.1, exports d'anciens Android /
+ * Outlook) : chaque sequence =XX est un octet hexa ; les octets sont ensuite
+ * decodes selon le charset declare (defaut UTF-8 : "=C3=A9" -> "é"). Un "="
+ * non suivi de 2 hexas est conserve tel quel (tolerance). Helper pur.
+ */
+function decodeQuotedPrintable(v: string, charset = 'utf-8'): string {
+  const bytes: number[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const ch = v[i];
+    if (ch === '=' && i + 2 < v.length + 1 && /^[0-9A-Fa-f]{2}$/.test(v.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(v.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(ch.charCodeAt(0) & 0xff);
+    }
+  }
+  const arr = new Uint8Array(bytes);
+  try {
+    return new TextDecoder(charset).decode(arr);
+  } catch {
+    // Charset declare inconnu -> on retombe sur UTF-8.
+    return new TextDecoder('utf-8').decode(arr);
+  }
+}
+
+/**
  * Decoupe sur les ';' NON echappes (pour le champ structure N). Scanner manuel
  * sans lookbehind regex -> compatible tous navigateurs (dont Safari < 16.4). Une
  * sequence echappee (\; \, \\) est conservee telle quelle dans la part courante,
@@ -98,8 +124,10 @@ function splitUnescaped(v: string): string[] {
  * Parse un texte .vcf pouvant contenir plusieurs VCARD. Tolerant : depliage des
  * lignes "folded" (continuation commencant par espace/tab), CRLF ou LF, versions
  * 2.1/3.0/4.0, parametres TYPE= ignores, champs manquants, proprietes inconnues
- * ignorees. Une carte sans aucun nom/tel/email est ignoree.
- * Helper pur.
+ * ignorees, ENCODING=QUOTED-PRINTABLE decode (avec ses soft line breaks "=" en
+ * fin de ligne — geres UNIQUEMENT pour les proprietes declarees QP, pour ne pas
+ * avaler le padding "=" d'un eventuel PHOTO base64). Une carte sans aucun
+ * nom/tel/email est ignoree. Helper pur.
  */
 export function parseVCards(text: string): ParsedContact[] {
   // Depliage : une ligne suivante commencant par espace/tab prolonge la precedente.
@@ -109,8 +137,8 @@ export function parseVCards(text: string): ParsedContact[] {
   const contacts: ParsedContact[] = [];
   let current: { n?: string; fn?: string; tel?: string; email?: string } | null = null;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li].trim();
     if (!line) continue;
     const upper = line.toUpperCase();
 
@@ -125,8 +153,28 @@ export function parseVCards(text: string): ParsedContact[] {
     const colon = line.indexOf(':');
     if (colon === -1) continue;
     const namePart = line.slice(0, colon);
-    const value = line.slice(colon + 1);
-    const prop = namePart.split(';')[0].toUpperCase();
+    let value = line.slice(colon + 1);
+    const params = namePart.split(';');
+    const prop = params[0].toUpperCase();
+
+    // vCard 2.1 : "N;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:..." (le prefixe
+    // "ENCODING=" est facultatif dans les exports 2.1 historiques).
+    const isQP = params.slice(1).some(p => /^(ENCODING=)?QUOTED-PRINTABLE$/i.test(p.trim()));
+    if (isQP) {
+      const charset = params.slice(1)
+        .map(p => /^CHARSET=(.+)$/i.exec(p.trim())?.[1])
+        .find(Boolean) ?? 'utf-8';
+      // Soft line break QP : un "=" final prolonge la valeur sur la ligne
+      // suivante (continuation propre a QP, distincte du folding espace/tab).
+      while (value.endsWith('=') && li + 1 < lines.length) {
+        value = value.slice(0, -1) + lines[++li].trim();
+      }
+      // Normalisation QP -> forme echappee 3.0 : dans une valeur QP conforme,
+      // les ';' restants sont STRUCTURELS (un ';' de donnee est encode =3B).
+      // On decode donc champ par champ, puis on re-echappe chaque champ pour
+      // que la suite du pipeline (splitUnescaped + unescapeText) reste unique.
+      value = value.split(';').map(part => escapeText(decodeQuotedPrintable(part, charset))).join(';');
+    }
 
     if (prop === 'N' && current.n === undefined) current.n = value;
     else if (prop === 'FN' && current.fn === undefined) current.fn = value;
