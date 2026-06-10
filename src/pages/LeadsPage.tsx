@@ -15,9 +15,12 @@ type SavedView = { label: string; key: string; apply: () => void };
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
 type SortDir = 'asc' | 'desc';
 
-// Statuts terminaux : exclus de la vue "Prospects". Si un lien arrive avec un de
-// ces statuts en filtre (ex. KPI "Signés" du dashboard), on ouvre en vue "Tous"
-// pour ne pas afficher une liste vide.
+// La vue "Prospects" exclut UNIQUEMENT les signés (cf. filtre plus bas) : les
+// perdus / reportés y restent visibles (comportement en prod depuis v3.0.1 —
+// les exclure serait une decision metier explicite, pas un nettoyage).
+// TERMINAL_STATUSES ne sert qu'a choisir la vue initiale : un lien arrivant
+// avec un statut terminal en filtre (ex. KPI "Signés" du dashboard) ouvre en
+// vue "Tous" pour ne jamais afficher une liste vide.
 const TERMINAL_STATUSES = ['signe', 'perdu', 'reporte'];
 
 function reasonLabel(reason: DuplicateMatch['reason']): string {
