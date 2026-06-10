@@ -1,4 +1,4 @@
-import type { Lead, Commercial, EmailTemplate } from '../data/types';
+import type { Lead, Commercial, MessageTemplate } from '../data/types';
 
 /**
  * Interpole les variables {{cle}} d'un texte a partir d'une table de valeurs.
@@ -29,7 +29,7 @@ export function buildLeadVars(lead: Lead, commercial?: Commercial): Record<strin
 
 /** Rend le sujet et le corps d'un template avec les variables fournies. */
 export function renderEmail(
-  template: EmailTemplate,
+  template: MessageTemplate,
   vars: Record<string, string>,
 ): { subject: string; body: string } {
   return {

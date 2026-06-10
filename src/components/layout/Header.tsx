@@ -12,7 +12,7 @@ const titles: Record<string, string> = {
   '/performance': 'Performance',
   '/acquisition': 'Acquisition',
   '/equipe': 'Équipe',
-  '/templates': "Modèles d'email",
+  '/templates': 'Modèles de message',
   '/exports': 'Exports',
 };
 

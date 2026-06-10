@@ -14,7 +14,7 @@ import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '..
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate, hasPlannedNextAction } from '../lib/utils';
 import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
 import { generateVCard } from '../lib/vcard';
-import type { Lead, LeadStatus, EmailTemplate, ActionType } from '../data/types';
+import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,22 +75,27 @@ export default function LeadDetailPage() {
 
   // Envoi pre-rempli : interpole le template avec les variables du lead + la
   // signature du commercial ASSIGNE, ouvre un mailto: encode, et journalise une
-  // action 'email' dans l'historique.
-  const sendEmail = (template: EmailTemplate) => {
+  // action 'email' dans l'historique. `template` null = email vierge (repli
+  // quand il ne reste aucun modele de type email).
+  const sendEmail = (template: MessageTemplate | null) => {
     const commercial = state.commercials.find(c => c.id === lead.commercialId);
     const vars = buildLeadVars(lead, commercial);
-    const { subject, body } = renderEmail(template, vars);
+    const { subject, body } = template ? renderEmail(template, vars) : { subject: '', body: '' };
     window.location.assign(buildMailto(lead.email, subject, body));
     addAction({
       leadId: lead.id,
       type: 'email',
       date: toISODate(new Date()),
-      result: `Email envoyé — ${template.title}`,
+      result: template ? `Email envoyé — ${template.title}` : 'Email envoyé — sans modèle',
       notes: subject,
       authorId: lead.commercialId,
     });
     setShowEmailMenu(false);
   };
+
+  // Seuls les modeles de type email alimentent le menu (les SMS auront leur
+  // propre bouton au lot suivant).
+  const emailTemplates = state.templates.filter(t => t.type === 'email');
 
   // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
   const openNextActionEditor = () => {
@@ -194,11 +199,16 @@ export default function LeadDetailPage() {
                     <div className="fixed inset-0 z-10" onClick={() => setShowEmailMenu(false)} />
                     <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
                       <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
-                      {state.emailTemplates.map(t => (
+                      {emailTemplates.map(t => (
                         <button key={t.id} onClick={() => sendEmail(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                           {t.title}
                         </button>
                       ))}
+                      {emailTemplates.length === 0 && (
+                        <button onClick={() => sendEmail(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                          Email vierge (sans modèle)
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

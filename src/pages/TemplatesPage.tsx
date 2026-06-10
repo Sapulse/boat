@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { Save, RotateCcw, Mail, Check } from 'lucide-react';
+import { Save, Mail, MessageSquare, Check, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { EMAIL_TEMPLATE_VARIABLES, DEFAULT_EMAIL_TEMPLATES } from '../data/constants';
-import type { EmailTemplate } from '../data/types';
+import { TEMPLATE_VARIABLES } from '../data/constants';
+import type { MessageTemplate, TemplateType } from '../data/types';
+import { cn } from '../lib/utils';
 
-function TemplateEditor({ template }: { template: EmailTemplate }) {
-  const { updateEmailTemplate } = useApp();
+function TypeBadge({ type }: { type: TemplateType }) {
+  return type === 'email' ? (
+    <span className="badge bg-primary-50 text-primary-700 gap-1"><Mail className="w-3 h-3" /> Email</span>
+  ) : (
+    <span className="badge bg-success-100 text-success-700 gap-1"><MessageSquare className="w-3 h-3" /> SMS</span>
+  );
+}
+
+function TemplateEditor({ template, canDelete }: { template: MessageTemplate; canDelete: boolean }) {
+  const { updateTemplate, deleteTemplate } = useApp();
   const [draft, setDraft] = useState({
     title: template.title,
     subject: template.subject,
@@ -18,36 +27,38 @@ function TemplateEditor({ template }: { template: EmailTemplate }) {
     draft.subject !== template.subject ||
     draft.body !== template.body;
 
-  const flashSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 1200); };
-
   const save = () => {
-    updateEmailTemplate(template.id, { ...draft });
-    flashSaved();
+    updateTemplate(template.id, { ...draft });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1200);
   };
 
-  const reset = () => {
-    const def = DEFAULT_EMAIL_TEMPLATES.find(t => t.id === template.id);
-    if (!def) return;
-    const next = { title: def.title, subject: def.subject, body: def.body };
-    setDraft(next);
-    updateEmailTemplate(template.id, next);
-    flashSaved();
+  const remove = () => {
+    if (confirm(`Supprimer le modèle « ${template.title} » définitivement ?`)) {
+      deleteTemplate(template.id);
+    }
   };
 
   return (
     <div className="card p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Mail className="w-4 h-4 text-primary-600" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <TypeBadge type={template.type} />
           <input
             className="input font-semibold text-gray-900 max-w-xs"
             value={draft.title}
             onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+            aria-label="Nom du modèle"
           />
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={reset} className="btn-ghost btn-sm text-gray-500" title="Restaurer le modèle par défaut">
-            <RotateCcw className="w-3.5 h-3.5" /> Réinitialiser
+          <button
+            onClick={remove}
+            disabled={!canDelete}
+            className="btn-ghost btn-sm text-gray-400 hover:text-danger-600 disabled:opacity-40 disabled:hover:text-gray-400"
+            title={canDelete ? 'Supprimer ce modèle' : 'Au moins un modèle est requis'}
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Supprimer
           </button>
           <button onClick={save} disabled={!dirty && !saved} className="btn-primary btn-sm disabled:opacity-60">
             {saved ? <><Check className="w-3.5 h-3.5" /> Enregistré</> : <><Save className="w-3.5 h-3.5" /> Enregistrer</>}
@@ -55,46 +66,74 @@ function TemplateEditor({ template }: { template: EmailTemplate }) {
         </div>
       </div>
 
-      <div>
-        <label className="label">Sujet</label>
-        <input
-          className="input"
-          value={draft.subject}
-          onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
-        />
-      </div>
+      {template.type === 'email' && (
+        <div>
+          <label className="label">Sujet</label>
+          <input
+            className="input"
+            value={draft.subject}
+            onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
+          />
+        </div>
+      )}
 
       <div>
-        <label className="label">Corps</label>
+        <label className="label">{template.type === 'sms' ? 'Message' : 'Corps'}</label>
         <textarea
-          className="input min-h-[180px] font-mono text-sm"
+          className={cn('input font-mono text-sm', template.type === 'sms' ? 'min-h-[100px]' : 'min-h-[180px]')}
           value={draft.body}
           onChange={e => setDraft(d => ({ ...d, body: e.target.value }))}
         />
+        {template.type === 'sms' && (
+          <p className="text-xs text-gray-400 mt-1">
+            Un SMS n'a pas de sujet. Pensez court : au-delà de 160 caractères, le message sera fractionné.
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
 export default function TemplatesPage() {
-  const { state } = useApp();
+  const { state, addTemplate } = useApp();
+
+  const createTemplate = (type: TemplateType) => {
+    addTemplate({
+      type,
+      title: type === 'email' ? 'Nouveau modèle email' : 'Nouveau modèle SMS',
+      subject: '',
+      body: '',
+    });
+  };
+
+  const canDelete = state.templates.length > 1;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-gray-900">Modèles d'email</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Éditez les modèles utilisés depuis la fiche d'un lead. Les modifications sont enregistrées localement.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Modèles de message</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Modèles email et SMS utilisés depuis la fiche d'un lead. Les modifications sont enregistrées localement.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => createTemplate('email')} className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> Modèle email
+          </button>
+          <button onClick={() => createTemplate('sms')} className="btn-secondary btn-sm">
+            <Plus className="w-4 h-4" /> Modèle SMS
+          </button>
+        </div>
       </div>
 
       {/* Aide variables */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-600 mb-2">
-          Variables disponibles (remplacées automatiquement à l'envoi) :
+          Variables disponibles (remplacées automatiquement à l'envoi, email comme SMS) :
         </p>
         <div className="flex flex-wrap gap-2">
-          {EMAIL_TEMPLATE_VARIABLES.map(v => (
+          {TEMPLATE_VARIABLES.map(v => (
             <span key={v.key} className="inline-flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md px-2 py-1">
               <code className="text-primary-600 font-mono">{`{{${v.key}}}`}</code>
               <span className="text-gray-400">{v.label}</span>
@@ -104,8 +143,8 @@ export default function TemplatesPage() {
       </div>
 
       <div className="space-y-4">
-        {state.emailTemplates.map(t => (
-          <TemplateEditor key={t.id} template={t} />
+        {state.templates.map(t => (
+          <TemplateEditor key={t.id} template={t} canDelete={canDelete} />
         ))}
       </div>
     </div>

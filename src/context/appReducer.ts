@@ -1,5 +1,5 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, EmailTemplate, EmailTemplateId, ActionType } from '../data/types';
-import { DEFAULT_COMMERCIALS, DEFAULT_EMAIL_TEMPLATES } from '../data/constants';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, MessageTemplate, ActionType } from '../data/types';
+import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
 import {
@@ -28,7 +28,25 @@ export type Action =
   | { type: 'ADD_COMMERCIAL'; payload: Commercial }
   | { type: 'UPDATE_COMMERCIAL'; payload: { id: string; data: Partial<Commercial> } }
   | { type: 'TOGGLE_COMMERCIAL'; payload: string }
-  | { type: 'UPDATE_EMAIL_TEMPLATE'; payload: { id: EmailTemplateId; data: Partial<EmailTemplate> } };
+  | { type: 'ADD_TEMPLATE'; payload: MessageTemplate }
+  | { type: 'UPDATE_TEMPLATE'; payload: { id: string; data: Partial<MessageTemplate> } }
+  | { type: 'DELETE_TEMPLATE'; payload: string };
+
+/**
+ * Migration templates : double lecture (champ `templates` actuel, OU champ
+ * legacy `emailTemplates` d'avant v3.2) + normalisation par item — les modeles
+ * stockes avant l'introduction du type n'ont pas de champ `type` : ils
+ * deviennent type 'email', ids et contenu STRICTEMENT intacts (aucune perte).
+ * Liste vide ou absente -> defauts (ne jamais laisser l'utilisateur sans
+ * modele ; le garde-fou min-1 de DELETE_TEMPLATE rend cet etat inatteignable
+ * depuis l'UI).
+ */
+function hydrateTemplates(stored: AppState): MessageTemplate[] {
+  const legacy = stored as AppState & { emailTemplates?: MessageTemplate[] };
+  const raw = legacy.templates ?? legacy.emailTemplates;
+  if (!raw?.length) return DEFAULT_TEMPLATES;
+  return raw.map(t => ({ ...t, type: t.type === 'sms' ? 'sms' : 'email' }));
+}
 
 export function getInitialState(): AppState {
   const stored = loadState();
@@ -39,16 +57,15 @@ export function getInitialState(): AppState {
   if (stored) {
     // Hydratation champ par champ avec fallback : un state partiel (version
     // ancienne ou corrompu mais parsable) se charge sans crash ni re-seed.
-    // emailTemplates : undefined OU tableau vide -> defauts, pour ne jamais
-    // laisser l'utilisateur sans aucun modele. Les champs optionnels de
-    // Commercial (email/signature) restent geres par fallback '' a la lecture.
+    // Les champs optionnels de Commercial (email/signature) restent geres par
+    // fallback '' a la lecture.
     return {
       leads: stored.leads ?? [],
       actions: stored.actions ?? [],
       commercials: stored.commercials ?? DEFAULT_COMMERCIALS,
       monthlyStats: stored.monthlyStats ?? [],
       acquisitionVolumes: stored.acquisitionVolumes ?? [],
-      emailTemplates: stored.emailTemplates?.length ? stored.emailTemplates : DEFAULT_EMAIL_TEMPLATES,
+      templates: hydrateTemplates(stored),
     };
   }
 
@@ -60,7 +77,7 @@ export function getInitialState(): AppState {
     commercials: DEFAULT_COMMERCIALS,
     monthlyStats: generateSeedMonthlyStats(),
     acquisitionVolumes: generateSeedAcquisitionVolumes(),
-    emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+    templates: DEFAULT_TEMPLATES,
   };
 }
 
@@ -206,12 +223,26 @@ export function reducer(state: AppState, action: Action): AppState {
         ),
       };
 
-    case 'UPDATE_EMAIL_TEMPLATE':
+    case 'ADD_TEMPLATE':
+      return { ...state, templates: [...state.templates, action.payload] };
+
+    case 'UPDATE_TEMPLATE':
       return {
         ...state,
-        emailTemplates: state.emailTemplates.map(t =>
+        templates: state.templates.map(t =>
           t.id === action.payload.id ? { ...t, ...action.payload.data } : t
         ),
+      };
+
+    // Garde-fou min-1 : on ne supprime JAMAIS le dernier modele. Sinon
+    // l'hydratation (liste vide -> defauts) ressusciterait les 3 modeles par
+    // defaut au rechargement — comportement surprise. Double protection avec
+    // l'UI (bouton supprimer desactive sur le dernier).
+    case 'DELETE_TEMPLATE':
+      if (state.templates.length <= 1) return state;
+      return {
+        ...state,
+        templates: state.templates.filter(t => t.id !== action.payload),
       };
 
     default:

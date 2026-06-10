@@ -39,10 +39,17 @@ export interface Commercial {
   signature?: string;
 }
 
-export type EmailTemplateId = 'contact' | 'relance' | 'suivi';
+export type TemplateType = 'email' | 'sms';
 
-export interface EmailTemplate {
-  id: EmailTemplateId;
+/**
+ * Modele de message (email OU sms). Les ids sont generes (generateId) pour les
+ * nouveaux modeles ; les ids semantiques historiques ('contact', 'relance',
+ * 'suivi') restent des strings valides. `subject` vaut '' pour les SMS (pas de
+ * sujet). Le type est fige a la creation.
+ */
+export interface MessageTemplate {
+  id: string;
+  type: TemplateType;
   title: string;
   subject: string;
   body: string;
@@ -117,5 +124,7 @@ export interface AppState {
   commercials: Commercial[];
   monthlyStats: MonthlyStat[];
   acquisitionVolumes: AcquisitionVolume[];
-  emailTemplates: EmailTemplate[];
+  // Avant v3.2 le champ s'appelait `emailTemplates` (templates email only) :
+  // l'hydratation (appReducer.getInitialState) lit encore l'ancien nom.
+  templates: MessageTemplate[];
 }

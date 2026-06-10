@@ -1,4 +1,4 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, EmailTemplate } from './types';
+import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate } from './types';
 
 export const LEAD_STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'nouveau', label: 'Nouveau', color: 'bg-gray-100 text-gray-800' },
@@ -123,9 +123,9 @@ export const MONTHS = [
 // Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
 export const COMPANY_NAME = 'Brest Ocean Boat';
 
-// Variables interpolables dans les sujets / corps de templates (affichage de
-// l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().
-export const EMAIL_TEMPLATE_VARIABLES = [
+// Variables interpolables dans les sujets / corps de templates — email ET sms
+// (affichage de l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().
+export const TEMPLATE_VARIABLES = [
   { key: 'prenom', label: 'Prénom du lead' },
   { key: 'nom', label: 'Nom du lead' },
   { key: 'bateau', label: 'Type de bateau' },
@@ -135,10 +135,12 @@ export const EMAIL_TEMPLATE_VARIABLES = [
 ];
 
 // Modeles par defaut (volontairement concis : un mailto: pre-rempli encode est
-// limite a ~2000 caracteres, surtout sous Outlook/Windows).
-export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
+// limite a ~2000 caracteres, surtout sous Outlook/Windows). Servent de seed au
+// premier lancement ; ensuite l'utilisateur gere ses modeles librement.
+export const DEFAULT_TEMPLATES: MessageTemplate[] = [
   {
     id: 'contact',
+    type: 'email',
     title: 'Premier contact',
     subject: 'Votre projet bateau — {{modele}}',
     body:
@@ -149,6 +151,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'relance',
+    type: 'email',
     title: 'Relance',
     subject: 'Suite à notre échange — {{modele}}',
     body:
@@ -159,6 +162,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'suivi',
+    type: 'email',
     title: 'Suivi de dossier',
     subject: 'Suivi de votre dossier — {{modele}}',
     body:

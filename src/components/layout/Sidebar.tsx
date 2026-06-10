@@ -30,7 +30,7 @@ const mainNav: NavItem[] = [
 
 const settingsNav: NavItem[] = [
   { name: 'Équipe', href: '/equipe', icon: UsersRound },
-  { name: 'Modèles email', href: '/templates', icon: Mail },
+  { name: 'Modèles', href: '/templates', icon: Mail },
   { name: 'Exports', href: '/exports', icon: Download },
 ];
 

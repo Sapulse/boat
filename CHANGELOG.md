@@ -7,6 +7,33 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.2.0] — 2026-06-10 — Modèles de message (email + SMS)
+
+### Ajouté
+- **Gestion libre des modèles** (page Modèles) : création (« + Modèle email » /
+  « + Modèle SMS »), renommage (titre éditable), suppression avec confirmation —
+  fini les 3 templates fixes. Garde-fou à deux niveaux : impossible de supprimer le
+  dernier modèle (bouton désactivé **et** refus dans le reducer), pour ne jamais se
+  retrouver sans modèle.
+- **Type de modèle email | sms** : les SMS n'ont pas de sujet (champ masqué, note
+  160 caractères) ; mêmes variables d'interpolation (`{{prenom}}`…) pour les deux
+  types. Le type est figé à la création. **Prépare le bouton « Envoyer SMS »**
+  (lot suivant) : le menu email de la fiche lead ne liste que les modèles email,
+  avec repli « Email vierge » s'il n'en reste aucun.
+
+### Modifié
+- **Modèle de données** : `MessageTemplate` (`id` généré, `type`), champ d'état
+  `templates` (ex-`emailTemplates`), actions reducer `ADD/UPDATE/DELETE_TEMPLATE`
+  (ex-`UPDATE_EMAIL_TEMPLATE` update-only). Navigation : « Modèles » / « Modèles
+  de message ».
+- **Migration localStorage sans perte** (point critique, prouvé au harnais —
+  63 assertions désormais) : double lecture `templates` puis legacy
+  `emailTemplates` ; les modèles stockés avant l'introduction du type reçoivent
+  `type: "email"`, ids et contenus strictement intacts ; liste vide/absente →
+  modèles par défaut (comportement historique conservé).
+
+---
+
 ## [3.1.5] — 2026-06-10 — Lot petits & moyens (6 étapes)
 
 ### Corrigé
@@ -197,6 +224,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.2.0]: https://github.com/Sapulse/boat/releases/tag/v3.2.0
 [3.1.5]: https://github.com/Sapulse/boat/releases/tag/v3.1.5
 [3.1.4]: https://github.com/Sapulse/boat/releases/tag/v3.1.4
 [3.1.3]: https://github.com/Sapulse/boat/releases/tag/v3.1.3

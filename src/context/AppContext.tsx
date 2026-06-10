@@ -1,5 +1,5 @@
 import { useReducer, useEffect, type ReactNode } from 'react';
-import type { Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, EmailTemplate, EmailTemplateId, ActionType } from '../data/types';
+import type { Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, MessageTemplate, ActionType } from '../data/types';
 import { saveState } from '../lib/storage';
 import { generateId } from '../lib/utils';
 import { reducer, getInitialState } from './appReducer';
@@ -68,8 +68,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SAVE_ACQUISITION_VOLUMES', payload: volumes });
   };
 
-  const updateEmailTemplate = (id: EmailTemplateId, data: Partial<EmailTemplate>) => {
-    dispatch({ type: 'UPDATE_EMAIL_TEMPLATE', payload: { id, data } });
+  const addTemplate = (template: Omit<MessageTemplate, 'id'>): string => {
+    const id = generateId();
+    dispatch({ type: 'ADD_TEMPLATE', payload: { ...template, id } });
+    return id;
+  };
+
+  const updateTemplate = (id: string, data: Partial<MessageTemplate>) => {
+    dispatch({ type: 'UPDATE_TEMPLATE', payload: { id, data } });
+  };
+
+  const deleteTemplate = (id: string) => {
+    dispatch({ type: 'DELETE_TEMPLATE', payload: id });
   };
 
   return (
@@ -89,7 +99,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getCommercialName,
         saveMonthlyStats,
         saveAcquisitionVolumes,
-        updateEmailTemplate,
+        addTemplate,
+        updateTemplate,
+        deleteTemplate,
       }}
     >
       {children}

@@ -26,8 +26,8 @@ const store = new Map<string, string>();
 };
 
 import { reducer, getInitialState } from '../src/context/appReducer';
-import { DEFAULT_COMMERCIALS, DEFAULT_EMAIL_TEMPLATES } from '../src/data/constants';
-import type { AppState, Lead, LeadAction, LeadStatus } from '../src/data/types';
+import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
+import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
 const STORAGE_KEY = 'crm-nautisme-data';
 
@@ -107,7 +107,7 @@ function makeState(over: Partial<AppState> = {}): AppState {
     commercials: DEFAULT_COMMERCIALS,
     monthlyStats: [],
     acquisitionVolumes: [],
-    emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+    templates: DEFAULT_TEMPLATES,
     ...over,
   };
 }
@@ -119,7 +119,9 @@ function makeState(over: Partial<AppState> = {}): AppState {
 section('N1 — state stocke avec leads:[] mais commerciaux/templates remplis -> restaure, PAS de re-seed');
 {
   const customCommercials = [{ id: 'lana', name: 'Lana', active: true }];
-  const customTemplates = [{ id: 'contact' as const, title: 'Perso', subject: 'S', body: 'B' }];
+  // Template LEGACY (champ emailTemplates, SANS champ type) : la migration doit
+  // tout preserver et poser type 'email'.
+  const customTemplates = [{ id: 'contact', title: 'Perso', subject: 'S', body: 'B' }];
   const storedState = {
     leads: [],
     actions: [],
@@ -133,9 +135,27 @@ section('N1 — state stocke avec leads:[] mais commerciaux/templates remplis ->
   const s = getInitialState();
   check('0 lead bidon regenere (leads reste [])', s.leads.length === 0, `leads.length=${s.leads.length}`);
   check('commerciaux personnalises preserves', JSON.stringify(s.commercials) === JSON.stringify(customCommercials));
-  check('templates personnalises preserves', JSON.stringify(s.emailTemplates) === JSON.stringify(customTemplates));
+  check('template personnalise preserve (id/titre/sujet/corps intacts)',
+    s.templates.length === 1 && s.templates[0].id === 'contact' && s.templates[0].title === 'Perso'
+    && s.templates[0].subject === 'S' && s.templates[0].body === 'B',
+    JSON.stringify(s.templates));
+  check("migration : type 'email' pose par defaut", s.templates[0].type === 'email', `=${s.templates[0].type}`);
   check('stats mensuelles preservees', s.monthlyStats.length === 1 && s.monthlyStats[0].id === 'm1');
   check('volumes acquisition preserves', s.acquisitionVolumes.length === 1 && s.acquisitionVolumes[0].id === 'v1');
+}
+
+section('Migration templates — state FUTUR (champ templates) lu tel quel, type sms preserve');
+{
+  const futureTemplates: MessageTemplate[] = [
+    { id: 'x1', type: 'email', title: 'Mail perso', subject: 'Su', body: 'Bo' },
+    { id: 'x2', type: 'sms', title: 'SMS relance', subject: '', body: 'Coucou {{prenom}}' },
+  ];
+  store.clear();
+  store.set(STORAGE_KEY, JSON.stringify(makeState({ templates: futureTemplates })));
+  const s = getInitialState();
+  check('2 templates lus depuis le champ `templates`', s.templates.length === 2);
+  check('type sms preserve (pas ecrase en email)', s.templates[1].type === 'sms', `=${s.templates[1].type}`);
+  check('contenu sms intact', s.templates[1].body === 'Coucou {{prenom}}' && s.templates[1].subject === '');
 }
 
 section('N1 — stored absent (vrai premier lancement) -> seed');
@@ -144,7 +164,7 @@ section('N1 — stored absent (vrai premier lancement) -> seed');
   const s = getInitialState();
   check('seed de 35 leads', s.leads.length === 35, `leads.length=${s.leads.length}`);
   check('commerciaux par defaut', s.commercials === DEFAULT_COMMERCIALS);
-  check('templates par defaut', s.emailTemplates === DEFAULT_EMAIL_TEMPLATES);
+  check('templates par defaut', s.templates === DEFAULT_TEMPLATES);
   check('actions seedees presentes', s.actions.length > 0);
 }
 
@@ -166,15 +186,19 @@ section('N1 — state partiel (hydratation champ par champ, pas de crash ni re-s
   check('commercials manquants -> defauts', s.commercials === DEFAULT_COMMERCIALS);
   check('monthlyStats manquantes -> []', Array.isArray(s.monthlyStats) && s.monthlyStats.length === 0);
   check('acquisitionVolumes manquants -> []', Array.isArray(s.acquisitionVolumes) && s.acquisitionVolumes.length === 0);
-  check('emailTemplates manquants -> defauts', s.emailTemplates === DEFAULT_EMAIL_TEMPLATES);
+  check('templates manquants -> defauts', s.templates === DEFAULT_TEMPLATES);
 }
 
-section('N1 — emailTemplates: [] -> defauts (fallback historique conserve)');
+section('Migration templates — liste vide -> defauts (fallback historique conserve)');
 {
   store.clear();
-  store.set(STORAGE_KEY, JSON.stringify(makeState({ emailTemplates: [] })));
+  store.set(STORAGE_KEY, JSON.stringify(makeState({ templates: [] })));
   const s = getInitialState();
-  check('tableau vide remplace par les defauts', s.emailTemplates === DEFAULT_EMAIL_TEMPLATES);
+  check('tableau vide (champ templates) remplace par les defauts', s.templates === DEFAULT_TEMPLATES);
+  store.clear();
+  store.set(STORAGE_KEY, JSON.stringify({ ...makeState(), templates: undefined, emailTemplates: [] }));
+  const s2 = getInitialState();
+  check('tableau vide (champ legacy emailTemplates) remplace par les defauts', s2.templates === DEFAULT_TEMPLATES);
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +346,46 @@ section('Isolation SET_NEXT_ACTION — ne touche que nextActionType/nextActionDa
 
   const cleared = reducer(s, { type: 'SET_NEXT_ACTION', payload: { id: 'lead-1', nextActionType: '', nextActionDate: '' } });
   check('effacement ("" / "") fonctionne', cleared.leads[0].nextActionType === '' && cleared.leads[0].nextActionDate === '');
+}
+
+// ---------------------------------------------------------------------------
+// Templates — ADD / UPDATE / DELETE confines a state.templates + garde min-1
+// ---------------------------------------------------------------------------
+
+section('Templates — ADD_TEMPLATE confine a state.templates');
+{
+  const state = makeState();
+  const sms: MessageTemplate = { id: 'new-sms', type: 'sms', title: 'Relance SMS', subject: '', body: 'Bonjour {{prenom}}' };
+  const s = reducer(state, { type: 'ADD_TEMPLATE', payload: sms });
+  check('template ajoute en fin de liste', s.templates.length === state.templates.length + 1 && s.templates.at(-1)?.id === 'new-sms');
+  check('state.leads MEME REFERENCE', s.leads === state.leads);
+  check('state.actions MEME REFERENCE', s.actions === state.actions);
+}
+
+section('Templates — UPDATE_TEMPLATE (renommage / edition) confine');
+{
+  const state = makeState();
+  const targetId = state.templates[0].id;
+  const other = state.templates[1];
+  const s = reducer(state, { type: 'UPDATE_TEMPLATE', payload: { id: targetId, data: { title: 'Renomme', body: 'Nouveau corps' } } });
+  check('cible renommee et editee', s.templates[0].title === 'Renomme' && s.templates[0].body === 'Nouveau corps');
+  check('type et id de la cible inchanges', s.templates[0].id === targetId && s.templates[0].type === 'email');
+  check('autre template meme reference', s.templates[1] === other);
+  check('state.leads / state.actions MEMES REFERENCES', s.leads === state.leads && s.actions === state.actions);
+}
+
+section('Templates — DELETE_TEMPLATE confine + garde min-1');
+{
+  const state = makeState(); // 3 templates par defaut
+  const targetId = state.templates[1].id;
+  const s = reducer(state, { type: 'DELETE_TEMPLATE', payload: targetId });
+  check('template supprime', s.templates.length === 2 && !s.templates.some(t => t.id === targetId));
+  check('state.leads / state.actions MEMES REFERENCES', s.leads === state.leads && s.actions === state.actions);
+
+  const lastOne = makeState({ templates: [{ id: 'seul', type: 'email', title: 'Dernier', subject: '', body: '' }] });
+  const refused = reducer(lastOne, { type: 'DELETE_TEMPLATE', payload: 'seul' });
+  check('suppression du DERNIER template refusee (state inchange, meme reference)', refused === lastOne);
+  check('la liste ne peut jamais etre vide', refused.templates.length === 1);
 }
 
 // ---------------------------------------------------------------------------
