@@ -318,7 +318,7 @@ export default function LeadDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400 py-4 text-center">Aucune action enregistree</p>
+              <p className="text-sm text-gray-400 py-4 text-center">Aucune action enregistrée</p>
             )}
           </div>
         </div>

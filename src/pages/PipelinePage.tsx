@@ -255,7 +255,7 @@ export default function PipelinePage() {
               {BOAT_CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <select className="select text-xs" value={filterTemp} onChange={e => setFilterTemp(e.target.value)}>
-              <option value="">Temperature</option>
+              <option value="">Température</option>
               {TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <select className="select text-xs" value={filterAlert} onChange={e => setFilterAlert(e.target.value)}>

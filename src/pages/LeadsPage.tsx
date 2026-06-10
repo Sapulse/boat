@@ -56,7 +56,7 @@ export default function LeadsPage() {
     { label: 'Urgents', key: 'urgent', apply: () => { clearAllFilters(); setFilterAlert('red'); setActiveView('urgent'); } },
     { label: 'Chauds', key: 'chaud', apply: () => { clearAllFilters(); setFilterTemp('chaud'); setActiveView('chaud'); } },
     { label: 'Sans action', key: 'no-action', apply: () => { clearAllFilters(); setActiveView('no-action'); } },
-    { label: 'Devis a relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
+    { label: 'Devis à relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
   ];
 
   const filtered = useMemo(() => {
@@ -211,7 +211,7 @@ export default function LeadsPage() {
             {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select className="select text-xs" value={filterTemp} onChange={e => setFilterTemp(e.target.value)}>
-            <option value="">Temperature</option>
+            <option value="">Température</option>
             {TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <select className="select text-xs" value={filterAlert} onChange={e => setFilterAlert(e.target.value)}>
@@ -303,7 +303,7 @@ export default function LeadsPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">Aucun lead trouve</td></tr>
+                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">Aucun lead trouvé</td></tr>
               )}
             </tbody>
           </table>

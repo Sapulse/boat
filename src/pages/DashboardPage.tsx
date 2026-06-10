@@ -91,7 +91,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3 flex-wrap">
           <Filter className="w-4 h-4 text-gray-400" />
           <select className="select text-xs w-auto" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
-            <option value="">Toute periode</option>
+            <option value="">Toute période</option>
             <option value="7">7 derniers jours</option>
             <option value="30">30 derniers jours</option>
             <option value="90">3 derniers mois</option>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-success-600 py-4 text-center">Tous relances</p>
+            <p className="text-xs text-success-600 py-4 text-center">Tous relancés</p>
           )}
         </div>
 
@@ -213,7 +213,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-success-600 py-4 text-center">Tous planifies</p>
+            <p className="text-xs text-success-600 py-4 text-center">Tous planifiés</p>
           )}
         </div>
       </div>
@@ -244,7 +244,7 @@ export default function DashboardPage() {
               </div>
             </>
           ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnee pour cette periode</p>
+            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée pour cette période</p>
           )}
         </div>
 
@@ -264,7 +264,7 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnee</p>
+            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée</p>
           )}
         </div>
       </div>
@@ -283,13 +283,13 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnee</p>
+            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée</p>
           )}
         </div>
 
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">Detail par commercial</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Détail par commercial</h3>
           </div>
           <table className="w-full text-sm">
             <thead>

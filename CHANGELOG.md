@@ -7,6 +7,22 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.4] — 2026-06-10 — Finition
+
+### Corrigé
+- **Accents résiduels (N9)** : 14 libellés affichés ratés par la passe v3.0.2 —
+  options de filtres (« Toute période », « Température », « Tous les états »), titres
+  (« Détail par commercial »), messages d'état vide (« Aucune donnée… », « Aucun lead
+  trouvé », « Aucune action enregistrée », « Tous relancés », « Tous planifiés »), vue
+  « Devis à relancer ». Comme en v3.0.2 : uniquement les libellés visibles — valeurs de
+  statut internes, clés techniques et `dataKey` de graphes inchangés.
+- **Encodage de l'adresse dans les liens mailto (N10)** : l'adresse est désormais
+  encodée (le `@` restant lisible) — une adresse contenant `?` ou `&` ne peut plus
+  casser le lien ni injecter de paramètres (`cc`, `bcc`…). Lien strictement identique
+  pour une adresse normale ; sujet et corps encodés comme avant.
+
+---
+
 ## [3.1.3] — 2026-06-10 — Résilience
 
 ### Ajouté
@@ -145,6 +161,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.1.4]: https://github.com/Sapulse/boat/releases/tag/v3.1.4
 [3.1.3]: https://github.com/Sapulse/boat/releases/tag/v3.1.3
 [3.1.2]: https://github.com/Sapulse/boat/releases/tag/v3.1.2
 [3.1.1]: https://github.com/Sapulse/boat/releases/tag/v3.1.1

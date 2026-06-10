@@ -41,9 +41,13 @@ export function renderEmail(
 /**
  * Construit un lien mailto: pre-rempli. Le sujet et le corps sont encodes
  * (encodeURIComponent) pour rester valides (accents, retours a la ligne, &, ;...).
- * L'adresse est laissee telle quelle (deja une adresse email valide).
+ * L'adresse est encodee elle aussi : une adresse contenant ? & # % ou des
+ * espaces ne peut ni casser le lien ni injecter de parametres (cc, bcc...).
+ * Le @ est restaure apres encodage : une adresse nominale produit un lien
+ * strictement identique a avant (pas de %40 pour les clients mail tatillons).
  */
 export function buildMailto(email: string, subject: string, body: string): string {
+  const safeEmail = encodeURIComponent(email).replace(/%40/g, '@');
   const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${email}?${params}`;
+  return `mailto:${safeEmail}?${params}`;
 }

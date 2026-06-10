@@ -187,7 +187,7 @@ export default function PerformancePage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <select className="select text-sm" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
-            <option value="">Toute periode</option>
+            <option value="">Toute période</option>
             <option value="30">30 jours</option>
             <option value="90">3 mois</option>
             <option value="365">12 mois</option>
@@ -205,7 +205,7 @@ export default function PerformancePage() {
             {BOAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <select className="select text-sm" value={filterCondition} onChange={e => setFilterCondition(e.target.value)}>
-            <option value="">Tous les etats</option>
+            <option value="">Tous les états</option>
             {BOAT_CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select className="select text-sm" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
