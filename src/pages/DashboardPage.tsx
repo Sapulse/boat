@@ -11,7 +11,7 @@ import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
@@ -42,10 +42,10 @@ export default function DashboardPage() {
     const signed = leads.filter(l => l.status === 'signe');
     const urgent = leads.filter(l => getAlertLevel(l) === 'red');
     const warning = leads.filter(l => getAlertLevel(l) === 'orange');
-    const hotNoAction = leads.filter(l => l.temperature === 'chaud' && isLeadActive(l.status) && !l.nextActionDate);
+    const hotNoAction = leads.filter(l => l.temperature === 'chaud' && isLeadActive(l.status) && !hasPlannedNextAction(l));
     const noRecentAction = leads.filter(l => isLeadActive(l.status) && daysSince(l.lastActionDate || l.createdAt) > 7);
     const devisSansRelance = leads.filter(l => l.status === 'devis_envoye' && daysSince(l.lastActionDate || l.createdAt) > 5);
-    const sansProchAction = leads.filter(l => isLeadActive(l.status) && !l.nextActionType && !l.nextActionDate);
+    const sansProchAction = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
 
     const totalQuotes = leads
       .filter(l => ['devis_envoye', 'negociation', 'en_conclusion'].includes(l.status))

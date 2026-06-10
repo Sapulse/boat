@@ -4,7 +4,7 @@ import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phon
 import { useApp } from '../context/AppContext';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
@@ -84,7 +84,7 @@ export default function LeadsPage() {
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterAlert) leads = leads.filter(l => getAlertLevel(l) === filterAlert);
     if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
-    if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !l.nextActionType && !l.nextActionDate);
+    if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
 
     leads.sort((a, b) => {
       let cmp = 0;

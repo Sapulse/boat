@@ -11,7 +11,7 @@ import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
 import ActionForm from '../components/leads/ActionForm';
 import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
-import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate } from '../lib/utils';
+import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate, hasPlannedNextAction } from '../lib/utils';
 import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
 import { generateVCard } from '../lib/vcard';
 import type { Lead, LeadStatus, EmailTemplate, ActionType } from '../data/types';
@@ -150,7 +150,7 @@ export default function LeadDetailPage() {
               {alert === 'red' ? 'Attention urgente requise' : 'Action recommandée'}
             </p>
             <p className={cn('text-xs mt-0.5', alert === 'red' ? 'text-danger-600' : 'text-warning-600')}>
-              {lead.temperature === 'chaud' && !lead.nextActionDate ? 'Lead chaud sans prochaine action planifiée' :
+              {lead.temperature === 'chaud' && !hasPlannedNextAction(lead) ? 'Lead chaud sans prochaine action planifiée' :
                days >= 14 ? `Aucune action depuis ${days} jours` : `${days} jours depuis la dernière action`}
             </p>
           </div>
@@ -326,7 +326,7 @@ export default function LeadDetailPage() {
         {/* Right column */}
         <div className="space-y-4">
           {/* Next action */}
-          <div className={cn('card p-5', !lead.nextActionDate && isActive ? 'ring-2 ring-warning-300' : '')}>
+          <div className={cn('card p-5', !hasPlannedNextAction(lead) && isActive ? 'ring-2 ring-warning-300' : '')}>
             <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
               {lead.temperature === 'chaud' && <Flame className="w-4 h-4 text-danger-500" />}
               <ExternalLink className="w-4 h-4 text-primary-600" /> Prochaine action

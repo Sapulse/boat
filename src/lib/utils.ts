@@ -48,13 +48,24 @@ export function daysSince(date: string): number {
   return differenceInDays(new Date(), d);
 }
 
+/**
+ * Source de verite UNIQUE : une prochaine action n'est reellement "planifiee"
+ * que si elle a une DATE (un type sans date n'est pas actionnable).
+ * getAlertLevel, getLeadRisks et tous les predicats UI (Dashboard, vue Leads,
+ * fiche lead) passent par ce helper — ne jamais re-tester nextActionDate /
+ * nextActionType en dur ailleurs.
+ */
+export function hasPlannedNextAction(lead: Pick<Lead, 'nextActionDate'>): boolean {
+  return !!lead.nextActionDate;
+}
+
 export function getAlertLevel(lead: Lead): AlertLevel {
   if (!ACTIVE_STATUSES.includes(lead.status)) return 'none';
 
   const lastAction = lead.lastActionDate || lead.createdAt;
   const days = daysSince(lastAction);
 
-  if (lead.temperature === 'chaud' && !lead.nextActionDate) return 'red';
+  if (lead.temperature === 'chaud' && !hasPlannedNextAction(lead)) return 'red';
   if (days >= 14) return 'red';
   if (days >= 7) return 'orange';
   return 'none';
@@ -80,8 +91,24 @@ export function getLeadRisks(lead: Lead): RiskItem[] {
 
   const days = daysSince(lead.lastActionDate || lead.createdAt);
 
-  if (!lead.nextActionDate && !lead.nextActionType) {
-    risks.push({ label: 'Aucune prochaine action planifiée', severity: lead.temperature === 'chaud' ? 'danger' : 'warning' });
+  // Prochaine action : deux cas MUTUELLEMENT EXCLUSIFS (if/else sur la date).
+  // - manquante (pas de date) : meme predicat que getAlertLevel via le helper,
+  //   libelle differencie si un type a ete saisi sans date ;
+  // - echue (date passee) : planifiee mais depassee — warning jusqu'a 3 jours
+  //   de retard, danger au-dela (meme seuil que "chaud inactif > 3j").
+  if (!hasPlannedNextAction(lead)) {
+    risks.push({
+      label: lead.nextActionType ? 'Prochaine action sans date' : 'Aucune prochaine action planifiée',
+      severity: lead.temperature === 'chaud' ? 'danger' : 'warning',
+    });
+  } else {
+    const overdueDays = daysSince(lead.nextActionDate);
+    if (overdueDays > 0) {
+      risks.push({
+        label: 'Action planifiée dépassée de ' + overdueDays + 'j',
+        severity: overdueDays > 3 ? 'danger' : 'warning',
+      });
+    }
   }
   if (lead.temperature === 'chaud' && days > 3) {
     risks.push({ label: 'Lead chaud inactif depuis ' + days + 'j', severity: 'danger' });

@@ -7,6 +7,33 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.2] — 2026-06-10 — Cohérence relances
+
+### Corrigé
+- **Alerte et risques divergeaient sur la prochaine action (N4)** : un lead chaud avec
+  un type de prochaine action mais **sans date** était compté « Urgence » (Dashboard,
+  cloche, filtres rouges) mais absent de la vue À relancer. Nouveau helper
+  `hasPlannedNextAction` — **source de vérité unique** : une prochaine action n'est
+  « planifiée » que si elle a une date. `getAlertLevel`, `getLeadRisks` et tous les
+  prédicats UI (KPI Dashboard « Sans prochaine action », vue Leads « Sans action »,
+  fiche lead) passent par ce helper — plus aucune condition en dur, impossible de
+  re-diverger. Libellé dédié « Prochaine action sans date » quand un type est saisi
+  sans date.
+- **Aucune détection de prochaine action échue (N5)** : un rappel planifié dans le
+  passé n'apparaissait nulle part si l'activité du lead était par ailleurs récente.
+  Nouveau risque « Action planifiée dépassée de Xj » dans `getLeadRisks` (warning
+  jusqu'à 3 jours de retard, danger au-delà), mutuellement exclusif avec le risque
+  « manquante ». La vue À relancer en bénéficie sans modification (passe-plat de
+  `getLeadRisks`). Les compteurs d'Urgence (`getAlertLevel`) restent volontairement
+  inchangés : risques et alertes sont deux échelles distinctes.
+
+### Ajouté
+- **Harnais risques/alertes** (`scripts/harness-risks.ts`, `npx tsx`) : 43 assertions —
+  cohérence N4, bornes et exclusivité N5, non-régression des risques historiques et de
+  `getFollowUpLeads`.
+
+---
+
 ## [3.1.1] — 2026-06-10 — Intégrité des données
 
 ### Corrigé
@@ -102,6 +129,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.1.2]: https://github.com/Sapulse/boat/releases/tag/v3.1.2
 [3.1.1]: https://github.com/Sapulse/boat/releases/tag/v3.1.1
 [3.1.0]: https://github.com/Sapulse/boat/releases/tag/v3.1.0
 [3.0.2]: https://github.com/Sapulse/boat/releases/tag/v3.0.2
