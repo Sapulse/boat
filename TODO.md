@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3 fiabilisé** (dernier tag `v3.1.5`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.3** (dernier tag `v3.3.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -45,8 +45,17 @@ auto). Commits sémantiques, sans Co-Authored-By.
   React Compiler), **audit 0 vulnérabilité** (react-router 7.17), lockfile
   resynchronisé, liens KPI Dashboard filtrés + vue « Inactifs >7j »
   (correspondance compteur↔liste), import vCard QUOTED-PRINTABLE, a11y
-  (modale Échap/focus-trap, listes au clavier). **3 harnais committés
-  (126 assertions)** : `scripts/harness-{reducer,risks,vcard}.ts` via `npx tsx`
+  (modale Échap/focus-trap, listes au clavier). **3 harnais committés** :
+  `scripts/harness-{reducer,risks,vcard}.ts` via `npx tsx`
+
+### Fonctionnalités v3.2 / v3.3
+- **`v3.2.0`** — modèles de message : gestion libre (créer/renommer/supprimer,
+  garde-fou min-1), type **email | sms**, migration localStorage sans perte
+  (double lecture `templates`/`emailTemplates`, prouvée au harnais — 142
+  assertions au total)
+- **`v3.3.0`** — bouton « Envoyer SMS » sur la fiche lead : modèles SMS,
+  lien `sms:` (`buildSms`, compromis iOS/Android), action « SMS » journalisée,
+  désactivé sans numéro — ⚠️ lien `sms:` à valider sur mobile réel post-déploiement
 
 ---
 
@@ -70,15 +79,11 @@ auto). Commits sémantiques, sans Co-Authored-By.
 
 ---
 
-## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES (v3.2.0)
+## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES
 
-- [ ] **Bouton « Envoyer SMS »** depuis le mobile : protocole `sms:`, même mécanique
-  que le mailto (réutilise templates + interpolation + journalisation d'une action)
-- [ ] **Plusieurs jeux de templates email** : créer / renommer / supprimer des modèles
-  (vs les 3 templates fixes actuels)
 - [ ] **Audit + optimisation de la vue mobile / responsive** : chantier transversal,
   nécessite un diagnostic responsive dédié avant de coder
-- [ ] *(déjà listées ci-dessous, candidates v3.2.0)* : règle auto-relance, couche IA email
+- [ ] *(déjà listées ci-dessous, candidates)* : règle auto-relance, couche IA email
 
 ## ➕ FONCTIONNALITÉS EN PLUS (faisables sur l'archi actuelle, sans backend)
 
