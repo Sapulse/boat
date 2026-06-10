@@ -8,7 +8,8 @@ import {
   type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -91,7 +92,10 @@ function DraggableCard({ lead }: { lead: Lead }) {
   return (
     <div
       ref={setNodeRef}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
+      // touch-action manipulation : pan/scroll natifs autorises (le TouchSensor
+      // n'active le drag qu'apres appui long), mais double-tap zoom desactive
+      // sur les cartes (evite le delai de 300ms et les zooms accidentels).
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: 'manipulation' }}
       {...attributes}
       {...listeners}
       onPointerDownCapture={e => { pointerDownAt.current = { x: e.clientX, y: e.clientY }; }}
@@ -165,8 +169,13 @@ export default function PipelinePage() {
   const [filterAlert, setFilterAlert] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
+  // Souris : drag des 5px (comportement historique). Tactile : APPUI LONG
+  // (250ms, tolerance 8px) pour demarrer un drag — un glissement court reste
+  // un SCROLL du board. PointerSensor seul rendait le scroll au doigt
+  // impossible (tout glissement >5px sur une carte devenait un drag).
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
   );
 
   const filteredLeads = useMemo(() => {
