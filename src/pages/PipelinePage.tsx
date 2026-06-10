@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
+  type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useDroppable } from '@dnd-kit/core';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
@@ -62,19 +62,20 @@ function LeadCard({ lead, overlay }: { lead: Lead; overlay?: boolean }) {
 // drag (qui depasse forcement 5px) ne declenche jamais la navigation.
 const CLICK_MOVE_THRESHOLD = 6;
 
-function SortableCard({ lead }: { lead: Lead }) {
+// Carte = PUR draggable (useDraggable), PAS une cible de drop : il n'y a aucun
+// tri intra-colonne a persister, et des cartes-cibles + closestCorners
+// faisaient parfois resoudre le drop vers une carte d'une colonne VOISINE
+// (mauvais statut applique). Les colonnes sont les seules droppables ->
+// le statut applique est toujours celui de la colonne visee.
+// Pas de transform sur la source : le DragOverlay porte le visuel du
+// deplacement, la source reste en place a 30% d'opacite.
+function DraggableCard({ lead }: { lead: Lead }) {
   const navigate = useNavigate();
   const pointerDownAt = useRef<{ x: number; y: number } | null>(null);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     data: { type: 'lead', lead },
   });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-  };
 
   // onPointerDownCapture s'execute en phase capture, AVANT le onPointerDown des
   // listeners dnd, sans le remplacer -> on memorise l'origine du geste sans
@@ -90,7 +91,7 @@ function SortableCard({ lead }: { lead: Lead }) {
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ opacity: isDragging ? 0.3 : 1 }}
       {...attributes}
       {...listeners}
       onPointerDownCapture={e => { pointerDownAt.current = { x: e.clientX, y: e.clientY }; }}
@@ -100,6 +101,14 @@ function SortableCard({ lead }: { lead: Lead }) {
     </div>
   );
 }
+
+// Detection de collision : la colonne SOUS LE POINTEUR d'abord (precis,
+// previsible — c'est la colonne que l'utilisateur vise), sinon l'intersection
+// de rectangles en secours (lacher en bordure). Aucune cible -> drop annule.
+const columnCollision: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  return within.length > 0 ? within : rectIntersection(args);
+};
 
 function Column({ status, leads, collapsed, onToggle }: { status: LeadStatus; leads: Lead[]; collapsed: boolean; onToggle: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { type: 'column', status } });
@@ -132,7 +141,7 @@ function Column({ status, leads, collapsed, onToggle }: { status: LeadStatus; le
       {!collapsed && (
         <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)]">
           {leads.map(lead => (
-            <SortableCard key={lead.id} lead={lead} />
+            <DraggableCard key={lead.id} lead={lead} />
           ))}
           {leads.length === 0 && (
             <div className="text-xs text-gray-400 text-center py-8">Aucun lead</div>
@@ -194,22 +203,21 @@ export default function PipelinePage() {
     const { active, over } = event;
     if (!over) return;
 
-    const leadId = active.id as string;
-    let newStatus: LeadStatus | undefined;
+    // Les colonnes sont les SEULES cibles droppables : `over` est forcement
+    // une colonne, le statut applique est toujours celui de la colonne visee.
+    const newStatus = over.data?.current?.status as LeadStatus | undefined;
+    if (!newStatus) return;
 
-    if (over.data?.current?.type === 'column') {
-      newStatus = over.data.current.status as LeadStatus;
-    } else {
-      const overLead = state.leads.find(l => l.id === over.id);
-      if (overLead) newStatus = overLead.status;
+    const currentLead = state.leads.find(l => l.id === active.id);
+    if (currentLead && currentLead.status !== newStatus) {
+      updateLeadStatus(currentLead.id, newStatus);
     }
+  };
 
-    if (newStatus) {
-      const currentLead = state.leads.find(l => l.id === leadId);
-      if (currentLead && currentLead.status !== newStatus) {
-        updateLeadStatus(leadId, newStatus);
-      }
-    }
+  // Drag annule (Echap, perte du pointeur) : sans ce handler, l'overlay
+  // fantome de la carte restait affiche jusqu'au drag suivant.
+  const handleDragCancel = () => {
+    setActiveLead(null);
   };
 
   const toggleCollapsed = (status: LeadStatus) => {
@@ -269,9 +277,10 @@ export default function PipelinePage() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={columnCollision}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
         <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 lg:-mx-6 lg:px-6">
           {PRIMARY_STATUSES.map(status => (
