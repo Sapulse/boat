@@ -13,6 +13,7 @@ import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
+import { activateOnKey } from '../lib/a11y';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
 
@@ -162,7 +163,7 @@ export default function DashboardPage() {
           {stats.urgentLeads.length > 0 ? (
             <div className="space-y-1.5">
               {stats.urgentLeads.map(lead => (
-                <div key={lead.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                   <AlertDot level={getAlertLevel(lead)} />
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <span className="text-gray-400">{daysSince(lead.lastActionDate || lead.createdAt)}j</span>
@@ -182,7 +183,7 @@ export default function DashboardPage() {
           {stats.hotLeads.length > 0 ? (
             <div className="space-y-1.5">
               {stats.hotLeads.map(lead => (
-                <div key={lead.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <StatusBadge status={lead.status} />
                 </div>
@@ -201,7 +202,7 @@ export default function DashboardPage() {
           {stats.devisSansRelance.length > 0 ? (
             <div className="space-y-1.5">
               {stats.devisSansRelance.map(lead => (
-                <div key={lead.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <span className="text-warning-600">{daysSince(lead.lastActionDate || lead.createdAt)}j</span>
                 </div>
@@ -220,7 +221,7 @@ export default function DashboardPage() {
           {stats.sansProchAction.length > 0 ? (
             <div className="space-y-1.5">
               {stats.sansProchAction.map(lead => (
-                <div key={lead.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <StatusBadge status={lead.status} />
                 </div>
@@ -316,7 +317,7 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {stats.byCommercial.map(c => (
-                <tr key={c.name} className="border-b border-gray-100 cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/performance?commercial=${state.commercials.find(co => co.name === c.name)?.id || ''}`)}>
+                <tr key={c.name} tabIndex={0} className="border-b border-gray-100 cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/performance?commercial=${state.commercials.find(co => co.name === c.name)?.id || ''}`)} onKeyDown={activateOnKey(() => navigate(`/performance?commercial=${state.commercials.find(co => co.name === c.name)?.id || ''}`))}>
                   <td className="px-4 py-2.5 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-2.5 text-right text-gray-600">{c.actifs}</td>
                   <td className="px-4 py-2.5 text-right text-success-600 font-medium">{c.signes}</td>

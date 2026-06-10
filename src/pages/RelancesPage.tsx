@@ -6,6 +6,7 @@ import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/Status
 import EmptyState from '../components/ui/EmptyState';
 import { getAlertLevel, getLeadFullName, cn } from '../lib/utils';
 import { getFollowUpLeads } from '../lib/relances';
+import { activateOnKey } from '../lib/a11y';
 
 export default function RelancesPage() {
   const { state, getCommercialName } = useApp();
@@ -70,7 +71,10 @@ export default function RelancesPage() {
           {items.map(({ lead, risks, days }) => (
             <div
               key={lead.id}
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(`/leads/${lead.id}`)}
+              onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
               className="flex items-start gap-3 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
             >
               <div className="pt-0.5"><AlertDot level={getAlertLevel(lead)} /></div>

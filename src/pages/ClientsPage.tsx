@@ -6,6 +6,7 @@ import { formatDate, formatCurrency, getLeadFullName } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { BOAT_TYPES, SOURCES } from '../data/constants';
+import { activateOnKey } from '../lib/a11y';
 
 export default function ClientsPage() {
   const { state, getCommercialName } = useApp();
@@ -163,8 +164,10 @@ export default function ClientsPage() {
               {clients.map(lead => (
                 <tr
                   key={lead.id}
+                  tabIndex={0}
                   className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => navigate(`/leads/${lead.id}`)}
+                  onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>

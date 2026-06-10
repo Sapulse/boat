@@ -9,6 +9,7 @@ import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
+import { activateOnKey } from '../lib/a11y';
 
 type SavedView = { label: string; key: string; apply: () => void };
 
@@ -289,7 +290,7 @@ export default function LeadsPage() {
                 return (
                   <tr key={lead.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
                     <td className="px-3 py-2.5"><AlertDot level={alert} /></td>
-                    <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)}>
+                    <td tabIndex={0} className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                       <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>
                       <div className="text-xs text-gray-500">{lead.email || lead.phone}</div>
                     </td>
