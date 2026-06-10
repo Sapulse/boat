@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3** (dernier tag `v3.0.2`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3 fiabilisé** (dernier tag `v3.1.5`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -28,6 +28,25 @@ auto). Commits sémantiques, sans Co-Authored-By.
   (parser sans lookbehind regex)
 - **`v3.0.2`** — finition UI : libellés KPI non tronqués (`truncate` retiré) + accents
   harmonisés sur tous les libellés affichés et en-têtes d'export CSV
+- **`v3.1.0`** — gestion des actions d'un lead : prochaine action éditable,
+  historique modifiable/supprimable (actions reducer confinées)
+
+### Série de fiabilisation du 10/06 (check Fable complet → 5 lots)
+- **`v3.1.1`** — intégrité des données : re-seed destructif sur liste vide corrigé,
+  `lastActionDate` insensible aux actions antidatées, jalons posés dès la création
+  (+ harnais reducer)
+- **`v3.1.2`** — cohérence relances : prédicat unifié `hasPlannedNextAction` (source
+  de vérité unique alerte/risques/UI), détection des actions planifiées échues
+  (+ harnais risques)
+- **`v3.1.3`** — résilience : ErrorBoundary racine (écran de secours au lieu d'une
+  page blanche), page 404
+- **`v3.1.4`** — finition : 14 accents résiduels, encodage de l'adresse mailto
+- **`v3.1.5`** — lot petits & moyens : **lint 0 erreur** (découpage contexte,
+  React Compiler), **audit 0 vulnérabilité** (react-router 7.17), lockfile
+  resynchronisé, liens KPI Dashboard filtrés + vue « Inactifs >7j »
+  (correspondance compteur↔liste), import vCard QUOTED-PRINTABLE, a11y
+  (modale Échap/focus-trap, listes au clavier). **3 harnais committés
+  (126 assertions)** : `scripts/harness-{reducer,risks,vcard}.ts` via `npx tsx`
 
 ---
 
@@ -51,13 +70,23 @@ auto). Commits sémantiques, sans Co-Authored-By.
 
 ---
 
+## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES (v3.2.0)
+
+- [ ] **Bouton « Envoyer SMS »** depuis le mobile : protocole `sms:`, même mécanique
+  que le mailto (réutilise templates + interpolation + journalisation d'une action)
+- [ ] **Plusieurs jeux de templates email** : créer / renommer / supprimer des modèles
+  (vs les 3 templates fixes actuels)
+- [ ] **Audit + optimisation de la vue mobile / responsive** : chantier transversal,
+  nécessite un diagnostic responsive dédié avant de coder
+- [ ] *(déjà listées ci-dessous, candidates v3.2.0)* : règle auto-relance, couche IA email
+
 ## ➕ FONCTIONNALITÉS EN PLUS (faisables sur l'archi actuelle, sans backend)
 
 - [ ] **Couche IA email** : pré-rédaction d'un mail lisant la fiche du lead. Terrain prêt
   (templates existent). Nécessite une clé API.
 - [ ] **Règle auto-relance** : passage auto en relance après X jours (demande réunion).
-  Détection déjà là (`getLeadRisks`) ; reste à formaliser l'automatisme SI Ocean Boat le
-  confirme (ils ont laissé ouvert).
+  Détection déjà là (`getLeadRisks`, risque « action échue » depuis v3.1.2) ; reste à
+  formaliser l'automatisme SI Ocean Boat le confirme (ils ont laissé ouvert).
 - [ ] **Connexion Infocob** (leur CRM) : bouton "ajouter sur Infocob". Phase lointaine,
   dépend de l'API Infocob.
 
@@ -69,25 +98,23 @@ auto). Commits sémantiques, sans Co-Authored-By.
 - [ ] **Fichier Excel** : confirmer format (csv/xlsx), signification de "DV"/"BO",
   liste complète des commerciaux et des sources
 - [ ] **Jeu de statuts définitif** + règle auto-relance (à valider à l'usage)
+- [ ] **Vue Prospects** : faut-il exclure aussi perdus/reportés (aujourd'hui seuls les
+  signés sont exclus — comportement documenté, changement = décision métier)
 
 ---
 
 ## 🐛 DETTE TECHNIQUE / À SURVEILLER (non bloquant)
 
-- [ ] `npm audit fix` (F1/F3 du rapport sécurité : react-router CVE non exploitables ici,
-  postcss/brace-expansion build-time) — lot dépendances dédié
-- [ ] **Lint React-Compiler** : 8 erreurs `react-hooks/*` (`SortIcon` créé pendant le
-  render dans LeadsPage, `Date.now()`/`new Date()` pendant le render Dashboard/Performance,
-  immutability). N'ont jamais bloqué le build/déploiement (la CI ne lance que `build`),
-  mais `npm run lint` sort en erreur — à nettoyer
-- [ ] **Bundle monolithique ~845 kB** (gzip ~243) : code-splitting par route (`React.lazy`)
+- [ ] **Bundle monolithique ~855 kB** (gzip ~245) : code-splitting par route (`React.lazy`)
   pour alléger le 1er chargement
 - [ ] **Acquisition (onglets Volumes / Saisie)** : copient `state` dans un `useState` local
   au montage → désync si l'état change ailleurs + perte de saisie si on quitte sans
   « Enregistrer » — à refactorer
 - [ ] Le Dashboard refait des filtres "à relancer" inline au lieu de réutiliser
-  `getLeadRisks` (redondance logique avec la vue À relancer) — à unifier un jour
-- [ ] Lockfile : `name` = "boat-temp" (cosmétique)
+  `getLeadRisks` (redondance logique avec la vue À relancer) — **partiellement entamé** :
+  les prédicats « prochaine action » et « inactif >7j » sont désormais partagés
+  (`hasPlannedNextAction`, `isInactiveOverWeek` dans `utils.ts`) ; restent les blocs
+  « chauds sans action » / « devis sans relance » à unifier un jour
 - [ ] Versions de dépendances très avancées (React 19, Vite 8, TS 6) — surveiller la
   reproductibilité du build
 
