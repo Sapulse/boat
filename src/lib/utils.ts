@@ -93,6 +93,16 @@ export function isoDateDaysAgo(days: number): string {
   return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 }
 
+/**
+ * Predicat partage entre le KPI Dashboard "Sans action >7j" et la vue
+ * "Inactifs" de la page Leads (correspondance compteur <-> liste garantie).
+ * Simple predicat d'AFFICHAGE : volontairement distinct de getLeadRisks /
+ * getAlertLevel (qui restent les sources de verite des risques et alertes).
+ */
+export function isInactiveOverWeek(lead: Lead): boolean {
+  return isLeadActive(lead.status) && daysSince(lead.lastActionDate || lead.createdAt) > 7;
+}
+
 export type RiskItem = { label: string; severity: 'warning' | 'danger' };
 
 export function getLeadRisks(lead: Lead): RiskItem[] {

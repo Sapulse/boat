@@ -11,7 +11,7 @@ import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, isoDateDaysAgo } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
@@ -42,7 +42,7 @@ export default function DashboardPage() {
     const urgent = leads.filter(l => getAlertLevel(l) === 'red');
     const warning = leads.filter(l => getAlertLevel(l) === 'orange');
     const hotNoAction = leads.filter(l => l.temperature === 'chaud' && isLeadActive(l.status) && !hasPlannedNextAction(l));
-    const noRecentAction = leads.filter(l => isLeadActive(l.status) && daysSince(l.lastActionDate || l.createdAt) > 7);
+    const noRecentAction = leads.filter(isInactiveOverWeek);
     const devisSansRelance = leads.filter(l => l.status === 'devis_envoye' && daysSince(l.lastActionDate || l.createdAt) > 5);
     const sansProchAction = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
 
@@ -81,6 +81,19 @@ export default function DashboardPage() {
 
   const hasFilters = filterCommercial || filterSource || filterPeriod;
 
+  // Les KPI sont calcules avec les filtres actifs (commercial / source /
+  // periode) : les liens les propagent pour que la liste ouverte corresponde
+  // exactement au compteur clique. /clients ne recoit pas la periode (pas de
+  // filtre equivalent sur cette page).
+  const buildLink = (path: string, extra?: Record<string, string>) => {
+    const params = new URLSearchParams(extra);
+    if (filterCommercial) params.set('commercial', filterCommercial);
+    if (filterSource) params.set('source', filterSource);
+    if (filterPeriod && path === '/leads') params.set('period', filterPeriod);
+    const qs = params.toString();
+    return qs ? `${path}?${qs}` : path;
+  };
+
   return (
     <div className="space-y-6">
       <PrintHeader title="Tableau de bord commercial" />
@@ -114,22 +127,24 @@ export default function DashboardPage() {
 
       {/* KPI Row - clickable */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="cursor-pointer" onClick={() => navigate('/leads')}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads'))}>
           <KpiCard title="Leads actifs" value={stats.active} icon={<Users className="w-5 h-5" />} color="text-primary-600" />
         </div>
-        <div className="cursor-pointer" onClick={() => navigate('/leads?status=signe')}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { status: 'signe' }))}>
           <KpiCard title="Signés" value={stats.signed} icon={<CheckCircle2 className="w-5 h-5" />} color="text-success-600" />
         </div>
-        <div className="cursor-pointer" onClick={() => navigate('/leads?alert=red')}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { alert: 'red' }))}>
           <KpiCard title="Urgences" value={stats.urgent} icon={<AlertTriangle className="w-5 h-5" />} color="text-danger-600" />
         </div>
-        <div className="cursor-pointer" onClick={() => navigate('/leads?status=devis_envoye')}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { status: 'devis_envoye' }))}>
           <KpiCard title="Volume devis" value={formatCurrency(stats.totalQuotes)} icon={<FileText className="w-5 h-5" />} color="text-purple-600" />
         </div>
-        <div className="cursor-pointer" onClick={() => navigate('/clients')}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/clients'))}>
           <KpiCard title="Volume signé" value={formatCurrency(stats.totalSigned)} icon={<DollarSign className="w-5 h-5" />} color="text-success-600" />
         </div>
-        <KpiCard title="Sans action >7j" value={stats.noRecentAction} icon={<Clock className="w-5 h-5" />} color="text-warning-600" />
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { view: 'inactifs' }))}>
+          <KpiCard title="Sans action >7j" value={stats.noRecentAction} icon={<Clock className="w-5 h-5" />} color="text-warning-600" />
+        </div>
       </div>
 
       {/* Priority blocks */}
@@ -140,7 +155,7 @@ export default function DashboardPage() {
             <h3 className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-danger-600" /> Leads urgents
             </h3>
-            <button onClick={() => navigate('/leads?alert=red')} className="text-[10px] text-primary-600 hover:underline flex items-center gap-0.5">
+            <button onClick={() => navigate(buildLink('/leads', { alert: 'red' }))} className="text-[10px] text-primary-600 hover:underline flex items-center gap-0.5">
               Tout <ArrowRight className="w-3 h-3" />
             </button>
           </div>

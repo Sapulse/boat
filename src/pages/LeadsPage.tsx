@@ -4,7 +4,7 @@ import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phon
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
@@ -43,23 +43,28 @@ export default function LeadsPage() {
   const [importResult, setImportResult] = useState<{ fresh: ParsedContact[]; duplicates: DuplicateMatch[] } | null>(null);
 
   const [search, setSearch] = useState('');
-  const [filterCommercial, setFilterCommercial] = useState('');
+  // Filtres initialisables par l'URL : les liens KPI du Dashboard propagent
+  // commercial / source / period / view pour que la liste ouverte corresponde
+  // exactement au compteur clique. Les selects restent visibles et
+  // reinitialisables (aucun filtre cache).
+  const [filterCommercial, setFilterCommercial] = useState(searchParams.get('commercial') ?? '');
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') ?? '');
   const [filterBoatType, setFilterBoatType] = useState('');
   const [filterCondition, setFilterCondition] = useState('');
-  const [filterSource, setFilterSource] = useState('');
+  const [filterSource, setFilterSource] = useState(searchParams.get('source') ?? '');
   const [filterAlert, setFilterAlert] = useState(searchParams.get('alert') ?? '');
   const [filterTemp, setFilterTemp] = useState('');
+  const [filterPeriod, setFilterPeriod] = useState(searchParams.get('period') ?? '');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [viewMode, setViewMode] = useState<'prospects' | 'all'>(
     TERMINAL_STATUSES.includes(searchParams.get('status') ?? '') ? 'all' : 'prospects'
   );
-  const [activeView, setActiveView] = useState('');
+  const [activeView, setActiveView] = useState(searchParams.get('view') === 'inactifs' ? 'inactifs' : '');
 
   const clearAllFilters = () => {
     setFilterCommercial(''); setFilterStatus(''); setFilterBoatType(''); setFilterCondition('');
-    setFilterSource(''); setFilterAlert(''); setFilterTemp(''); setActiveView('');
+    setFilterSource(''); setFilterAlert(''); setFilterTemp(''); setFilterPeriod(''); setActiveView('');
   };
 
   const savedViews: SavedView[] = [
@@ -67,6 +72,7 @@ export default function LeadsPage() {
     { label: 'Chauds', key: 'chaud', apply: () => { clearAllFilters(); setFilterTemp('chaud'); setActiveView('chaud'); } },
     { label: 'Sans action', key: 'no-action', apply: () => { clearAllFilters(); setActiveView('no-action'); } },
     { label: 'Devis à relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
+    { label: 'Inactifs >7j', key: 'inactifs', apply: () => { clearAllFilters(); setActiveView('inactifs'); } },
   ];
 
   const filtered = useMemo(() => {
@@ -94,7 +100,15 @@ export default function LeadsPage() {
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterAlert) leads = leads.filter(l => getAlertLevel(l) === filterAlert);
     if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
+    if (filterPeriod) {
+      // Meme calcul que le filtre periode du Dashboard (isoDateDaysAgo).
+      const cutoff = isoDateDaysAgo(Number(filterPeriod));
+      leads = leads.filter(l => l.createdAt >= cutoff);
+    }
     if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
+    // Vue "Inactifs >7j" : predicat partage avec le KPI Dashboard "Sans action
+    // >7j" (isInactiveOverWeek) — correspondance compteur <-> liste exacte.
+    if (activeView === 'inactifs') leads = leads.filter(isInactiveOverWeek);
 
     leads.sort((a, b) => {
       let cmp = 0;
@@ -110,14 +124,14 @@ export default function LeadsPage() {
     });
 
     return leads;
-  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, sortField, sortDir, viewMode, activeView]);
+  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, filterPeriod, sortField, sortDir, viewMode, activeView]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('desc'); }
   };
 
-  const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || activeView;
+  const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || filterPeriod || activeView;
 
   const handleExportCSV = () => {
     const headers = ['Nom', 'Prénom', 'Email', 'Téléphone', 'Commercial', 'Source', 'Statut', 'Type', 'État', 'Intérêt', 'Budget', 'Devis', 'Température', 'Date création'];
@@ -223,6 +237,13 @@ export default function LeadsPage() {
             <option value="">Urgence</option>
             <option value="orange">Orange</option>
             <option value="red">Rouge</option>
+          </select>
+          <select className="select text-xs" value={filterPeriod} onChange={e => setFilterPeriod(e.target.value)}>
+            <option value="">Période</option>
+            <option value="7">7 derniers jours</option>
+            <option value="30">30 derniers jours</option>
+            <option value="90">3 derniers mois</option>
+            <option value="365">12 derniers mois</option>
           </select>
           {hasFilters ? (
             <button onClick={clearAllFilters} className="btn-ghost btn-sm text-xs">Réinitialiser</button>

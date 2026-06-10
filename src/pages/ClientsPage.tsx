@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Check, Users, Euro } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { formatDate, formatCurrency, getLeadFullName } from '../lib/utils';
@@ -11,10 +11,14 @@ export default function ClientsPage() {
   const { state, getCommercialName } = useApp();
   const navigate = useNavigate();
 
+  const [searchParams] = useSearchParams();
+
   const [search, setSearch] = useState('');
-  const [filterCommercial, setFilterCommercial] = useState('');
+  // commercial / source initialisables par l'URL (lien KPI "Volume signé" du
+  // Dashboard) — selects visibles et modifiables, comme sur la page Leads.
+  const [filterCommercial, setFilterCommercial] = useState(searchParams.get('commercial') ?? '');
   const [filterBoatType, setFilterBoatType] = useState('');
-  const [filterSource, setFilterSource] = useState('');
+  const [filterSource, setFilterSource] = useState(searchParams.get('source') ?? '');
 
   const clients = useMemo(() => {
     let leads = state.leads.filter(l => l.status === 'signe');
