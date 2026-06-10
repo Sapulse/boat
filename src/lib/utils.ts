@@ -59,6 +59,18 @@ export function hasPlannedNextAction(lead: Pick<Lead, 'nextActionDate'>): boolea
   return !!lead.nextActionDate;
 }
 
+/**
+ * Source de verite UNIQUE de la regle metier (v3.4) : une prochaine action
+ * planifiee dans le FUTUR (date strictement posterieure a aujourd'hui) SUSPEND
+ * les alertes et risques d'INACTIVITE — le rappel est pose, il n'y a rien a
+ * relancer d'ici la. EXCEPTION geree par les appelants : un lead CHAUD reste
+ * signalable meme avec une action future (un chaud silencieux est preoccupant).
+ * Une date d'AUJOURD'HUI ou PASSEE ne suspend rien (echue = risque dedie).
+ */
+export function hasFutureNextAction(lead: Pick<Lead, 'nextActionDate'>): boolean {
+  return !!lead.nextActionDate && lead.nextActionDate > toISODate(new Date());
+}
+
 export function getAlertLevel(lead: Lead): AlertLevel {
   if (!ACTIVE_STATUSES.includes(lead.status)) return 'none';
 
@@ -66,6 +78,9 @@ export function getAlertLevel(lead: Lead): AlertLevel {
   const days = daysSince(lastAction);
 
   if (lead.temperature === 'chaud' && !hasPlannedNextAction(lead)) return 'red';
+  // Action future planifiee -> pas d'alerte d'inactivite (seuils 7/14j),
+  // SAUF lead chaud : les seuils restent actifs (exception metier).
+  if (hasFutureNextAction(lead) && lead.temperature !== 'chaud') return 'none';
   if (days >= 14) return 'red';
   if (days >= 7) return 'orange';
   return 'none';
@@ -100,7 +115,13 @@ export function isoDateDaysAgo(days: number): string {
  * getAlertLevel (qui restent les sources de verite des risques et alertes).
  */
 export function isInactiveOverWeek(lead: Lead): boolean {
-  return isLeadActive(lead.status) && daysSince(lead.lastActionDate || lead.createdAt) > 7;
+  // Une action future planifiee suspend l'inactivite (regle v3.4) — coherent
+  // avec getAlertLevel/getLeadRisks. Pas d'exception chaud ici : ce predicat
+  // compte les leads SANS suivi prevu ; le chaud silencieux est porte par
+  // l'alerte et le risque "chaud inactif".
+  return isLeadActive(lead.status)
+    && !hasFutureNextAction(lead)
+    && daysSince(lead.lastActionDate || lead.createdAt) > 7;
 }
 
 export type RiskItem = { label: string; severity: 'warning' | 'danger' };
@@ -130,18 +151,24 @@ export function getLeadRisks(lead: Lead): RiskItem[] {
       });
     }
   }
+  // Regle v3.4 : une action future planifiee SUSPEND les risques d'inactivite
+  // ci-dessous (le rappel est pose) — SAUF "lead chaud inactif", qui reste
+  // actif quoi qu'il arrive (un chaud silencieux est preoccupant meme avec un
+  // rdv lointain). Le risque "echue" plus haut n'est pas concerne (date passee).
+  const inactivitySuspended = hasFutureNextAction(lead);
+
   if (lead.temperature === 'chaud' && days > 3) {
     risks.push({ label: 'Lead chaud inactif depuis ' + days + 'j', severity: 'danger' });
   }
-  if (lead.status === 'devis_envoye' && days > 5) {
+  if (!inactivitySuspended && lead.status === 'devis_envoye' && days > 5) {
     risks.push({ label: 'Devis envoyé sans relance depuis ' + days + 'j', severity: days > 10 ? 'danger' : 'warning' });
   }
-  if (days >= 14) {
+  if (!inactivitySuspended && days >= 14) {
     risks.push({ label: 'Aucune action depuis ' + days + ' jours', severity: 'danger' });
-  } else if (days >= 7) {
+  } else if (!inactivitySuspended && days >= 7) {
     risks.push({ label: 'Dernière action il y a ' + days + ' jours', severity: 'warning' });
   }
-  if (lead.priority === 'critique' && days > 2) {
+  if (!inactivitySuspended && lead.priority === 'critique' && days > 2) {
     risks.push({ label: 'Lead critique sans action récente', severity: 'danger' });
   }
   return risks;

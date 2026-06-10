@@ -12,6 +12,12 @@
  *  - N5 : risque "Action planifiee depassee" quand nextActionDate < aujourd'hui
  *    (warning 1-3j de retard, danger au-dela) ; mutuellement exclusif avec le
  *    risque "manquante" (N4).
+ *  - Regle v3.4 : une prochaine action planifiee dans le FUTUR suspend les
+ *    alertes/risques d'INACTIVITE (hasFutureNextAction), SAUF "lead chaud
+ *    inactif" qui reste actif ; isInactiveOverWeek suit la meme regle.
+ *    NB fixtures : les cas d'inactivite utilisent nextActionDate = AUJOURD'HUI
+ *    (planifiee, ni future ni echue = neutre) — une date future les
+ *    suspendrait desormais, c'est precisement la regle testee.
  *  - Non-regression : risques existants (chaud inactif, devis sans relance,
  *    7j/14j sans action, critique) et getFollowUpLeads (pur passe-plat de
  *    getLeadRisks) inchanges.
@@ -22,6 +28,8 @@ import {
   getAlertLevel,
   getLeadRisks,
   hasPlannedNextAction,
+  hasFutureNextAction,
+  isInactiveOverWeek,
   toISODate,
   type RiskItem,
 } from '../src/lib/utils';
@@ -180,25 +188,25 @@ section('Non-regression — chaud inactif > 3j');
   check('"Lead chaud inactif depuis 5j" danger', hasRisk(risks, 'chaud inactif depuis 5j') && riskSeverity(risks, 'chaud inactif') === 'danger');
 }
 
-section('Non-regression — devis envoye sans relance');
+section('Non-regression — devis envoye sans relance (fixture neutre : date du jour)');
 {
-  const w = getLeadRisks(makeLead({ status: 'devis_envoye', lastActionDate: d(-6), nextActionDate: d(7) }));
+  const w = getLeadRisks(makeLead({ status: 'devis_envoye', lastActionDate: d(-6), nextActionDate: d(0) }));
   check('6j -> warning', riskSeverity(w, 'Devis envoyé sans relance') === 'warning');
-  const dgr = getLeadRisks(makeLead({ status: 'devis_envoye', lastActionDate: d(-12), nextActionDate: d(7) }));
+  const dgr = getLeadRisks(makeLead({ status: 'devis_envoye', lastActionDate: d(-12), nextActionDate: d(0) }));
   check('12j -> danger', riskSeverity(dgr, 'Devis envoyé sans relance') === 'danger');
 }
 
-section('Non-regression — inactivite 7j / 14j');
+section('Non-regression — inactivite 7j / 14j (fixture neutre : date du jour)');
 {
-  const w = getLeadRisks(makeLead({ lastActionDate: d(-8), nextActionDate: d(7) }));
+  const w = getLeadRisks(makeLead({ lastActionDate: d(-8), nextActionDate: d(0) }));
   check('8j -> "Dernière action il y a 8 jours" warning', riskSeverity(w, 'Dernière action il y a 8 jours') === 'warning');
-  const dgr = getLeadRisks(makeLead({ lastActionDate: d(-15), nextActionDate: d(7) }));
+  const dgr = getLeadRisks(makeLead({ lastActionDate: d(-15), nextActionDate: d(0) }));
   check('15j -> "Aucune action depuis 15 jours" danger', riskSeverity(dgr, 'Aucune action depuis 15 jours') === 'danger');
 }
 
-section('Non-regression — priorite critique sans action recente');
+section('Non-regression — priorite critique sans action recente (fixture neutre)');
 {
-  const risks = getLeadRisks(makeLead({ priority: 'critique', lastActionDate: d(-3), nextActionDate: d(7) }));
+  const risks = getLeadRisks(makeLead({ priority: 'critique', lastActionDate: d(-3), nextActionDate: d(0) }));
   check('"Lead critique sans action récente" danger', riskSeverity(risks, 'Lead critique sans action récente') === 'danger');
 }
 
@@ -211,11 +219,78 @@ section('Non-regression — statuts terminaux : aucun risque, aucune alerte');
   }
 }
 
-section('Non-regression — getAlertLevel inactivite (14j rouge, 7j orange)');
+section('Non-regression — getAlertLevel inactivite (14j rouge, 7j orange — fixture neutre)');
 {
-  check('15j sans action -> red', getAlertLevel(makeLead({ lastActionDate: d(-15) })) === 'red');
-  check('8j sans action -> orange', getAlertLevel(makeLead({ lastActionDate: d(-8) })) === 'orange');
+  check('15j sans action -> red', getAlertLevel(makeLead({ lastActionDate: d(-15), nextActionDate: d(0) })) === 'red');
+  check('8j sans action -> orange', getAlertLevel(makeLead({ lastActionDate: d(-8), nextActionDate: d(0) })) === 'orange');
   check('0j -> none', getAlertLevel(makeLead({})) === 'none');
+}
+
+// ---------------------------------------------------------------------------
+// Regle v3.4 — une action FUTURE planifiee suspend l'inactivite (sauf chaud)
+// ---------------------------------------------------------------------------
+
+section('v3.4 — helper hasFutureNextAction');
+{
+  check('date future -> true', hasFutureNextAction(makeLead({ nextActionDate: d(5) })) === true);
+  check("date d'aujourd'hui -> false (ne suspend pas)", hasFutureNextAction(makeLead({ nextActionDate: d(0) })) === false);
+  check('date passee -> false', hasFutureNextAction(makeLead({ nextActionDate: d(-2) })) === false);
+  check('pas de date -> false', hasFutureNextAction(makeLead({ nextActionDate: '' })) === false);
+}
+
+section('v3.4 — inactif 9j SANS action future : alerte + risque (inchange)');
+{
+  const lead = makeLead({ lastActionDate: d(-9), nextActionType: '', nextActionDate: '' });
+  check("getAlertLevel = 'orange'", getAlertLevel(lead) === 'orange', `=${getAlertLevel(lead)}`);
+  check('risque "Dernière action il y a 9 jours" present', hasRisk(getLeadRisks(lead), 'Dernière action il y a 9 jours'));
+}
+
+section('v3.4 — LE FIX : inactif 9j AVEC action future J+5 -> plus aucune alerte/risque d\'inactivite');
+{
+  const lead = makeLead({ lastActionDate: d(-9), nextActionType: 'rdv', nextActionDate: d(5) });
+  const risks = getLeadRisks(lead);
+  check("getAlertLevel = 'none' (plus d'orange)", getAlertLevel(lead) === 'none', `=${getAlertLevel(lead)}`);
+  check('aucun risque du tout (suspension complete)', risks.length === 0, JSON.stringify(risks.map(r => r.label)));
+
+  const lead16 = makeLead({ lastActionDate: d(-16), nextActionDate: d(5) });
+  check('16j + action future -> none (rouge suspendu aussi)', getAlertLevel(lead16) === 'none');
+  check('pas de "Aucune action depuis"', !hasRisk(getLeadRisks(lead16), 'Aucune action depuis'));
+}
+
+section("v3.4 — L'EXCEPTION : lead CHAUD inactif 9j AVEC action future -> reste signale");
+{
+  const lead = makeLead({ temperature: 'chaud', lastActionDate: d(-9), nextActionType: 'rdv', nextActionDate: d(5) });
+  const risks = getLeadRisks(lead);
+  check("getAlertLevel = 'orange' (seuils actifs pour un chaud)", getAlertLevel(lead) === 'orange', `=${getAlertLevel(lead)}`);
+  check('risque "Lead chaud inactif depuis 9j" danger present', riskSeverity(risks, 'chaud inactif depuis 9j') === 'danger');
+  check('mais risque generique "Dernière action" suspendu (porte par le risque chaud)', !hasRisk(risks, 'Dernière action il y a'));
+  const lead15 = makeLead({ temperature: 'chaud', lastActionDate: d(-15), nextActionDate: d(5) });
+  check('chaud 15j + future -> red (seuils complets)', getAlertLevel(lead15) === 'red');
+}
+
+section('v3.4 — devis / critique suspendus par une action future');
+{
+  const devis = getLeadRisks(makeLead({ status: 'devis_envoye', lastActionDate: d(-8), nextActionDate: d(5) }));
+  check('devis 8j + future -> pas de risque devis', !hasRisk(devis, 'Devis envoyé sans relance'));
+  const crit = getLeadRisks(makeLead({ priority: 'critique', lastActionDate: d(-4), nextActionDate: d(5) }));
+  check('critique 4j + future -> pas de risque critique', !hasRisk(crit, 'Lead critique'));
+}
+
+section('v3.4 — une date PASSEE (echue) ne suspend RIEN : echu + inactivite cumulables');
+{
+  const lead = makeLead({ lastActionDate: d(-9), nextActionDate: d(-2) });
+  const risks = getLeadRisks(lead);
+  check('risque "dépassée de 2j" present (inchange)', hasRisk(risks, 'dépassée de 2j'));
+  check('risque "Dernière action il y a 9 jours" AUSSI present', hasRisk(risks, 'Dernière action il y a 9 jours'));
+  check("getAlertLevel = 'orange' (inactivite non suspendue)", getAlertLevel(lead) === 'orange');
+}
+
+section('v3.4 — isInactiveOverWeek coherent avec la regle');
+{
+  check('9j sans plan -> inactif', isInactiveOverWeek(makeLead({ lastActionDate: d(-9), nextActionType: '', nextActionDate: '' })) === true);
+  check('9j + action future -> PLUS inactif (le fix)', isInactiveOverWeek(makeLead({ lastActionDate: d(-9), nextActionDate: d(5) })) === false);
+  check('9j + date passee (echue) -> toujours inactif', isInactiveOverWeek(makeLead({ lastActionDate: d(-9), nextActionDate: d(-2) })) === true);
+  check("9j + date d'aujourd'hui -> toujours inactif (pas future)", isInactiveOverWeek(makeLead({ lastActionDate: d(-9), nextActionDate: d(0) })) === true);
 }
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 
@@ -44,7 +44,10 @@ export default function DashboardPage() {
     const warning = leads.filter(l => getAlertLevel(l) === 'orange');
     const hotNoAction = leads.filter(l => l.temperature === 'chaud' && isLeadActive(l.status) && !hasPlannedNextAction(l));
     const noRecentAction = leads.filter(isInactiveOverWeek);
-    const devisSansRelance = leads.filter(l => l.status === 'devis_envoye' && daysSince(l.lastActionDate || l.createdAt) > 5);
+    // Meme regle v3.4 que le risque "devis sans relance" de getLeadRisks : une
+    // action future planifiee suspend l'inactivite (sinon ce bloc divergerait
+    // de la vue A relancer).
+    const devisSansRelance = leads.filter(l => l.status === 'devis_envoye' && !hasFutureNextAction(l) && daysSince(l.lastActionDate || l.createdAt) > 5);
     const sansProchAction = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
 
     const totalQuotes = leads
