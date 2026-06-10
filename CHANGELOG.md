@@ -7,6 +7,42 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.5] — 2026-06-10 — Lot petits & moyens (6 étapes)
+
+### Corrigé
+- **Commentaire vue Prospects (N14)** : documente le comportement réel (seuls les
+  signés sont exclus ; perdus/reportés visibles) — aucun changement de code.
+- **Lockfile resynchronisé** : `name` (« boat-temp ») et `version` (« 0.0.0 »)
+  réalignés sur package.json.
+- **Lint React Compiler : 11 → 0 erreur** : contexte découpé (`appReducer.ts` module
+  pur testé par le harnais, `useApp.ts`, `AppContext.tsx` réduit au Provider),
+  `SortIcon` en composant module, calcul de période sorti du render
+  (`isoDateDaysAgo`, calcul strictement identique), `location.assign`. Comportement
+  visible inchangé (harnais 47/47 + 43/43).
+- **Dépendances : 4 → 0 vulnérabilité** (`npm audit fix`) : react-router 7.14.0 →
+  7.17.0, postcss, brace-expansion. Routes validées en preview.
+- **Import vCard : QUOTED-PRINTABLE décodé (N11)** : les exports vCard 2.1 (anciens
+  Android/Outlook) arrivent désormais avec leurs accents (`=C3=A9` → é) — charset
+  déclaré respecté (fallback UTF-8), soft line breaks gérés uniquement sur les
+  propriétés QP (padding base64 préservé), normalisation champ par champ vers le
+  pipeline d'échappement existant.
+- **Accessibilité (N12)** : modale fermable à Échap, focus-trap basique et
+  restauration du focus ; lignes cliquables (Leads, Clients, À relancer, Dashboard)
+  atteignables au clavier (Tab + Entrée/Espace), souris inchangée.
+
+### Ajouté
+- **Liens KPI filtrés + vue « Inactifs >7j » (N8)** : les liens du Dashboard
+  propagent les filtres actifs (commercial/source/période) vers les listes — le
+  compteur cliqué correspond exactement à la liste ouverte. Nouveau select
+  « Période » et nouvelle vue « Inactifs >7j » sur la page Leads (prédicat partagé
+  `isInactiveOverWeek` avec le KPI « Sans action >7j », désormais cliquable) ;
+  page Clients pré-filtrable par l'URL.
+- **Harnais vCard** (`scripts/harness-vcard.ts`, 36 assertions) : cas QP +
+  non-régression complète du parser (échappements, folding, multi-cartes,
+  doublons). Trois harnais committés au total (126 assertions).
+
+---
+
 ## [3.1.4] — 2026-06-10 — Finition
 
 ### Corrigé
@@ -161,6 +197,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.1.5]: https://github.com/Sapulse/boat/releases/tag/v3.1.5
 [3.1.4]: https://github.com/Sapulse/boat/releases/tag/v3.1.4
 [3.1.3]: https://github.com/Sapulse/boat/releases/tag/v3.1.3
 [3.1.2]: https://github.com/Sapulse/boat/releases/tag/v3.1.2
