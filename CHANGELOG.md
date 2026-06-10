@@ -7,6 +7,22 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.1.3] — 2026-06-10 — Résilience
+
+### Ajouté
+- **ErrorBoundary racine** : toute erreur de rendu (y compris un crash du provider au
+  montage, ex. state localStorage corrompu à la main) affiche désormais un écran de
+  secours propre — message rassurant (les données locales ne sont pas perdues), bouton
+  « Recharger la page », détail technique repliable — au lieu d'une page blanche.
+  Volontairement sans bouton de réinitialisation des données (pas d'action destructive
+  sous la main d'un utilisateur paniqué).
+- **Page 404** : une URL inconnue (`#/nimporte`) affiche une page « Page introuvable »
+  dans le layout (sidebar et header restent disponibles) avec retour au tableau de
+  bord, au lieu d'un layout vide. Les routes existantes sont prioritaires (matching
+  par spécificité).
+
+---
+
 ## [3.1.2] — 2026-06-10 — Cohérence relances
 
 ### Corrigé
@@ -129,6 +145,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.1.3]: https://github.com/Sapulse/boat/releases/tag/v3.1.3
 [3.1.2]: https://github.com/Sapulse/boat/releases/tag/v3.1.2
 [3.1.1]: https://github.com/Sapulse/boat/releases/tag/v3.1.1
 [3.1.0]: https://github.com/Sapulse/boat/releases/tag/v3.1.0

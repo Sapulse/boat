@@ -13,6 +13,7 @@ import EquipePage from './pages/EquipePage';
 import ExportsPage from './pages/ExportsPage';
 import TemplatesPage from './pages/TemplatesPage';
 import RelancesPage from './pages/RelancesPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
   return (
@@ -32,6 +33,10 @@ export default function App() {
             <Route path="/equipe" element={<EquipePage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/exports" element={<ExportsPage />} />
+            {/* Catch-all : URL hash inconnue -> 404 DANS le layout (sidebar et
+                header restent disponibles). Les routes explicites ci-dessus
+                gardent la priorite (matching par specificite). */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
       </AppProvider>
