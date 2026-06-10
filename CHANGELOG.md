@@ -7,6 +7,34 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.4.0] — 2026-06-11 — Suivi d'action & mobile
+
+### Corrigé
+- **Une action future planifiée suspend les alertes d'inactivité (sauf leads
+  chauds)** : un lead avec un rappel planifié dans le futur n'est plus affiché
+  « en retard » (alertes 7/14 j, risques devis sans relance / critique / dernière
+  action, KPI « Sans action >7j » et vue Inactifs). Exception métier : un lead
+  **chaud** silencieux reste signalé même avec une action future. Une date
+  échue ou du jour ne suspend rien. Source de vérité unique
+  `hasFutureNextAction` ; harnais risques porté à 66 assertions.
+- **Drop du Kanban fiabilisé** : le statut appliqué est désormais toujours
+  celui de la **colonne visée** — les cartes ne sont plus des cibles de drop
+  (déposer près d'une carte d'une colonne voisine appliquait son statut),
+  détection « colonne sous le pointeur », annulation propre hors zone, et plus
+  d'overlay fantôme après un drag annulé (Échap).
+- **Kanban utilisable au doigt** : appui long (250 ms) pour saisir une carte,
+  un glissement court reste un scroll du board — avant, tout glissement sur une
+  carte devenait un drag, rendant le défilement tactile impossible. Souris
+  inchangée (drag dès 5 px).
+- **Responsive — les écrans cassés** : tableau Équipe scrollable horizontalement
+  (il était coupé sur mobile) ; les actions « au survol » (lignes Leads,
+  modifier/supprimer une action sur la fiche) sont visibles en permanence sur
+  écran tactile (variante `pointer-fine:` — souris inchangée) et apparaissent
+  au focus clavier ; l'en-tête de la fiche lead passe à la ligne au lieu de
+  déborder sous ~500 px.
+
+---
+
 ## [3.3.0] — 2026-06-10 — Bouton « Envoyer SMS »
 
 ### Ajouté
@@ -242,6 +270,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.4.0]: https://github.com/Sapulse/boat/releases/tag/v3.4.0
 [3.3.0]: https://github.com/Sapulse/boat/releases/tag/v3.3.0
 [3.2.0]: https://github.com/Sapulse/boat/releases/tag/v3.2.0
 [3.1.5]: https://github.com/Sapulse/boat/releases/tag/v3.1.5
