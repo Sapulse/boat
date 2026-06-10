@@ -17,7 +17,7 @@
  *    getLeadRisks) inchanges.
  */
 
-import { subDays, addDays } from 'date-fns';
+import { addDays } from 'date-fns';
 import {
   getAlertLevel,
   getLeadRisks,

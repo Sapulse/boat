@@ -1,6 +1,6 @@
 import { Menu, Plus, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import { getAlertLevel, getLeadFullName } from '../../lib/utils';
 
 const titles: Record<string, string> = {

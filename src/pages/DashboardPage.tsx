@@ -6,12 +6,12 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, isoDateDaysAgo } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
@@ -29,8 +29,7 @@ export default function DashboardPage() {
     if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterPeriod) {
-      const daysAgo = Number(filterPeriod);
-      const cutoff = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+      const cutoff = isoDateDaysAgo(Number(filterPeriod));
       leads = leads.filter(l => l.createdAt >= cutoff);
     }
     return leads;

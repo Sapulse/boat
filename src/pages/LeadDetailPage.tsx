@@ -5,7 +5,7 @@ import {
   Ship, DollarSign, User, Clock, FileText, MessageSquare,
   AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown, Contact,
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
@@ -80,7 +80,7 @@ export default function LeadDetailPage() {
     const commercial = state.commercials.find(c => c.id === lead.commercialId);
     const vars = buildLeadVars(lead, commercial);
     const { subject, body } = renderEmail(template, vars);
-    window.location.href = buildMailto(lead.email, subject, body);
+    window.location.assign(buildMailto(lead.email, subject, body));
     addAction({
       leadId: lead.id,
       type: 'email',

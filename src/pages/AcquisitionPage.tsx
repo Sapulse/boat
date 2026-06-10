@@ -11,7 +11,7 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, MONTHS } from '../data/constants';

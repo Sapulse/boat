@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { LeadAction, ActionType, LeadStatus } from '../../data/types';
 import { ACTION_TYPES, LEAD_STATUSES } from '../../data/constants';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 
 interface ActionFormProps {

@@ -4,11 +4,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
 } from 'recharts';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import KpiCard from '../components/ui/KpiCard';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, isoDateDaysAgo } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
@@ -35,8 +35,7 @@ export default function PerformancePage() {
     if (filterStatus) leads = leads.filter(l => l.status === filterStatus);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterPeriod) {
-      const daysAgo = Number(filterPeriod);
-      const cutoff = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+      const cutoff = isoDateDaysAgo(Number(filterPeriod));
       leads = leads.filter(l => l.createdAt >= cutoff);
     }
     return leads;

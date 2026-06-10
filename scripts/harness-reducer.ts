@@ -25,7 +25,7 @@ const store = new Map<string, string>();
   clear: () => { store.clear(); },
 };
 
-import { reducer, getInitialState } from '../src/context/AppContext';
+import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_EMAIL_TEMPLATES } from '../src/data/constants';
 import type { AppState, Lead, LeadAction, LeadStatus } from '../src/data/types';
 

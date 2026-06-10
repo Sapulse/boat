@@ -14,7 +14,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn } from '../lib/utils';
 import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES } from '../data/constants';

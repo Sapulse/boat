@@ -1,5 +1,5 @@
 import { Download, Check, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { formatDate, formatCurrency } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';

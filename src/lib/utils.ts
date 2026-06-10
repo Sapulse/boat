@@ -83,6 +83,16 @@ export function toISODate(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+/**
+ * Date ISO (yyyy-mm-dd, UTC) d'il y a `days` jours. STRICTEMENT le meme calcul
+ * que l'ancien inline `new Date(Date.now() - days * 86400000).toISOString()
+ * .slice(0, 10)` des filtres periode — simplement sorti du render (regle
+ * react-hooks/purity), au meme titre que daysSince.
+ */
+export function isoDateDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+}
+
 export type RiskItem = { label: string; severity: 'warning' | 'danger' };
 
 export function getLeadRisks(lead: Lead): RiskItem[] {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Priority } from '../../data/types';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 
 interface LeadFormProps {

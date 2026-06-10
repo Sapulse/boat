@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phone, Bookmark, Upload } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction } from '../lib/utils';
@@ -25,6 +25,13 @@ const TERMINAL_STATUSES = ['signe', 'perdu', 'reporte'];
 
 function reasonLabel(reason: DuplicateMatch['reason']): string {
   return reason === 'both' ? 'même email et téléphone' : reason === 'email' ? 'même email' : 'même téléphone';
+}
+
+// Composant module (et non recree a chaque render de LeadsPage) : regle
+// react-hooks/static-components. L'etat de tri arrive par props.
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
+  if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
+  return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
 }
 
 export default function LeadsPage() {
@@ -108,11 +115,6 @@ export default function LeadsPage() {
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('desc'); }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
-    return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
   };
 
   const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || activeView;
@@ -240,20 +242,20 @@ export default function LeadsPage() {
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="px-3 py-3 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('name')}>
-                  <span className="inline-flex items-center gap-1">Nom <SortIcon field="name" /></span>
+                  <span className="inline-flex items-center gap-1">Nom <SortIcon field="name" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Commercial</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('status')}>
-                  <span className="inline-flex items-center gap-1">Statut <SortIcon field="status" /></span>
+                  <span className="inline-flex items-center gap-1">Statut <SortIcon field="status" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Temp.</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Source</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Bateau</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('budget')}>
-                  <span className="inline-flex items-center gap-1 justify-end">Budget <SortIcon field="budget" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Budget <SortIcon field="budget" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('lastActionDate')}>
-                  <span className="inline-flex items-center gap-1">Dern. action <SortIcon field="lastActionDate" /></span>
+                  <span className="inline-flex items-center gap-1">Dern. action <SortIcon field="lastActionDate" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
                 <th className="px-3 py-3 text-center font-medium text-gray-600 w-24">Actions</th>
               </tr>

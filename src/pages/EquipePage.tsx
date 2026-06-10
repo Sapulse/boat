@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Pencil, Check, X, PowerOff, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { formatCurrency, generateId } from '../lib/utils';
 import { ACTIVE_STATUSES } from '../data/constants';
 

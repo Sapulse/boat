@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Save, RotateCcw, Mail, Check } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { EMAIL_TEMPLATE_VARIABLES, DEFAULT_EMAIL_TEMPLATES } from '../data/constants';
 import type { EmailTemplate } from '../data/types';
 

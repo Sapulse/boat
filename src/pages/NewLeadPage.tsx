@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import LeadForm from '../components/leads/LeadForm';
 import type { Lead } from '../data/types';
 import { cn } from '../lib/utils';

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, CheckCircle2 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import EmptyState from '../components/ui/EmptyState';
 import { getAlertLevel, getLeadFullName, cn } from '../lib/utils';
