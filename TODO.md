@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.3** (dernier tag `v3.3.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.4** (dernier tag `v3.4.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -48,7 +48,7 @@ auto). Commits sémantiques, sans Co-Authored-By.
   (modale Échap/focus-trap, listes au clavier). **3 harnais committés** :
   `scripts/harness-{reducer,risks,vcard}.ts` via `npx tsx`
 
-### Fonctionnalités v3.2 / v3.3
+### Fonctionnalités & correctifs v3.2 → v3.4
 - **`v3.2.0`** — modèles de message : gestion libre (créer/renommer/supprimer,
   garde-fou min-1), type **email | sms**, migration localStorage sans perte
   (double lecture `templates`/`emailTemplates`, prouvée au harnais — 142
@@ -56,6 +56,13 @@ auto). Commits sémantiques, sans Co-Authored-By.
 - **`v3.3.0`** — bouton « Envoyer SMS » sur la fiche lead : modèles SMS,
   lien `sms:` (`buildSms`, compromis iOS/Android), action « SMS » journalisée,
   désactivé sans numéro — ⚠️ lien `sms:` à valider sur mobile réel post-déploiement
+- **`v3.4.0`** — suivi & mobile (retours Mickaël) : **suivi** — une action future
+  planifiée suspend l'inactivité sauf leads chauds (`hasFutureNextAction`, source
+  de vérité unique, harnais risques 66 assertions) ; **Kanban** — drop fiable
+  (colonnes seules cibles, `pointerWithin`, plus d'overlay fantôme) + tactile
+  (appui long = drag, glissement = scroll) ; **responsive** — les 3 cassés
+  corrigés (table Équipe scrollable, actions visibles au tactile
+  `pointer-fine:`, en-tête fiche lead wrap)
 
 ---
 
@@ -81,17 +88,22 @@ auto). Commits sémantiques, sans Co-Authored-By.
 
 ## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES
 
-- [ ] **Audit + optimisation de la vue mobile / responsive** : chantier transversal,
-  nécessite un diagnostic responsive dédié avant de coder
+- [x] ~~Audit + optimisation de la vue mobile~~ → **PARTIELLEMENT traité (v3.4.0)** :
+  diagnostic responsive complet fait, les 3 écrans cassés corrigés. Restent les
+  **dégradés mineurs** en backlog : étiquettes des graphes en étroit (YAxis ~120px),
+  confort des longues tables (scroll latéral Leads/Acquisition), cibles tactiles
+  ~30 px (sous la reco 44 px)
 - [ ] *(déjà listées ci-dessous, candidates)* : règle auto-relance, couche IA email
 
 ## ➕ FONCTIONNALITÉS EN PLUS (faisables sur l'archi actuelle, sans backend)
 
 - [ ] **Couche IA email** : pré-rédaction d'un mail lisant la fiche du lead. Terrain prêt
   (templates existent). Nécessite une clé API.
-- [ ] **Règle auto-relance** : passage auto en relance après X jours (demande réunion).
-  Détection déjà là (`getLeadRisks`, risque « action échue » depuis v3.1.2) ; reste à
-  formaliser l'automatisme SI Ocean Boat le confirme (ils ont laissé ouvert).
+- [ ] **Règle auto-relance / suivi automatique** (symptôme C du diagnostic v3.4) :
+  passage auto en relance après X jours, notifications. Détection déjà là
+  (`getLeadRisks`, risque « action échue », règle action future v3.4) ; mais tout
+  est recalculé à l'affichage (pull) — un VRAI automatisme (push, app fermée)
+  **dépend du backend**. À formaliser SI Ocean Boat le confirme.
 - [ ] **Connexion Infocob** (leur CRM) : bouton "ajouter sur Infocob". Phase lointaine,
   dépend de l'API Infocob.
 
@@ -120,6 +132,9 @@ auto). Commits sémantiques, sans Co-Authored-By.
   les prédicats « prochaine action » et « inactif >7j » sont désormais partagés
   (`hasPlannedNextAction`, `isInactiveOverWeek` dans `utils.ts`) ; restent les blocs
   « chauds sans action » / « devis sans relance » à unifier un jour
+- [ ] **Déposer `@dnd-kit/sortable` + `@dnd-kit/utilities`** : plus importés nulle part
+  depuis le passage du Kanban en draggable pur (v3.4.0) — à retirer des dependencies
+  à la prochaine passe dette
 - [ ] Versions de dépendances très avancées (React 19, Vite 8, TS 6) — surveiller la
   reproductibilité du build
 
