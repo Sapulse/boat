@@ -12,7 +12,8 @@ import LeadForm from '../components/leads/LeadForm';
 import ActionForm from '../components/leads/ActionForm';
 import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate, hasPlannedNextAction } from '../lib/utils';
-import { buildLeadVars, renderEmail, buildMailto } from '../lib/email';
+import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/email';
+import { buildSms } from '../lib/sms';
 import { generateVCard } from '../lib/vcard';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
@@ -26,6 +27,7 @@ export default function LeadDetailPage() {
   const [editingNextAction, setEditingNextAction] = useState(false);
   const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string }>({ type: '', date: '' });
   const [showEmailMenu, setShowEmailMenu] = useState(false);
+  const [showSmsMenu, setShowSmsMenu] = useState(false);
 
   const lead = state.leads.find(l => l.id === id);
   if (!lead) {
@@ -93,9 +95,29 @@ export default function LeadDetailPage() {
     setShowEmailMenu(false);
   };
 
-  // Seuls les modeles de type email alimentent le menu (les SMS auront leur
-  // propre bouton au lot suivant).
+  // Chaque bouton (Email / SMS) ne liste que les modeles de son type.
   const emailTemplates = state.templates.filter(t => t.type === 'email');
+  const smsTemplates = state.templates.filter(t => t.type === 'sms');
+
+  // Envoi SMS pre-rempli : miroir strict de sendEmail — interpole UNIQUEMENT
+  // le corps du modele (un SMS n'a pas de sujet), memes variables que l'email,
+  // ouvre un lien sms: (helper buildSms) et journalise une action 'sms'.
+  // `template` null = SMS vierge (repli quand aucun modele de type sms).
+  const sendSms = (template: MessageTemplate | null) => {
+    const commercial = state.commercials.find(c => c.id === lead.commercialId);
+    const vars = buildLeadVars(lead, commercial);
+    const body = template ? renderTemplate(template.body, vars) : '';
+    window.location.assign(buildSms(lead.phone, body));
+    addAction({
+      leadId: lead.id,
+      type: 'sms',
+      date: toISODate(new Date()),
+      result: template ? `SMS envoyé — ${template.title}` : 'SMS envoyé — sans modèle',
+      notes: body,
+      authorId: lead.commercialId,
+    });
+    setShowSmsMenu(false);
+  };
 
   // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
   const openNextActionEditor = () => {
@@ -214,6 +236,34 @@ export default function LeadDetailPage() {
                 )}
               </div>
             )}
+            <div className="relative">
+              <button
+                onClick={() => setShowSmsMenu(v => !v)}
+                disabled={!lead.phone}
+                title={lead.phone ? undefined : 'Aucun numéro de téléphone renseigné'}
+                className="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MessageSquare className="w-3 h-3" /> SMS <ChevronDown className="w-3 h-3" />
+              </button>
+              {showSmsMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowSmsMenu(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    {smsTemplates.map(t => (
+                      <button key={t.id} onClick={() => sendSms(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        {t.title}
+                      </button>
+                    ))}
+                    {smsTemplates.length === 0 && (
+                      <button onClick={() => sendSms(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        SMS vierge (sans modèle)
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <button onClick={() => { setShowActionForm(true); }} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
             {nextStatus && (
               <button onClick={() => quickStatusChange(nextStatus)} className="btn-primary btn-sm ml-auto">

@@ -19,6 +19,7 @@ export type AlertLevel = 'none' | 'orange' | 'red';
 export type ActionType =
   | 'appel'
   | 'email'
+  | 'sms'
   | 'rdv'
   | 'visite'
   | 'devis'

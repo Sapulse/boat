@@ -7,6 +7,24 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.3.0] — 2026-06-10 — Bouton « Envoyer SMS »
+
+### Ajouté
+- **Bouton SMS sur la fiche lead**, miroir du bouton Email : menu déroulant des
+  modèles de type SMS (livrés en v3.2.0), corps interpolé avec les mêmes variables
+  que l'email (`{{prenom}}`…, pas de sujet), ouverture d'un lien `sms:` pré-rempli
+  et journalisation d'une action « SMS » (modèle utilisé en résultat, corps rendu
+  en notes). Repli « SMS vierge (sans modèle) » s'il n'existe aucun modèle SMS.
+  Bouton désactivé si le lead n'a pas de numéro (infobulle explicative).
+- **Helper `buildSms`** (`lib/sms.ts`) : numéro nettoyé via `normalizePhone`
+  (espaces, points, tirets), corps encodé ; forme `sms:<numéro>?&body=...` —
+  le compromis iOS/Android de l'état de l'art web (la RFC 5724 ne prévoit pas
+  de corps).
+- **Type d'action « SMS »** : disponible dans l'historique, la saisie d'action
+  et la prochaine action (propagation automatique via `ACTION_TYPES`).
+
+---
+
 ## [3.2.0] — 2026-06-10 — Modèles de message (email + SMS)
 
 ### Ajouté
@@ -224,6 +242,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.3.0]: https://github.com/Sapulse/boat/releases/tag/v3.3.0
 [3.2.0]: https://github.com/Sapulse/boat/releases/tag/v3.2.0
 [3.1.5]: https://github.com/Sapulse/boat/releases/tag/v3.1.5
 [3.1.4]: https://github.com/Sapulse/boat/releases/tag/v3.1.4
