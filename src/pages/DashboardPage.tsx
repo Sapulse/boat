@@ -14,12 +14,16 @@ import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
+import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
 
 export default function DashboardPage() {
   const { state } = useApp();
   const navigate = useNavigate();
+  // Graphes a barres horizontales : sur ecran etroit, le YAxis 120px mangeait
+  // un tiers de la largeur -> axe reduit + libelles tronques (tooltip complet).
+  const compact = useIsCompact();
 
   const [filterCommercial, setFilterCommercial] = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -295,7 +299,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={stats.bySource} layout="vertical" barSize={16}>
                 <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
+                <YAxis dataKey="name" type="category" width={compact ? 76 : 120} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} />
                 <Tooltip />
                 <Bar dataKey="value" name="Leads" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
               </BarChart>

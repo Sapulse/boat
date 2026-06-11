@@ -16,6 +16,7 @@ import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, MONTHS } from '../data/constants';
 import { formatCurrency, generateId } from '../lib/utils';
+import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 import type { MonthlyStat, AcquisitionVolume } from '../data/types';
 
 type Tab = 'budget' | 'volumes' | 'saisie';
@@ -290,6 +291,8 @@ function BudgetCplTab() {
 function VolumesTab() {
   const { state, saveAcquisitionVolumes } = useApp();
   const [year, setYear] = useState(CURRENT_YEAR);
+  // Barres horizontales : YAxis reduit + libelles tronques sur ecran etroit.
+  const compact = useIsCompact();
   const [volumes, setVolumes] = useState<AcquisitionVolume[]>(state.acquisitionVolumes);
   const [dirty, setDirty] = useState(false);
 
@@ -405,8 +408,9 @@ function VolumesTab() {
               <YAxis
                 dataKey="source"
                 type="category"
-                width={130}
-                tick={{ fontSize: 10 }}
+                width={compact ? 76 : 130}
+                tick={{ fontSize: compact ? 9 : 10 }}
+                tickFormatter={compact ? (v: string) => shortLabel(v) : undefined}
               />
               <Tooltip />
               <Bar dataKey="total" name="Leads" fill="#6366f1" radius={[0, 4, 4, 0]} />

@@ -128,3 +128,23 @@
     @apply block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 appearance-none bg-white;
   }
 }
+
+/* Confort tactile : sur pointeur grossier (doigt), toutes les cibles montent a
+   >= 40px (boutons, y compris icones nues p-1) et 44px pour les champs/selects.
+   min-height/min-width n'affectent que la zone tappable — les boutons larges et
+   le desktop souris (pointer: fine) sont strictement inchanges. */
+@media (pointer: coarse) {
+  button,
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-ghost {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .input,
+  .select {
+    min-height: 44px;
+  }
+}

@@ -14,12 +14,15 @@ import { useExportFeedback } from '../lib/useExportFeedback';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
 import type { LeadStatus } from '../data/types';
 import { useSearchParams } from 'react-router-dom';
+import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316', '#84cc16', '#a855f7'];
 
 export default function PerformancePage() {
   const { state } = useApp();
   const [searchParams] = useSearchParams();
+  // Barres horizontales : YAxis reduit + libelles tronques sur ecran etroit.
+  const compact = useIsCompact();
   const [filterCommercial, setFilterCommercial] = useState(searchParams.get('commercial') ?? '');
   const [filterBoatType, setFilterBoatType] = useState('');
   const [filterCondition, setFilterCondition] = useState('');
@@ -258,7 +261,7 @@ export default function PerformancePage() {
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Par source</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={analytics.bySource.slice(0, 10)} layout="vertical" barSize={16}>
-              <XAxis type="number" tick={{ fontSize: 12 }} /><YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} /><Tooltip />
+              <XAxis type="number" tick={{ fontSize: 12 }} /><YAxis dataKey="name" type="category" width={compact ? 76 : 120} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} /><Tooltip />
               <Bar dataKey="value" name="Leads" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -279,7 +282,7 @@ export default function PerformancePage() {
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={analytics.sourceConversion.slice(0, 8)} layout="vertical" barSize={16}>
               <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
-              <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
+              <YAxis dataKey="name" type="category" width={compact ? 76 : 120} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} />
               <Tooltip formatter={(v) => [`${v}%`, 'Conversion']} />
               <Bar dataKey="rate" name="Taux" fill="#22c55e" radius={[0, 4, 4, 0]} />
             </BarChart>
