@@ -7,6 +7,26 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.4.1] — 2026-06-11 — Confort mobile & dette
+
+### Corrigé
+- **Graphes lisibles sur écran étroit** : les 4 graphes à barres horizontales
+  (Dashboard, Performance ×2, Acquisition) réduisent l'axe des libellés
+  (120-130 px → 76 px) et tronquent les noms (`…`) sous 640 px — le nom complet
+  reste affiché au tap dans le tooltip. Desktop strictement inchangé. Hook
+  `useIsCompact` (`useSyncExternalStore` sur media query, réactif à la rotation).
+- **Cibles tactiles** : sur pointeur grossier (doigt), tous les boutons — y
+  compris les icônes nues des lignes et de l'historique — passent à 40×40 px
+  minimum, les champs/selects à 44 px (`@media (pointer: coarse)`, symétrique
+  du `pointer-fine:` de v3.4.0). L'UI desktop souris garde sa densité.
+
+### Retiré
+- **`@dnd-kit/sortable` et `@dnd-kit/utilities`** déposés des dépendances :
+  plus importés nulle part depuis le passage du Kanban en draggable pur
+  (v3.4.0) — vérifié par grep, build et harnais.
+
+---
+
 ## [3.4.0] — 2026-06-11 — Suivi d'action & mobile
 
 ### Corrigé
@@ -270,6 +290,7 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+[3.4.1]: https://github.com/Sapulse/boat/releases/tag/v3.4.1
 [3.4.0]: https://github.com/Sapulse/boat/releases/tag/v3.4.0
 [3.3.0]: https://github.com/Sapulse/boat/releases/tag/v3.3.0
 [3.2.0]: https://github.com/Sapulse/boat/releases/tag/v3.2.0
