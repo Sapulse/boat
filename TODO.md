@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.4** (dernier tag `v3.4.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.4** (dernier tag `v3.4.1`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -55,14 +55,18 @@ auto). Commits sémantiques, sans Co-Authored-By.
   assertions au total)
 - **`v3.3.0`** — bouton « Envoyer SMS » sur la fiche lead : modèles SMS,
   lien `sms:` (`buildSms`, compromis iOS/Android), action « SMS » journalisée,
-  désactivé sans numéro — ⚠️ lien `sms:` à valider sur mobile réel post-déploiement
+  désactivé sans numéro (validé sur mobile réel)
 - **`v3.4.0`** — suivi & mobile (retours Mickaël) : **suivi** — une action future
   planifiée suspend l'inactivité sauf leads chauds (`hasFutureNextAction`, source
   de vérité unique, harnais risques 66 assertions) ; **Kanban** — drop fiable
   (colonnes seules cibles, `pointerWithin`, plus d'overlay fantôme) + tactile
-  (appui long = drag, glissement = scroll) ; **responsive** — les 3 cassés
-  corrigés (table Équipe scrollable, actions visibles au tactile
-  `pointer-fine:`, en-tête fiche lead wrap)
+  (appui long = drag, glissement = scroll — validé sur mobile réel) ;
+  **responsive** — les 3 cassés corrigés (table Équipe scrollable, actions
+  visibles au tactile `pointer-fine:`, en-tête fiche lead wrap)
+- **`v3.4.1`** — confort mobile & dette : graphes lisibles en étroit (axe réduit
+  + libellés tronqués sous 640px, hook `useIsCompact`, tooltip complet au tap),
+  cibles tactiles ≥ 40px au doigt (`@media (pointer: coarse)`, desktop souris
+  inchangé), dépose de `@dnd-kit/sortable` + `@dnd-kit/utilities` (inutilisés)
 
 ---
 
@@ -88,11 +92,11 @@ auto). Commits sémantiques, sans Co-Authored-By.
 
 ## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES
 
-- [x] ~~Audit + optimisation de la vue mobile~~ → **PARTIELLEMENT traité (v3.4.0)** :
-  diagnostic responsive complet fait, les 3 écrans cassés corrigés. Restent les
-  **dégradés mineurs** en backlog : étiquettes des graphes en étroit (YAxis ~120px),
-  confort des longues tables (scroll latéral Leads/Acquisition), cibles tactiles
-  ~30 px (sous la reco 44 px)
+- [x] ~~Audit + optimisation de la vue mobile~~ → **QUASI COMPLET (v3.4.0 + v3.4.1)** :
+  les 3 cassés corrigés, graphes lisibles en étroit, cibles tactiles ≥ 40px.
+  Reliquat très mineur : confort des longues tables (scroll latéral
+  Leads/Acquisition — pas de gain simple identifié) et liens `<a>` icône non
+  couverts par la règle tactile
 - [ ] *(déjà listées ci-dessous, candidates)* : règle auto-relance, couche IA email
 
 ## ➕ FONCTIONNALITÉS EN PLUS (faisables sur l'archi actuelle, sans backend)
@@ -132,9 +136,6 @@ auto). Commits sémantiques, sans Co-Authored-By.
   les prédicats « prochaine action » et « inactif >7j » sont désormais partagés
   (`hasPlannedNextAction`, `isInactiveOverWeek` dans `utils.ts`) ; restent les blocs
   « chauds sans action » / « devis sans relance » à unifier un jour
-- [ ] **Déposer `@dnd-kit/sortable` + `@dnd-kit/utilities`** : plus importés nulle part
-  depuis le passage du Kanban en draggable pur (v3.4.0) — à retirer des dependencies
-  à la prochaine passe dette
 - [ ] Versions de dépendances très avancées (React 19, Vite 8, TS 6) — surveiller la
   reproductibilité du build
 
