@@ -43,6 +43,7 @@ export interface AgendaEvent {
   type: ActionType | '';
   date: string; // ISO YYYY-MM-DD (= lead.nextActionDate)
   time?: string; // "HH:mm" optionnel (= lead.nextActionTime) ; absent = all-day
+  endTime?: string; // "HH:mm" fin optionnelle (= lead.nextActionEndTime) -> duree
   status: EventStatus;
 }
 
@@ -63,8 +64,20 @@ export function buildAgendaEvents(leads: Lead[], todayISO: string): AgendaEvent[
       type: l.nextActionType,
       date: l.nextActionDate,
       time: l.nextActionTime || undefined,
+      endTime: l.nextActionEndTime || undefined,
       status: eventStatus(l.nextActionDate, todayISO),
     }));
+}
+
+/**
+ * Predicat PUR : l'heure de fin est-elle valide (posterieure STRICTEMENT au
+ * debut) ? Les deux doivent etre des "HH:mm" valides. Sert a la saisie
+ * (editeur/createur) ET au rendu defensif du bloc (fin invalide -> ponctuel).
+ */
+export function isEndAfterStart(start: string, end: string): boolean {
+  const s = parseHHmm(start);
+  const e = parseHHmm(end);
+  return s !== null && e !== null && e > s;
 }
 
 /**
@@ -167,6 +180,88 @@ export interface DayLayout {
  * hors-plage, et par creneau. Preserve l'ordre d'entree (deja trie par
  * groupEventsByDay). Aucun evenement n'est perdu.
  */
+// Evenement positionne dans la grille horaire (vues Semaine/Journee en blocs).
+export interface PositionedEvent {
+  event: AgendaEvent;
+  startIndex: number; // index du creneau de debut (0-based)
+  span: number;       // nombre de creneaux couverts (>= 1)
+  lane: number;       // couloir attribue (0-based) en cas de chevauchement
+  lanes: number;      // nb total de couloirs du cluster (largeur = 1 / lanes)
+}
+
+export interface DayGridLayout {
+  allDay: AgendaEvent[];          // sans heure
+  outOfRange: AgendaEvent[];      // debut hors plage affichee
+  positioned: PositionedEvent[];  // evenements horodates, places + couloirs
+  slotCount: number;              // nb de creneaux de la grille (hauteur)
+}
+
+/**
+ * Place les evenements d'UN jour dans la grille horaire en BLOCS :
+ *  - `startIndex` = creneau de debut (arrondi plancher) ;
+ *  - `span` = nb de creneaux couverts : de debut a fin si fin valide (clamp a la
+ *    fin de plage 18h), sinon 1 (action ponctuelle / fin incoherente) ;
+ *  - `lane`/`lanes` = couloirs cote a cote pour les chevauchements (assignation
+ *    gloutonne par cluster). Aucun evenement perdu (all-day / hors-plage / place).
+ * Helper PUR (constantes de plage), testable au harnais.
+ */
+export function layoutDayGrid(events: AgendaEvent[]): DayGridLayout {
+  const startMin = AGENDA_HOUR_START * 60;
+  const endMin = AGENDA_HOUR_END * 60;
+  const slotMin = AGENDA_SLOT_MIN;
+  const slotCount = Math.max(0, Math.floor((endMin - startMin) / slotMin));
+
+  const allDay: AgendaEvent[] = [];
+  const outOfRange: AgendaEvent[] = [];
+  const timed: { event: AgendaEvent; startIndex: number; span: number }[] = [];
+
+  for (const e of events) {
+    if (!e.time) { allDay.push(e); continue; }
+    const mins = parseHHmm(e.time);
+    if (mins === null) { allDay.push(e); continue; }
+    if (mins < startMin || mins >= endMin) { outOfRange.push(e); continue; }
+    const startIndex = Math.floor((mins - startMin) / slotMin);
+    let span = 1;
+    if (e.endTime && isEndAfterStart(e.time, e.endTime)) {
+      const endParsed = parseHHmm(e.endTime);
+      if (endParsed !== null) {
+        const endM = Math.min(endParsed, endMin); // clamp a la fin de plage
+        span = Math.ceil((endM - startMin) / slotMin) - startIndex;
+      }
+    }
+    span = Math.max(1, Math.min(span, slotCount - startIndex)); // jamais hors grille
+    timed.push({ event: e, startIndex, span });
+  }
+
+  // Couloirs (lanes) par cluster de chevauchement : tri par debut, puis
+  // assignation gloutonne du 1er couloir libre ; tous les events d'un cluster
+  // partagent le meme nb de couloirs (largeurs egales).
+  timed.sort((a, b) => a.startIndex - b.startIndex || b.span - a.span);
+  const positioned: PositionedEvent[] = [];
+  let i = 0;
+  while (i < timed.length) {
+    let clusterEnd = timed[i].startIndex + timed[i].span;
+    let j = i + 1;
+    while (j < timed.length && timed[j].startIndex < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, timed[j].startIndex + timed[j].span);
+      j++;
+    }
+    const cluster = timed.slice(i, j);
+    const laneEnds: number[] = [];
+    const laneIdx = cluster.map(it => {
+      let lane = laneEnds.findIndex(end => end <= it.startIndex);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = it.startIndex + it.span;
+      return lane;
+    });
+    const lanes = laneEnds.length;
+    cluster.forEach((it, k) => positioned.push({ event: it.event, startIndex: it.startIndex, span: it.span, lane: laneIdx[k], lanes }));
+    i = j;
+  }
+
+  return { allDay, outOfRange, positioned, slotCount };
+}
+
 export function layoutDayEvents(events: AgendaEvent[]): DayLayout {
   const allDay: AgendaEvent[] = [];
   const outOfRange: AgendaEvent[] = [];

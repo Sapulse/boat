@@ -17,8 +17,8 @@ import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
-  buildTimeSlots, layoutDayEvents,
-  type AgendaEvent, type CommercialColor, type DayLayout,
+  buildTimeSlots, layoutDayGrid, isEndAfterStart,
+  type AgendaEvent, type CommercialColor, type DayGridLayout,
 } from '../lib/agenda';
 import type { Commercial, ActionType, Lead } from '../data/types';
 
@@ -44,6 +44,13 @@ const dayCollision: CollisionDetection = (args) => {
 
 function actionLabel(type: AgendaEvent['type']): string {
   return ACTION_TYPES.find(a => a.value === type)?.label ?? 'Action';
+}
+
+// Libelle horaire d'un evenement : "" (all-day), "14:00" (ponctuel) ou
+// "14:00–16:00" (avec duree).
+function timeLabel(event: AgendaEvent): string {
+  if (!event.time) return '';
+  return event.endTime ? `${event.time}–${event.endTime}` : event.time;
 }
 
 // onReplan : deplace une action existante (type PRESERVE, date changee) via
@@ -73,12 +80,12 @@ export default function AgendaPage() {
 
   const activeCommercials = state.commercials.filter(c => c.active);
   const onOpen = (id: string) => navigate(`/leads/${id}`);
-  // Replanification = on change UNIQUEMENT la date ; type ET heure preserves.
-  const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time);
+  // Replanification = on change UNIQUEMENT la date ; type, heure ET duree preserves.
+  const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time, event.endTime);
   const onCreate: OnCreate = (dateISO, timeHHmm) => setCreateSlot({ date: dateISO, time: timeHHmm });
-  // L'heure finale vient du createur (pre-remplie depuis le creneau, modifiable).
-  const doCreate = (leadId: string, type: ActionType, timeHHmm?: string) => {
-    if (createSlot) setNextAction(leadId, type, createSlot.date, timeHHmm);
+  // Heure de debut et de fin viennent du createur (debut pre-rempli depuis le creneau).
+  const doCreate = (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => {
+    if (createSlot) setNextAction(leadId, type, createSlot.date, timeHHmm, endTimeHHmm);
     setCreateSlot(null);
   };
 
@@ -176,11 +183,12 @@ function chipClasses(color: CommercialColor, overdue: boolean, compact: boolean)
 
 function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boolean }) {
   const overdue = event.status === 'overdue';
+  const tl = timeLabel(event);
   if (compact) {
     return (
       <span className="flex-1 min-w-0 flex items-center gap-1">
         {overdue && <AlertTriangle className="w-2.5 h-2.5 text-danger-600 shrink-0" />}
-        {event.time && <span className="font-semibold shrink-0">{event.time}</span>}
+        {tl && <span className="font-semibold shrink-0">{tl}</span>}
         <span className="truncate">{event.leadName}</span>
       </span>
     );
@@ -189,7 +197,7 @@ function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boole
     <span className="flex-1 min-w-0">
       <span className="flex items-center gap-1 font-medium">
         {overdue && <AlertTriangle className="w-3 h-3 text-danger-600 shrink-0" />}
-        <span className="truncate">{event.time ? `${event.time} · ${actionLabel(event.type)}` : actionLabel(event.type)}</span>
+        <span className="truncate">{tl ? `${tl} · ${actionLabel(event.type)}` : actionLabel(event.type)}</span>
       </span>
       <span className="block truncate text-gray-600">{event.leadName}</span>
     </span>
@@ -197,7 +205,8 @@ function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boole
 }
 
 function chipTitle(event: AgendaEvent): string {
-  const prefix = event.time ? `${event.time} · ` : '';
+  const tl = timeLabel(event);
+  const prefix = tl ? `${tl} · ` : '';
   return `${prefix}${actionLabel(event.type)} — ${event.leadName}${event.status === 'overdue' ? ' (échu)' : ''}`;
 }
 
@@ -338,18 +347,18 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
     return {
       id: dayISO,
       header: <WeekDayHeader day={day} isToday={isToday} />,
-      layout: layoutDayEvents(byDay.get(dayISO) ?? []),
+      layout: layoutDayGrid(byDay.get(dayISO) ?? []),
     };
   });
 
-  // Drop par cellule : l'id encode `${dayISO}#${slot}` ; on n'extrait que le
-  // jour (drag niveau jour). L'heure de l'action suit (onReplan -> event.time).
+  // Chaque colonne = une droppable (id = jourISO). Drag NIVEAU JOUR : on lit le
+  // jour cible ; l'heure et la duree de l'action suivent (onReplan les preserve).
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over) return;
     const ev = active.data.current?.event as AgendaEvent | undefined;
-    const targetDay = String(over.id).split('#')[0];
-    if (!ev || !targetDay || targetDay === ev.date) return;
+    const targetDay = String(over.id);
+    if (!ev || targetDay === ev.date) return;
     onReplan(ev, targetDay);
   };
 
@@ -461,25 +470,60 @@ const SLOT_PX = 40; // hauteur d'une ligne de creneau
 interface GridColumn {
   id: string;
   header: React.ReactNode;
-  layout: DayLayout;
+  layout: DayGridLayout;
 }
 
-// Cellule = cible de drop (Semaine). L'id encode `${colId}#${slot}` ; le drag
-// etant au niveau JOUR ce lot, onDragEnd n'extrait que le colId (le jour).
-function DroppableCell({ id, className, style, onClick, children }: {
-  id: string; className?: string; style?: React.CSSProperties; onClick?: () => void; children?: React.ReactNode;
-}) {
+// Colonne = corps relatif (Semaine : cible de drop unique au niveau JOUR). Les
+// cellules-fond (clic-creation) et les blocs absolus vivent a l'interieur.
+function DroppableColumn({ id, className, children }: { id: string; className?: string; children?: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div ref={setNodeRef} style={style} onClick={onClick} className={cn(className, isOver && 'bg-primary-50/60 ring-1 ring-inset ring-primary-300')}>
-      {children}
-    </div>
-  );
+  return <div ref={setNodeRef} className={cn(className, isOver && 'bg-primary-50/40')}>{children}</div>;
 }
 
-// Grille horaire generique. `renderEvent` decide du rendu d'une pastille (Journee
-// = EventChip + re-selecteur ; Semaine = DraggableEvent). `droppable` enrobe les
-// cellules en cibles de drop (Semaine uniquement).
+// Corps d'une colonne : cellules-fond empilees (hauteur de la grille + clic-
+// creation par creneau) + blocs d'evenements en ABSOLU (top/height = creneaux,
+// left/width = couloir de chevauchement).
+function ColumnBody({ col, slots, droppable, onSlotClick, render }: {
+  col: GridColumn;
+  slots: string[];
+  droppable: boolean;
+  onSlotClick?: (colId: string, time?: string) => void;
+  render: (event: AgendaEvent) => React.ReactNode;
+}) {
+  const inner = (
+    <>
+      {slots.map(slot => (
+        <div
+          key={slot}
+          style={{ height: SLOT_PX }}
+          onClick={onSlotClick ? () => onSlotClick(col.id, slot) : undefined}
+          className={cn('border-r border-t border-gray-100', onSlotClick && 'cursor-pointer hover:bg-primary-50/30')}
+        />
+      ))}
+      {col.layout.positioned.map(p => (
+        <div
+          key={p.event.leadId}
+          className="absolute p-0.5 [&>*]:h-full"
+          style={{
+            top: p.startIndex * SLOT_PX,
+            height: p.span * SLOT_PX,
+            left: `${(p.lane / p.lanes) * 100}%`,
+            width: `${(1 / p.lanes) * 100}%`,
+          }}
+        >
+          {render(p.event)}
+        </div>
+      ))}
+    </>
+  );
+  return droppable
+    ? <DroppableColumn id={col.id} className="relative">{inner}</DroppableColumn>
+    : <div className="relative">{inner}</div>;
+}
+
+// Grille horaire generique (column-major). `renderEvent` decide du rendu d'un
+// bloc (Journee = EventChip + re-selecteur ; Semaine = DraggableEvent).
+// `droppable` fait de chaque colonne UNE cible de drop (drag niveau jour).
 function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = false, onSlotClick }: {
   slots: string[];
   columns: GridColumn[];
@@ -493,18 +537,6 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
   const hasBanner = columns.some(c => c.layout.allDay.length > 0 || c.layout.outOfRange.length > 0);
   const render = renderEvent ?? ((e: AgendaEvent) => <EventChip event={e} onOpen={onOpen} onReplan={onReplan} compact />);
 
-  // Cellule de donnees : droppable (Semaine) ou simple div (Journee). Cliquable
-  // si onSlotClick fourni (creation au creneau ; `time` undefined sur le bandeau
-  // = action toute la journee). Les pastilles stoppent la propagation -> cliquer
-  // une pastille n'ouvre pas le createur.
-  const Cell = ({ colId, slotKey, time, className, children }: { colId: string; slotKey: string; time?: string; className: string; children?: React.ReactNode }) => {
-    const handleClick = onSlotClick ? () => onSlotClick(colId, time) : undefined;
-    const cls = cn(className, onSlotClick && 'cursor-pointer hover:bg-primary-50/30');
-    return droppable
-      ? <DroppableCell id={`${colId}#${slotKey}`} className={cls} style={{ minHeight: SLOT_PX }} onClick={handleClick}>{children}</DroppableCell>
-      : <div className={cls} style={{ minHeight: SLOT_PX }} onClick={handleClick}>{children}</div>;
-  };
-
   return (
     <div className="card p-0 overflow-x-auto">
       <div className="min-w-max">
@@ -516,38 +548,38 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
           ))}
         </div>
 
-        {/* Bandeau "toute la journee" + hors-plage (jamais perdues) */}
+        {/* Bandeau "toute la journee" + hors-plage (jamais perdues), cliquable
+            pour creer une action all-day (time undefined). */}
         {hasBanner && (
           <div className="grid bg-gray-50/60 border-b border-gray-200" style={{ gridTemplateColumns: templateCols }}>
             <div className="px-1 py-1 text-[10px] text-gray-400 text-right pr-2 border-r border-gray-100 self-center">toute la j.</div>
             {columns.map(c => (
-              <Cell key={c.id} colId={c.id} slotKey="__banner" className="p-1 space-y-1 border-r border-gray-100 last:border-r-0">
+              <div
+                key={c.id}
+                onClick={onSlotClick ? () => onSlotClick(c.id, undefined) : undefined}
+                className={cn('p-1 space-y-1 border-r border-gray-100 last:border-r-0', onSlotClick && 'cursor-pointer hover:bg-primary-50/30')}
+              >
                 {c.layout.allDay.map(e => <div key={e.leadId}>{render(e)}</div>)}
                 {c.layout.outOfRange.map(e => <div key={e.leadId}>{render(e)}</div>)}
                 {c.layout.allDay.length === 0 && c.layout.outOfRange.length === 0 && <span className="block text-[10px] text-gray-300">+</span>}
-              </Cell>
+              </div>
             ))}
           </div>
         )}
 
-        {/* Lignes de creneaux */}
-        {slots.map(slot => (
-          <div key={slot} className="grid" style={{ gridTemplateColumns: templateCols }}>
-            <div className="px-1 text-[10px] text-gray-400 text-right pr-2 border-r border-t border-gray-100" style={{ minHeight: SLOT_PX }}>
-              {slot.endsWith(':00') ? slot : ''}
-            </div>
-            {columns.map(c => {
-              const cellEvents = c.layout.bySlot.get(slot) ?? [];
-              return (
-                <Cell key={c.id} colId={c.id} slotKey={slot} time={slot} className="border-r border-t border-gray-100 last:border-r-0 p-0.5 flex gap-0.5">
-                  {cellEvents.map(e => (
-                    <div key={e.leadId} className="flex-1 min-w-0">{render(e)}</div>
-                  ))}
-                </Cell>
-              );
-            })}
+        {/* Corps : gouttiere d'heures + colonnes (blocs en absolu) */}
+        <div className="grid" style={{ gridTemplateColumns: templateCols }}>
+          <div className="relative">
+            {slots.map(slot => (
+              <div key={slot} style={{ height: SLOT_PX }} className="px-1 text-[10px] text-gray-400 text-right pr-2 border-r border-t border-gray-100">
+                {slot.endsWith(':00') ? slot : ''}
+              </div>
+            ))}
           </div>
-        ))}
+          {columns.map(c => (
+            <ColumnBody key={c.id} col={c} slots={slots} droppable={droppable} onSlotClick={onSlotClick} render={render} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -581,14 +613,14 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
     return {
       id: c.id,
       header: <ColumnHeader dot={color.dot} title={c.name} count={colEvents.length} />,
-      layout: layoutDayEvents(colEvents),
+      layout: layoutDayGrid(colEvents),
     };
   });
   if (orphans.length > 0) {
     gridColumns.push({
       id: '__autres',
       header: <ColumnHeader dot="bg-gray-400" title="Autres" count={orphans.length} />,
-      layout: layoutDayEvents(orphans),
+      layout: layoutDayGrid(orphans),
     });
   }
 
@@ -633,13 +665,15 @@ function CreateActionModal({ dateISO, initialTime, leads, onClose, onCreate }: {
   initialTime?: string;
   leads: Lead[];
   onClose: () => void;
-  onCreate: (leadId: string, type: ActionType, timeHHmm?: string) => void;
+  onCreate: (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => void;
 }) {
   const { getCommercialName } = useApp();
   const eligible = useMemo(() => getCreatableLeads(leads), [leads]);
   const [leadId, setLeadId] = useState('');
   const [type, setType] = useState<ActionType>('appel');
   const [time, setTime] = useState(initialTime ?? '');
+  const [endTime, setEndTime] = useState('');
+  const endTimeInvalid = !!endTime && !isEndAfterStart(time, endTime);
 
   return (
     <Modal open onClose={onClose} title={`Planifier une action — ${formatDate(dateISO)}`} size="sm">
@@ -660,21 +694,28 @@ function CreateActionModal({ dateISO, initialTime, leads, onClose, onCreate }: {
               ))}
             </select>
           </div>
+          <div>
+            <label className="label">Type d'action</label>
+            <select className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
+              {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Type d'action</label>
-              <select className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
-                {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
+              <label className="label">Heure (facultative)</label>
+              <input className="input" type="time" value={time} onChange={e => { setTime(e.target.value); if (!e.target.value) setEndTime(''); }} />
             </div>
             <div>
-              <label className="label">Heure (facultative)</label>
-              <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
+              <label className="label">Fin (facultative)</label>
+              <input className="input" type="time" value={endTime} disabled={!time} onChange={e => setEndTime(e.target.value)} />
             </div>
           </div>
+          {endTimeInvalid && (
+            <p className="text-xs text-danger-600">L'heure de fin doit être postérieure à l'heure de début.</p>
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="btn-secondary btn-sm">Annuler</button>
-            <button onClick={() => onCreate(leadId, type, time || undefined)} disabled={!leadId} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
+            <button onClick={() => onCreate(leadId, type, time || undefined, endTime || undefined)} disabled={!leadId || endTimeInvalid} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
           </div>
         </div>
       )}

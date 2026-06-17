@@ -100,6 +100,11 @@ export interface Lead {
   // reste un "YYYY-MM-DD" compare en chaine (hasFutureNextAction, eventStatus,
   // groupEventsByDay, tris) — on n'y touche jamais.
   nextActionTime?: string;
+  // Heure de FIN optionnelle ("HH:mm") -> donne une DUREE a l'action (bloc dans
+  // la grille). N'a de sens que si nextActionTime (debut) est posee ET > debut.
+  // Absente = action ponctuelle (occupe juste son creneau de debut). Champ
+  // separe : on ne touche ni nextActionDate ni nextActionTime.
+  nextActionEndTime?: string;
   lastActionDate: string;
   lossReason: string;
   signedAt: string;

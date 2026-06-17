@@ -16,6 +16,7 @@ import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/
 import { buildSms } from '../lib/sms';
 import { buildWhatsApp } from '../lib/whatsapp';
 import { generateVCard } from '../lib/vcard';
+import { isEndAfterStart } from '../lib/agenda';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
 export default function LeadDetailPage() {
@@ -26,7 +27,7 @@ export default function LeadDetailPage() {
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingNextAction, setEditingNextAction] = useState(false);
-  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string }>({ type: '', date: '', time: '' });
+  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string; endTime: string }>({ type: '', date: '', time: '', endTime: '' });
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showSmsMenu, setShowSmsMenu] = useState(false);
   const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
@@ -146,17 +147,22 @@ export default function LeadDetailPage() {
 
   // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
   const openNextActionEditor = () => {
-    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate, time: lead.nextActionTime ?? '' });
+    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate, time: lead.nextActionTime ?? '', endTime: lead.nextActionEndTime ?? '' });
     setEditingNextAction(true);
   };
   const saveNextAction = () => {
-    // Pas de type -> on efface date ET heure. Pas d'heure sans jour : l'heure
-    // n'est transmise que si une date est posee (sinon undefined = all-day).
+    // Pas de type -> on efface date, heure ET fin. Pas d'heure sans jour ; pas de
+    // fin sans heure de debut, et seulement si fin > debut (sinon undefined).
     const date = nextActionDraft.type ? nextActionDraft.date : '';
     const time = date ? (nextActionDraft.time || undefined) : undefined;
-    setNextAction(lead.id, nextActionDraft.type, date, time);
+    const endTime = time && nextActionDraft.endTime && isEndAfterStart(time, nextActionDraft.endTime)
+      ? nextActionDraft.endTime
+      : undefined;
+    setNextAction(lead.id, nextActionDraft.type, date, time, endTime);
     setEditingNextAction(false);
   };
+  // Fin saisie mais incoherente (sans debut, ou <= debut) -> blocage + message.
+  const endTimeInvalid = !!nextActionDraft.endTime && !isEndAfterStart(nextActionDraft.time, nextActionDraft.endTime);
   const clearNextAction = () => {
     setNextAction(lead.id, '', '');
     setEditingNextAction(false);
@@ -461,19 +467,26 @@ export default function LeadDetailPage() {
                     {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="label">Date</label>
                     <input className="input" type="date" value={nextActionDraft.date} disabled={!nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, date: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="label">Heure (facultative)</label>
+                    <label className="label">Heure</label>
                     <input className="input" type="time" value={nextActionDraft.time} disabled={!nextActionDraft.date} onChange={e => setNextActionDraft(d => ({ ...d, time: e.target.value }))} />
                   </div>
+                  <div>
+                    <label className="label">Fin</label>
+                    <input className="input" type="time" value={nextActionDraft.endTime} disabled={!nextActionDraft.time} onChange={e => setNextActionDraft(d => ({ ...d, endTime: e.target.value }))} />
+                  </div>
                 </div>
+                {endTimeInvalid && (
+                  <p className="text-xs text-danger-600">L'heure de fin doit être postérieure à l'heure de début.</p>
+                )}
                 <div className="flex justify-end gap-2 pt-1">
                   <button onClick={() => setEditingNextAction(false)} className="btn-secondary btn-sm">Annuler</button>
-                  <button onClick={saveNextAction} disabled={!nextActionDraft.type} className="btn-primary btn-sm disabled:opacity-50">Enregistrer</button>
+                  <button onClick={saveNextAction} disabled={!nextActionDraft.type || endTimeInvalid} className="btn-primary btn-sm disabled:opacity-50">Enregistrer</button>
                 </div>
               </div>
             ) : (
@@ -486,7 +499,10 @@ export default function LeadDetailPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Date</span>
-                      <span className="text-gray-900">{formatDate(lead.nextActionDate)}{lead.nextActionTime ? ` à ${lead.nextActionTime}` : ''}</span>
+                      <span className="text-gray-900">
+                        {formatDate(lead.nextActionDate)}
+                        {lead.nextActionTime ? (lead.nextActionEndTime ? ` de ${lead.nextActionTime} à ${lead.nextActionEndTime}` : ` à ${lead.nextActionTime}`) : ''}
+                      </span>
                     </div>
                   </div>
                 ) : (

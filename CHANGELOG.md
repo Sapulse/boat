@@ -7,6 +7,33 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.10.0] — 2026-06-17 — Durée des actions (blocs horaires)
+
+### Ajouté
+- **Heure de fin optionnelle** sur la prochaine action d'un lead → lui donne une
+  **durée**. L'éditeur (fiche lead) et le créateur (agenda) gagnent un champ
+  « Fin » (grisé tant qu'aucune heure de début) ; l'enregistrement est **bloqué
+  avec un message** si la fin n'est pas postérieure au début. Affichage
+  « de 14:00 à 16:00 ». Absence de fin = action ponctuelle (comportement
+  inchangé).
+- **Blocs horaires dans la grille** (vues Semaine/Journée) : une action avec
+  durée s'affiche comme un **bloc qui s'étire** sur ses créneaux (8h→10h = 4
+  créneaux). Fin au-delà de la plage **clampée à 18h**. Les actions qui se
+  **chevauchent** dans le temps se placent **côte à côte en couloirs** (largeurs
+  égales). Le drag (replanification) **préserve l'heure et la durée**.
+
+### Technique
+- Champ **séparé** `Lead.nextActionEndTime?: "HH:mm"` — `nextActionDate` et
+  `nextActionTime` intouchés. Écriture via la seule action `SET_NEXT_ACTION`
+  (`setNextAction(id, type, date, time?, endTime?)`). Migration localStorage
+  **nulle**. `TimeGrid` réécrit en **column-major + positionnement absolu** ;
+  helper pur `layoutDayGrid` (span, clamp, fallback span 1, couloirs de
+  chevauchement) + `isEndAfterStart`. Drag = une droppable par colonne (niveau
+  jour). Harnais reducer porté à **148** (durée + grille + validation ; isolation
+  et cas existants verts).
+
+---
+
 ## [3.9.0] — 2026-06-17 — Agenda en grille horaire
 
 ### Ajouté

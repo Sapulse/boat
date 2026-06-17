@@ -46,8 +46,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'DELETE_ACTION', payload: id });
   };
 
-  const setNextAction = (id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string) => {
-    dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime } });
+  const setNextAction = (id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string, nextActionEndTime?: string) => {
+    dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime } });
   };
 
   const getLeadActions = (leadId: string): LeadAction[] => {

@@ -28,7 +28,7 @@ const store = new Map<string, string>();
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
-import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents } from '../src/lib/agenda';
+import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart } from '../src/lib/agenda';
 import type { AgendaEvent } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
@@ -497,6 +497,56 @@ section('Agenda heures — EFFACER (pas de type) : date ET heure effacees ensemb
 }
 
 // ---------------------------------------------------------------------------
+// Agenda duree (lot agenda-duree) — heure de fin optionnelle via SET_NEXT_ACTION
+// ---------------------------------------------------------------------------
+
+section('Agenda duree — isEndAfterStart : fin valide seulement si > debut');
+{
+  check("'09:00' -> '10:00' valide", isEndAfterStart('09:00', '10:00') === true);
+  check("'10:00' -> '09:00' invalide", isEndAfterStart('10:00', '09:00') === false);
+  check("'09:00' -> '09:00' invalide (egal)", isEndAfterStart('09:00', '09:00') === false);
+  check("debut vide -> invalide", isEndAfterStart('', '10:00') === false);
+}
+
+section('Agenda duree — CREER AVEC duree : debut + fin posees');
+{
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-24', nextActionTime: '08:00', nextActionEndTime: '10:00' } });
+  check('debut pose', s.leads[0].nextActionTime === '08:00', `=${s.leads[0].nextActionTime}`);
+  check('fin posee', s.leads[0].nextActionEndTime === '10:00', `=${s.leads[0].nextActionEndTime}`);
+}
+
+section('Agenda duree — CREER SANS duree (retro-compat) : fin absente');
+{
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'appel', nextActionDate: '2026-06-24', nextActionTime: '08:00' } });
+  check('debut pose', s.leads[0].nextActionTime === '08:00', `=${s.leads[0].nextActionTime}`);
+  check('fin absente (undefined = ponctuel)', s.leads[0].nextActionEndTime === undefined, `=${s.leads[0].nextActionEndTime}`);
+}
+
+section('Agenda duree — REPLANIFIER : date changee, heure ET duree preservees');
+{
+  const lead = makeLead({ id: 'l1', status: 'qualifie', lastActionDate: '2026-06-05', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '14:00', nextActionEndTime: '16:00' });
+  const a1 = makeAction({ id: 'a1' });
+  const state = makeState({ leads: [lead], actions: [a1] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-27', nextActionTime: '14:00', nextActionEndTime: '16:00' } });
+  check('date replanifiee', s.leads[0].nextActionDate === '2026-06-27', `=${s.leads[0].nextActionDate}`);
+  check('heure de debut preservee', s.leads[0].nextActionTime === '14:00', `=${s.leads[0].nextActionTime}`);
+  check('heure de fin (duree) preservee', s.leads[0].nextActionEndTime === '16:00', `=${s.leads[0].nextActionEndTime}`);
+  check('historique (actions) MEME REFERENCE', s.actions === state.actions);
+}
+
+section('Agenda duree — EFFACER (pas de type) : date, heure ET fin effacees ensemble');
+{
+  const lead = makeLead({ id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '14:00', nextActionEndTime: '16:00' });
+  const state = makeState({ leads: [lead], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: '', nextActionDate: '' } });
+  check('date effacee', s.leads[0].nextActionDate === '', `=${s.leads[0].nextActionDate}`);
+  check('heure effacee', s.leads[0].nextActionTime === undefined, `=${s.leads[0].nextActionTime}`);
+  check('fin effacee', s.leads[0].nextActionEndTime === undefined, `=${s.leads[0].nextActionEndTime}`);
+}
+
+// ---------------------------------------------------------------------------
 // Agenda grille horaire (lot agenda-grille-horaire, etape 1) — helpers PURS
 // ---------------------------------------------------------------------------
 
@@ -542,6 +592,49 @@ section('Agenda grille — layoutDayEvents : repartit sans perdre aucun evenemen
   check('1 evenement dans le creneau 14:30', (lay.bySlot.get('14:30') ?? []).length === 1);
   const total = lay.allDay.length + lay.outOfRange.length + [...lay.bySlot.values()].reduce((n, a) => n + a.length, 0);
   check('aucun evenement perdu (5 en entree, 5 repartis)', total === 5, `=${total}`);
+}
+
+section('Agenda grille — layoutDayGrid : span (bloc), clamp 18h, fallback span 1');
+{
+  // 08:00–10:00 -> creneau de debut 0, couvre 4 creneaux (08:00..09:30).
+  const g1 = layoutDayGrid([makeEvent({ leadId: 'a', time: '08:00', endTime: '10:00' })]);
+  check('bloc 08:00–10:00 : startIndex 0', g1.positioned[0].startIndex === 0, `=${g1.positioned[0].startIndex}`);
+  check('bloc 08:00–10:00 : span 4', g1.positioned[0].span === 4, `=${g1.positioned[0].span}`);
+  // 17:00–20:00 -> fin clampee a 18:00 (span 2 : 17:00, 17:30).
+  const g2 = layoutDayGrid([makeEvent({ leadId: 'b', time: '17:00', endTime: '20:00' })]);
+  check('fin hors plage clampee a 18h : span 2', g2.positioned[0].span === 2, `=${g2.positioned[0].span}`);
+  // sans fin -> ponctuel (span 1).
+  const g3 = layoutDayGrid([makeEvent({ leadId: 'c', time: '09:00' })]);
+  check('sans fin : span 1 (ponctuel)', g3.positioned[0].span === 1, `=${g3.positioned[0].span}`);
+  // fin <= debut (incoherente) -> fallback span 1.
+  const g4 = layoutDayGrid([makeEvent({ leadId: 'd', time: '09:00', endTime: '08:00' })]);
+  check('fin <= debut : fallback span 1', g4.positioned[0].span === 1, `=${g4.positioned[0].span}`);
+}
+
+section('Agenda grille — layoutDayGrid : couloirs (lanes) de chevauchement');
+{
+  const g = layoutDayGrid([
+    makeEvent({ leadId: 'A', time: '09:00', endTime: '11:00' }), // 09:00..10:30
+    makeEvent({ leadId: 'B', time: '10:00', endTime: '11:00' }), // 10:00..10:30 (chevauche A)
+    makeEvent({ leadId: 'C', time: '14:00' }),                   // isole
+  ]);
+  const byId = (id: string) => g.positioned.find(p => p.event.leadId === id);
+  check('A et B en 2 couloirs (lanes=2)', byId('A')?.lanes === 2 && byId('B')?.lanes === 2, `A=${byId('A')?.lanes} B=${byId('B')?.lanes}`);
+  check('A et B sur des couloirs distincts', byId('A')?.lane !== byId('B')?.lane, `A=${byId('A')?.lane} B=${byId('B')?.lane}`);
+  check('C isole : un seul couloir (lanes=1)', byId('C')?.lanes === 1, `=${byId('C')?.lanes}`);
+}
+
+section('Agenda grille — layoutDayGrid : all-day / hors-plage non perdus');
+{
+  const g = layoutDayGrid([
+    makeEvent({ leadId: 'allday', time: undefined }),
+    makeEvent({ leadId: 'early', time: '07:00', endTime: '08:30' }),
+    makeEvent({ leadId: 'ok', time: '09:00', endTime: '09:30' }),
+  ]);
+  check('1 all-day', g.allDay.length === 1 && g.allDay[0].leadId === 'allday');
+  check('1 hors-plage (07:00)', g.outOfRange.length === 1 && g.outOfRange[0].leadId === 'early');
+  check('1 positionne', g.positioned.length === 1 && g.positioned[0].event.leadId === 'ok');
+  check('slotCount = 20 (8h-18h, 30 min)', g.slotCount === 20, `=${g.slotCount}`);
 }
 
 section('Agenda grille — CREER depuis un creneau : date + heure du creneau posees (via SET_NEXT_ACTION)');
