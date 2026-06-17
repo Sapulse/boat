@@ -158,22 +158,26 @@ section('Migration templates — state FUTUR (champ templates) lu tel quel, type
   check('contenu sms intact', s.templates[1].body === 'Coucou {{prenom}}' && s.templates[1].subject === '');
 }
 
-section('N1 — stored absent (vrai premier lancement) -> seed');
+section('base-vierge — stored absent (vrai premier lancement) -> base VIERGE, equipe/modeles gardes');
 {
   store.clear();
   const s = getInitialState();
-  check('seed de 35 leads', s.leads.length === 35, `leads.length=${s.leads.length}`);
-  check('commerciaux par defaut', s.commercials === DEFAULT_COMMERCIALS);
-  check('templates par defaut', s.templates === DEFAULT_TEMPLATES);
-  check('actions seedees presentes', s.actions.length > 0);
+  check('leads vides ([])', s.leads.length === 0, `leads.length=${s.leads.length}`);
+  check('actions vides ([])', s.actions.length === 0, `actions.length=${s.actions.length}`);
+  check('monthlyStats vides ([])', s.monthlyStats.length === 0, `monthlyStats.length=${s.monthlyStats.length}`);
+  check('acquisitionVolumes vides ([])', s.acquisitionVolumes.length === 0, `acquisitionVolumes.length=${s.acquisitionVolumes.length}`);
+  check('commerciaux par defaut (equipe gardee)', s.commercials === DEFAULT_COMMERCIALS);
+  check('templates par defaut (modeles gardes)', s.templates === DEFAULT_TEMPLATES);
 }
 
-section('N1 — JSON invalide -> seed (comportement loadState conserve)');
+section('base-vierge — JSON invalide -> base VIERGE (loadState renvoie null, meme branche)');
 {
   store.clear();
   store.set(STORAGE_KEY, '{pas du json');
   const s = getInitialState();
-  check('seed de 35 leads', s.leads.length === 35, `leads.length=${s.leads.length}`);
+  check('leads vides ([])', s.leads.length === 0, `leads.length=${s.leads.length}`);
+  check('commerciaux par defaut (equipe gardee)', s.commercials === DEFAULT_COMMERCIALS);
+  check('templates par defaut (modeles gardes)', s.templates === DEFAULT_TEMPLATES);
 }
 
 section('N1 — state partiel (hydratation champ par champ, pas de crash ni re-seed)');

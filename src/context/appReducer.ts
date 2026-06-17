@@ -2,12 +2,6 @@ import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVo
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
-import {
-  generateSeedLeads,
-  generateSeedActions,
-  generateSeedMonthlyStats,
-  generateSeedAcquisitionVolumes,
-} from '../data/seed';
 
 // Module PUR (sans composant ni JSX) : initialisation du state + reducer.
 // Separe de AppContext.tsx pour la regle react-refresh/only-export-components
@@ -50,10 +44,10 @@ function hydrateTemplates(stored: AppState): MessageTemplate[] {
 
 export function getInitialState(): AppState {
   const stored = loadState();
-  // Restauration des qu'un state existe (meme avec 0 lead) : le seed ne doit se
-  // declencher QUE sur un vrai premier lancement (cle absente ou JSON invalide).
-  // Supprimer son dernier lead puis recharger ne doit JAMAIS re-seeder ni
-  // ecraser commerciaux / templates / stats.
+  // Restauration des qu'un state existe (meme avec 0 lead) : la base ne demarre
+  // VIERGE que sur un vrai premier lancement (cle absente ou JSON invalide).
+  // Supprimer son dernier lead puis recharger ne doit JAMAIS reintroduire de
+  // donnees ni ecraser commerciaux / templates / stats (protection N1, v3.1.1).
   if (stored) {
     // Hydratation champ par champ avec fallback : un state partiel (version
     // ancienne ou corrompu mais parsable) se charge sans crash ni re-seed.
@@ -69,14 +63,16 @@ export function getInitialState(): AppState {
     };
   }
 
-  const leads = generateSeedLeads(35);
-  const actions = generateSeedActions(leads);
+  // Premier lancement reel (cle absente ou JSON invalide) : base VIERGE pour le
+  // deploiement client. Equipe et modeles par defaut conserves ; l'import Excel
+  // (ou le seed de demo, fonctions gardees dans data/seed.ts mais plus appelees)
+  // remplira la base.
   return {
-    leads,
-    actions,
+    leads: [],
+    actions: [],
     commercials: DEFAULT_COMMERCIALS,
-    monthlyStats: generateSeedMonthlyStats(),
-    acquisitionVolumes: generateSeedAcquisitionVolumes(),
+    monthlyStats: [],
+    acquisitionVolumes: [],
     templates: DEFAULT_TEMPLATES,
   };
 }

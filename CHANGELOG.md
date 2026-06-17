@@ -7,6 +7,29 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.5.0] — 2026-06-17 — Démarrage sur base vierge
+
+### Ajouté
+- **Première installation sur base vierge** : à un vrai premier lancement
+  (localStorage absent ou JSON illisible), l'app démarre désormais **sans aucune
+  donnée de démo** — `leads`, `actions`, `monthlyStats` et `acquisitionVolumes`
+  vides. L'**équipe** (`DEFAULT_COMMERCIALS`) et les **modèles** email/SMS
+  (`DEFAULT_TEMPLATES`) restent fournis par défaut. Prépare le déploiement chez
+  le client : la base se remplit par la saisie ou l'import. Les fonctions
+  `generateSeed*` (`src/data/seed.ts`) sont conservées (démo / réutilisation
+  future) mais ne sont plus appelées à l'initialisation.
+
+### Inchangé (non-régression)
+- **Protection N1 (v3.1.1) intacte** : seule la branche « premier lancement »
+  bascule en base vierge. Un état déjà persisté — même réduit à `leads: []` après
+  suppression manuelle — est toujours **restauré tel quel, sans re-seed** ni
+  écrasement de l'équipe / des modèles / des stats. Les installations existantes
+  (dont les bases de test déjà seedées) conservent leurs données ; repartir
+  vierge en test suppose de vider le localStorage. Harnais reducer maintenu à
+  67/67 (cas N1, migration templates et hydratation partielle inclus).
+
+---
+
 ## [3.4.1] — 2026-06-11 — Confort mobile & dette
 
 ### Corrigé
