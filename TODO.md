@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.9** (dernier tag `v3.9.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.12** (dernier tag `v3.12.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -78,6 +78,18 @@ déploiement auto) → tag annoté. Commits sémantiques.
   conservé au **niveau jour** (l'heure suit). Mois inchangé. Helpers purs
   `buildTimeSlots`/`eventSlot`/`layoutDayEvents` + composant `TimeGrid`. Harnais
   reducer **121**. *(= L2 du diagnostic « agenda complet ».)*
+- **`v3.10.0`** — **durée des actions** : heure de fin optionnelle (champ séparé
+  `Lead.nextActionEndTime?`) → bloc qui s'étire sur ses créneaux, chevauchements
+  côte à côte en couloirs, clamp 18h. Éditeur + créateur : champ Fin (validation
+  fin > début). `TimeGrid` réécrit en column-major + positionnement absolu ;
+  helper pur `layoutDayGrid`. Harnais reducer **148**.
+- **`v3.11.0`** — **drag par créneau** : glisser un bloc change le **jour ET
+  l'heure** (durée préservée, clamp 18h) ; drag activé en Journée (change l'heure,
+  commercial jamais modifié). 1 droppable/colonne + `delta.y` ; helpers purs
+  `startSlotIndex`/`shiftEventBySlots`. Harnais reducer **166**.
+- **`v3.12.0`** — **redimensionner un bloc à la poignée** (souris + tactile,
+  aperçu live, min 30 min, clamp 18h, début fixe). Helper pur `resizeEventBySlots`.
+  Harnais reducer **176**. *(= le « glisser-pour-définir-la-durée » envisagé, fait.)*
 
 ---
 
@@ -112,13 +124,14 @@ déploiement auto) → tag annoté. Commits sémantiques.
 - [ ] **Agenda complet type Google/Outlook** (étude de faisabilité faite, 17/06) :
   - **L1 — heures** → ✅ **FAIT en v3.8.0** (créneaux horaires sur les actions de leads,
     propre en localStorage car champ par lead).
-  - **L2 — grille horaire visuelle** (vues Semaine/Journée) → ✅ **FAIT en v3.9.0**
-    (axe heures 8h-18h, créneaux 30 min, clic-créneau → création avec heure ;
-    Journée comparative préservée).
+  - **L2 — grille horaire visuelle** (vues Semaine/Journée) → ✅ **FAIT en v3.9.0**,
+    enrichi ensuite : **durée/blocs** (v3.10.0), **drag par créneau** jour+heure
+    (v3.11.0), **resize à la poignée** (v3.12.0). Axe 8h-18h, créneaux 30 min.
   - **L3 — événements libres** (réunion, congé, bloc-temps, non liés à un lead) :
-    nouvelle entité `CalendarEvent` + tableau + reducer + migration. ⚠️ **valeur faible
-    en localStorage** (données piégées par poste, non partagées) → **à faire avec le
-    backend**, sinon travail jetable.
+    nouvelle entité `CalendarEvent` + tableau + reducer (ADD/UPDATE/DELETE) + migration.
+    🔵 **En cours** (lot `feat/agenda-evenements-libres`, démarré 17/06) **en
+    localStorage**, entité **isolée pour rebranchement backend** ultérieur ; données
+    **mono-poste** assumées en test (non partagées tant qu'il n'y a pas de backend).
   - **L4 — agenda d'équipe PARTAGÉ** : impossible en localStorage (chaque poste est isolé).
     **Dépend du backend.** 👉 Reco du diagnostic : quand le backend arrivera, **évaluer
     d'abord la synchro Outlook 365** (Microsoft Graph) plutôt que reconstruire un
