@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Trash2, Plus, Phone, Mail, Calendar,
-  Ship, DollarSign, User, Clock, FileText, MessageSquare,
+  Ship, DollarSign, User, Clock, FileText, MessageSquare, MessageCircle,
   AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown, Contact,
 } from 'lucide-react';
 import { useApp } from '../context/useApp';
@@ -14,6 +14,7 @@ import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '..
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate, hasPlannedNextAction } from '../lib/utils';
 import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/email';
 import { buildSms } from '../lib/sms';
+import { buildWhatsApp } from '../lib/whatsapp';
 import { generateVCard } from '../lib/vcard';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
@@ -28,6 +29,7 @@ export default function LeadDetailPage() {
   const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string }>({ type: '', date: '' });
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showSmsMenu, setShowSmsMenu] = useState(false);
+  const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
 
   const lead = state.leads.find(l => l.id === id);
   if (!lead) {
@@ -95,9 +97,10 @@ export default function LeadDetailPage() {
     setShowEmailMenu(false);
   };
 
-  // Chaque bouton (Email / SMS) ne liste que les modeles de son type.
+  // Chaque bouton (Email / SMS / WhatsApp) ne liste que les modeles de son type.
   const emailTemplates = state.templates.filter(t => t.type === 'email');
   const smsTemplates = state.templates.filter(t => t.type === 'sms');
+  const whatsappTemplates = state.templates.filter(t => t.type === 'whatsapp');
 
   // Envoi SMS pre-rempli : miroir strict de sendEmail — interpole UNIQUEMENT
   // le corps du modele (un SMS n'a pas de sujet), memes variables que l'email,
@@ -117,6 +120,28 @@ export default function LeadDetailPage() {
       authorId: lead.commercialId,
     });
     setShowSmsMenu(false);
+  };
+
+  // Envoi WhatsApp pre-rempli : miroir strict de sendSms — interpole UNIQUEMENT
+  // le corps (pas de sujet), memes variables. Specificite : wa.me est une URL
+  // https, ouverte dans un NOUVEL ONGLET (window.open _blank noopener) pour ne
+  // pas quitter le CRM (contrairement aux schemes mailto:/sms: qui delèguent a
+  // une app externe). Journalise une action 'whatsapp'. `template` null =
+  // WhatsApp vierge (repli quand aucun modele de type whatsapp).
+  const sendWhatsapp = (template: MessageTemplate | null) => {
+    const commercial = state.commercials.find(c => c.id === lead.commercialId);
+    const vars = buildLeadVars(lead, commercial);
+    const body = template ? renderTemplate(template.body, vars) : '';
+    window.open(buildWhatsApp(lead.phone, body), '_blank', 'noopener,noreferrer');
+    addAction({
+      leadId: lead.id,
+      type: 'whatsapp',
+      date: toISODate(new Date()),
+      result: template ? `WhatsApp envoyé — ${template.title}` : 'WhatsApp envoyé — sans modèle',
+      notes: body,
+      authorId: lead.commercialId,
+    });
+    setShowWhatsappMenu(false);
   };
 
   // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
@@ -259,6 +284,34 @@ export default function LeadDetailPage() {
                     {smsTemplates.length === 0 && (
                       <button onClick={() => sendSms(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         SMS vierge (sans modèle)
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowWhatsappMenu(v => !v)}
+                disabled={!lead.phone}
+                title={lead.phone ? undefined : 'Aucun numéro de téléphone renseigné'}
+                className="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MessageCircle className="w-3 h-3" /> WhatsApp <ChevronDown className="w-3 h-3" />
+              </button>
+              {showWhatsappMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowWhatsappMenu(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    {whatsappTemplates.map(t => (
+                      <button key={t.id} onClick={() => sendWhatsapp(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        {t.title}
+                      </button>
+                    ))}
+                    {whatsappTemplates.length === 0 && (
+                      <button onClick={() => sendWhatsapp(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        WhatsApp vierge (sans modèle)
                       </button>
                     )}
                   </div>

@@ -27,6 +27,7 @@ const store = new Map<string, string>();
 
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
+import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
 const STORAGE_KEY = 'crm-nautisme-data';
@@ -156,6 +157,29 @@ section('Migration templates — state FUTUR (champ templates) lu tel quel, type
   check('2 templates lus depuis le champ `templates`', s.templates.length === 2);
   check('type sms preserve (pas ecrase en email)', s.templates[1].type === 'sms', `=${s.templates[1].type}`);
   check('contenu sms intact', s.templates[1].body === 'Coucou {{prenom}}' && s.templates[1].subject === '');
+}
+
+section('Migration templates — type WhatsApp preserve + type inconnu/legacy -> email');
+{
+  // Le 3e modele a un type INCONNU (legacy ou corrompu) : doit retomber sur
+  // 'email' sans perte ; le modele WhatsApp doit etre preserve tel quel (sinon
+  // un modele WA stocke retomberait en email au rechargement — regression).
+  const stored = [
+    { id: 'w1', type: 'whatsapp', title: 'WA relance', subject: '', body: 'Salut {{prenom}}' },
+    { id: 's1', type: 'sms', title: 'SMS', subject: '', body: 'SMS body' },
+    { id: 'e1', type: 'email', title: 'Mail', subject: 'Su', body: 'Bo' },
+    { id: 'leg', type: 'mms', title: 'Legacy', subject: '', body: 'inconnu' },
+  ];
+  store.clear();
+  store.set(STORAGE_KEY, JSON.stringify(makeState({ templates: stored as unknown as MessageTemplate[] })));
+  const s = getInitialState();
+  check('4 templates lus', s.templates.length === 4);
+  check('type whatsapp preserve (pas ecrase en email)', s.templates[0].type === 'whatsapp', `=${s.templates[0].type}`);
+  check('contenu whatsapp intact', s.templates[0].body === 'Salut {{prenom}}' && s.templates[0].subject === '');
+  check('type sms preserve', s.templates[1].type === 'sms', `=${s.templates[1].type}`);
+  check('type email preserve', s.templates[2].type === 'email', `=${s.templates[2].type}`);
+  check('type inconnu (mms) -> email (defaut sur, pas de perte)', s.templates[3].type === 'email', `=${s.templates[3].type}`);
+  check('contenu du modele legacy intact (seul le type change)', s.templates[3].title === 'Legacy' && s.templates[3].body === 'inconnu');
 }
 
 section('base-vierge — stored absent (vrai premier lancement) -> base VIERGE, equipe/modeles gardes');
@@ -390,6 +414,33 @@ section('Templates — DELETE_TEMPLATE confine + garde min-1');
   const refused = reducer(lastOne, { type: 'DELETE_TEMPLATE', payload: 'seul' });
   check('suppression du DERNIER template refusee (state inchange, meme reference)', refused === lastOne);
   check('la liste ne peut jamais etre vide', refused.templates.length === 1);
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp — toWaNumber : format international wa.me (constat ephemere)
+// ---------------------------------------------------------------------------
+
+section('WhatsApp — toWaNumber : conversion au format international wa.me');
+{
+  // Constat ephemere : on AFFICHE les conversions au point d'arret (comme pour
+  // buildSms) en plus de les asserter.
+  const cases: [string, string][] = [
+    ['06 12 34 56 78', '33612345678'],   // national FR : 0 -> 33
+    ['+33 6 12 34 56 78', '33612345678'], // indicatif via '+'
+    ['0033 6 12 34 56 78', '33612345678'],// indicatif via '00'
+    ['33612345678', '33612345678'],       // deja international : inchange
+  ];
+  for (const [input, expected] of cases) {
+    const got = toWaNumber(input);
+    console.log(`    « ${input} » -> ${got}`);
+    check(`toWaNumber("${input}") = ${expected}`, got === expected, `=${got}`);
+  }
+  const url = buildWhatsApp('06 12 34 56 78', 'Bonjour & à bientôt');
+  console.log(`    URL exemple : ${url}`);
+  check('buildWhatsApp : prefixe wa.me + numero international',
+    url.startsWith('https://wa.me/33612345678?text='), url);
+  check('buildWhatsApp : corps encode (espaces, &, accents)',
+    url.endsWith('?text=Bonjour%20%26%20%C3%A0%20bient%C3%B4t'), url);
 }
 
 // ---------------------------------------------------------------------------

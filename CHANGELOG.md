@@ -7,6 +7,36 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.6.0] — 2026-06-17 — Bouton WhatsApp
+
+### Ajouté
+- **Bouton WhatsApp sur la fiche lead**, miroir strict des boutons Email et SMS :
+  menu déroulant des modèles de type WhatsApp (repli « WhatsApp vierge (sans
+  modèle) » si aucun), interpolation des variables du lead via les modèles, et
+  **journalisation d'une action `whatsapp`** dans l'historique. Le bouton est
+  grisé (avec libellé explicatif) en l'absence de numéro. Le lien `wa.me` ouvre
+  un **nouvel onglet** (`window.open`), le CRM reste ouvert — contrairement aux
+  schémas `mailto:`/`sms:` qui délèguent à une app externe.
+- **Modèles de type WhatsApp** (`TemplatesPage`) : bouton « + Modèle WhatsApp »,
+  badge vert distinct (icône bulle), pas de champ sujet (comme le SMS). Le type
+  est figé à la création et persisté.
+- **`lib/whatsapp.ts`** : `buildWhatsApp(phone, body)` →
+  `https://wa.me/<numéro_international>?text=<corps_encodé>`. Helper `toWaNumber`
+  convertit le numéro au format international **sans `+` ni `0`** exigé par
+  wa.me : `06… → 336…`, `+33… → 33…`, `0033… → 33…`, numéro déjà international
+  inchangé. Indicatif par défaut **33 (France)** ; limite documentée : un numéro
+  national étranger sans indicatif est présumé français (à saisir en `+xx`).
+
+### Technique
+- `ActionType` et `TemplateType` étendus de `'whatsapp'` ; `ACTION_TYPES` enrichi
+  (propagation automatique aux formulaires et à l'historique).
+- **Migration sûre** (`hydrateTemplates`) : un modèle WhatsApp stocké est
+  **préservé** au rechargement (jamais réécrit en email) ; tout type inconnu ou
+  legacy retombe sur `email` sans perte de contenu. Couvert au harnais reducer
+  (porté à 80 assertions, dont le constat `toWaNumber`).
+
+---
+
 ## [3.5.0] — 2026-06-17 — Démarrage sur base vierge
 
 ### Ajouté

@@ -39,7 +39,10 @@ function hydrateTemplates(stored: AppState): MessageTemplate[] {
   const legacy = stored as AppState & { emailTemplates?: MessageTemplate[] };
   const raw = legacy.templates ?? legacy.emailTemplates;
   if (!raw?.length) return DEFAULT_TEMPLATES;
-  return raw.map(t => ({ ...t, type: t.type === 'sms' ? 'sms' : 'email' }));
+  // Normalisation du type : 'sms' et 'whatsapp' preserves tels quels ; tout
+  // autre cas (legacy sans type, ou valeur inconnue) retombe sur 'email' — le
+  // defaut historique sur, jamais une perte de modele.
+  return raw.map(t => ({ ...t, type: t.type === 'sms' ? 'sms' : t.type === 'whatsapp' ? 'whatsapp' : 'email' }));
 }
 
 export function getInitialState(): AppState {

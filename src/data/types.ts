@@ -20,6 +20,7 @@ export type ActionType =
   | 'appel'
   | 'email'
   | 'sms'
+  | 'whatsapp'
   | 'rdv'
   | 'visite'
   | 'devis'
@@ -40,13 +41,13 @@ export interface Commercial {
   signature?: string;
 }
 
-export type TemplateType = 'email' | 'sms';
+export type TemplateType = 'email' | 'sms' | 'whatsapp';
 
 /**
- * Modele de message (email OU sms). Les ids sont generes (generateId) pour les
- * nouveaux modeles ; les ids semantiques historiques ('contact', 'relance',
- * 'suivi') restent des strings valides. `subject` vaut '' pour les SMS (pas de
- * sujet). Le type est fige a la creation.
+ * Modele de message (email, sms OU whatsapp). Les ids sont generes (generateId)
+ * pour les nouveaux modeles ; les ids semantiques historiques ('contact',
+ * 'relance', 'suivi') restent des strings valides. `subject` vaut '' pour les
+ * SMS et WhatsApp (pas de sujet). Le type est fige a la creation.
  */
 export interface MessageTemplate {
   id: string;

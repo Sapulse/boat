@@ -57,6 +57,7 @@ export const ACTION_TYPES: { value: ActionType; label: string }[] = [
   { value: 'appel', label: 'Appel' },
   { value: 'email', label: 'Email' },
   { value: 'sms', label: 'SMS' },
+  { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'rdv', label: 'Rendez-vous' },
   { value: 'visite', label: 'Visite' },
   { value: 'devis', label: 'Devis' },
