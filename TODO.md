@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.7** (dernier tag `v3.7.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.8** (dernier tag `v3.8.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -49,7 +49,7 @@ déploiement auto) → tag annoté. Commits sémantiques.
 - **`v3.4.1`** — confort mobile & dette : graphes lisibles en étroit, cibles tactiles
   ≥ 40px, dépose `@dnd-kit/sortable` + `@dnd-kit/utilities` (inutilisés)
 
-### Lots du 17/06 (préparation déploiement + 3 canaux + agenda)
+### Lots du 17/06 (préparation déploiement + 3 canaux + agenda + heures)
 - **`v3.5.0`** — **base vierge** : démarrage SANS données de démo à la première
   installation (localStorage absent / JSON invalide) ; équipe (`DEFAULT_COMMERCIALS`)
   et modèles (`DEFAULT_TEMPLATES`) conservés. Protection **N1 préservée** (un état
@@ -64,6 +64,12 @@ déploiement auto) → tag annoté. Commits sémantiques.
   échues signalées. **Interactif** (créer sur date vide / replanifier par drag en
   semaine + re-sélecteur en mois/journée), tout via `SET_NEXT_ACTION`. Helpers purs
   `lib/agenda.ts`, aucune lib calendrier ajoutée. Harnais reducer **91**.
+- **`v3.8.0`** — **heure optionnelle** sur la prochaine action (champ séparé
+  `Lead.nextActionTime?`, `nextActionDate` intouché) : éditeur fiche date + heure
+  facultative, agenda affiche l'heure dans les pastilles + tri sans-heure d'abord
+  puis chronologique (3 vues), drag/re-sélecteur conservent l'heure. Migration
+  localStorage nulle. Harnais reducer **103**. *(= L1 du diagnostic « agenda
+  complet », voir ci-dessous.)*
 
 ---
 
@@ -71,8 +77,6 @@ déploiement auto) → tag annoté. Commits sémantiques.
 
 ### 🟢 À TRAITER — ne dépend de personne (prêt à démarrer)
 
-- [ ] **BUG VCF** (signalé en RDV) : « le VCF ne sélectionne pas correctement les
-  contacts ». À diagnostiquer (export et/ou import). **Prochain candidat naturel.**
 - [ ] **Relances PROPOSÉES** (pré-remplies, modifiables) après certaines actions :
   ex. devis envoyé → proposer une relance à J+3 / J+7. **Pré-remplissage, PAS
   automatisme** (l'utilisateur valide/ajuste). S'appuie sur le mécanisme
@@ -97,12 +101,39 @@ déploiement auto) → tag annoté. Commits sémantiques.
   localStorage. Pré-requis : commerciaux créés, sources/types alignés, clarifier "DV"/"BO".
 - [ ] **Import de leads depuis emails** : semi-manuel d'abord, puis agent IA. *Le client
   doit fournir 2-3 mails types* pour caler le parsing.
-- [ ] **Synchro Outlook / Infocob** : Infocob est déjà connecté à Outlook 365 — à étudier
-  comme point d'intégration.
+- [ ] **Agenda complet type Google/Outlook** (étude de faisabilité faite, 17/06) :
+  - **L1 — heures** → ✅ **FAIT en v3.8.0** (créneaux horaires sur les actions de leads,
+    propre en localStorage car champ par lead).
+  - **L2 — grille horaire visuelle** (vues Semaine/Journée en 8h-20h) : faisable en
+    localStorage mais **grosse** réécriture UI ; pas prioritaire seule.
+  - **L3 — événements libres** (réunion, congé, bloc-temps, non liés à un lead) :
+    nouvelle entité `CalendarEvent` + tableau + reducer + migration. ⚠️ **valeur faible
+    en localStorage** (données piégées par poste, non partagées) → **à faire avec le
+    backend**, sinon travail jetable.
+  - **L4 — agenda d'équipe PARTAGÉ** : impossible en localStorage (chaque poste est isolé).
+    **Dépend du backend.** 👉 Reco du diagnostic : quand le backend arrivera, **évaluer
+    d'abord la synchro Outlook 365** (Microsoft Graph) plutôt que reconstruire un
+    calendrier maison — **Infocob est déjà connecté à Outlook 365**, donc Outlook EST
+    déjà le calendrier partagé de l'équipe (Graph nécessite tout de même un broker
+    d'auth côté serveur = backend).
+- [ ] **Synchro Outlook / Infocob** : Infocob déjà connecté à Outlook 365 — point
+  d'intégration clé (cf. L4 ci-dessus : alternative à un calendrier maison).
 - [ ] **Base partagée multi-postes** (backend Vercel ou autre) — **LE grand jalon** : ce
   qui fait passer du prototype à l'outil utilisé par 4 commerciaux. Débloque comptes,
-  déploiement chez eux, import Excel réel. Bloqué sur le choix d'infra.
+  déploiement chez eux, import Excel réel, agenda partagé (L3/L4). Bloqué sur le choix d'infra.
 - [ ] **Enregistrement / transcription d'appels** : sujet à part, **enjeu RGPD** fort.
+
+---
+
+## ℹ️ POINTS D'USAGE — résolus, PAS du développement
+
+- **« Le VCF ne pioche pas dans les contacts du téléphone »** (soulevé en RDV) :
+  **FAUX BUG.** L'export `.vcf` et l'import `.vcf` (multiple + détection de doublons)
+  **fonctionnent**. Le besoin sous-jacent — « sélectionner directement dans le carnet
+  de contacts du téléphone » — est **impossible pour une page web** (barrière de
+  sécurité du navigateur : pas d'accès au carnet natif). **Contournement utilisateur** :
+  Contacts du téléphone → *Partager / Exporter en VCF* → importer le fichier dans le CRM.
+  → **Question d'usage à expliquer au client, aucun développement requis.**
 
 ---
 
@@ -132,9 +163,10 @@ déploiement auto) → tag annoté. Commits sémantiques.
 ## Prochain vrai jalon
 
 Deux fronts en parallèle :
-1. **Court terme, autonome** : bug VCF → relances proposées → modèles multilingues.
+1. **Court terme, autonome** : relances proposées → modèles multilingues.
 2. **Structurant** : **le backend / base partagée**, qui débloque comptes, déploiement
-   chez Ocean Boat et import Excel réel. Toujours en attente de l'arbitrage d'infra.
+   chez Ocean Boat, import Excel réel et l'agenda partagé (L3/L4 + synchro Outlook).
+   Toujours en attente de l'arbitrage d'infra.
 
 En attente client : arbitrages Mickaël (statuts/pipeline), réponses Infocob (types
 d'actions, export), mails types pour l'import IA, et infra serveur pour le backend.
