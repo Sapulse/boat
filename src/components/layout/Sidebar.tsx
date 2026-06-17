@@ -5,6 +5,7 @@ import {
   UserCheck,
   Kanban,
   CalendarClock,
+  CalendarDays,
   BarChart3,
   Megaphone,
   UsersRound,
@@ -24,6 +25,7 @@ const mainNav: NavItem[] = [
   { name: 'Clients', href: '/clients', icon: UserCheck },
   { name: 'Pipeline', href: '/pipeline', icon: Kanban },
   { name: 'À relancer', href: '/relances', icon: CalendarClock },
+  { name: 'Agenda', href: '/agenda', icon: CalendarDays },
   { name: 'Performance', href: '/performance', icon: BarChart3 },
   { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
 ];

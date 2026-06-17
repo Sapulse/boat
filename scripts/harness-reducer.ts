@@ -28,6 +28,7 @@ const store = new Map<string, string>();
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
+import { getCreatableLeads } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
 const STORAGE_KEY = 'crm-nautisme-data';
@@ -414,6 +415,45 @@ section('Templates — DELETE_TEMPLATE confine + garde min-1');
   const refused = reducer(lastOne, { type: 'DELETE_TEMPLATE', payload: 'seul' });
   check('suppression du DERNIER template refusee (state inchange, meme reference)', refused === lastOne);
   check('la liste ne peut jamais etre vide', refused.templates.length === 1);
+}
+
+// ---------------------------------------------------------------------------
+// Agenda (lot feat/agenda, etape 4 interactif) — ecriture via SET_NEXT_ACTION
+// ---------------------------------------------------------------------------
+
+section('Agenda — getCreatableLeads : leads actifs SANS action (ecrasement impossible par construction)');
+{
+  const leads = [
+    makeLead({ id: 'free', status: 'contacte', nextActionType: '', nextActionDate: '' }),
+    makeLead({ id: 'busy', status: 'contacte', nextActionType: 'rdv', nextActionDate: '2026-06-20' }),
+    makeLead({ id: 'won', status: 'signe', nextActionType: '', nextActionDate: '' }),
+  ];
+  const creatable = getCreatableLeads(leads);
+  check('lead actif sans action -> creable', creatable.some(l => l.id === 'free'));
+  check('lead deja planifie -> EXCLU (pas d ecrasement possible)', !creatable.some(l => l.id === 'busy'));
+  check('lead terminal (signe) -> exclu', !creatable.some(l => l.id === 'won'));
+  check('exactement 1 lead creable', creatable.length === 1, `=${creatable.length}`);
+}
+
+section('Agenda — CREER : SET_NEXT_ACTION pose type + date sur un lead sans action');
+{
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'appel', nextActionDate: '2026-06-22' } });
+  check('nextActionType pose', s.leads[0].nextActionType === 'appel', `=${s.leads[0].nextActionType}`);
+  check('nextActionDate posee', s.leads[0].nextActionDate === '2026-06-22', `=${s.leads[0].nextActionDate}`);
+}
+
+section('Agenda — REPLANIFIER : date changee, type PRESERVE, aucun effet de bord');
+{
+  const lead = makeLead({ id: 'l1', status: 'signe', signedAt: '2026-06-03', lastActionDate: '2026-06-05', nextActionType: 'rdv', nextActionDate: '2026-06-20' });
+  const a1 = makeAction({ id: 'a1' });
+  const state = makeState({ leads: [lead], actions: [a1] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-27' } });
+  check('date replanifiee', s.leads[0].nextActionDate === '2026-06-27', `=${s.leads[0].nextActionDate}`);
+  check('type PRESERVE (rdv, non efface)', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
+  check('statut / jalon signedAt intacts', s.leads[0].status === 'signe' && s.leads[0].signedAt === '2026-06-03');
+  check('lastActionDate intacte', s.leads[0].lastActionDate === '2026-06-05');
+  check('historique (actions) MEME REFERENCE (aucun effet de bord)', s.actions === state.actions);
 }
 
 // ---------------------------------------------------------------------------

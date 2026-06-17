@@ -13,6 +13,7 @@ import EquipePage from './pages/EquipePage';
 import ExportsPage from './pages/ExportsPage';
 import TemplatesPage from './pages/TemplatesPage';
 import RelancesPage from './pages/RelancesPage';
+import AgendaPage from './pages/AgendaPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/relances" element={<RelancesPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/acquisition" element={<AcquisitionPage />} />
             <Route path="/equipe" element={<EquipePage />} />

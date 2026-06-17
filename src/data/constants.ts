@@ -125,6 +125,28 @@ export const MONTHS = [
 // Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
 export const COMPANY_NAME = 'Brest Ocean Boat';
 
+// Palette deterministe pour identifier visuellement chaque commercial dans
+// l'agenda. Attribuee par POSITION dans la liste des commerciaux (stable au
+// rechargement, AUCUN champ a persister sur Commercial). >= 8 teintes pour
+// absorber les ajouts d'equipe ; au-dela on cycle (modulo). Les classes sont
+// ecrites EN TOUTES LETTRES (pas de concatenation) pour que le JIT Tailwind les
+// detecte. Voir getCommercialColor (lib/agenda.ts).
+export const COMMERCIAL_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', dot: 'bg-blue-500' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300', dot: 'bg-emerald-500' },
+  { bg: 'bg-violet-100', text: 'text-violet-800', border: 'border-violet-300', dot: 'bg-violet-500' },
+  { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300', dot: 'bg-amber-500' },
+  { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-300', dot: 'bg-rose-500' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-300', dot: 'bg-cyan-500' },
+  { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800', border: 'border-fuchsia-300', dot: 'bg-fuchsia-500' },
+  { bg: 'bg-lime-100', text: 'text-lime-800', border: 'border-lime-300', dot: 'bg-lime-500' },
+] as const;
+
+// Repli neutre pour un commercialId introuvable (jamais de crash visuel).
+export const NEUTRAL_COMMERCIAL_COLOR = {
+  bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300', dot: 'bg-gray-400',
+} as const;
+
 // Variables interpolables dans les sujets / corps de templates — email ET sms
 // (affichage de l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().
 export const TEMPLATE_VARIABLES = [

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Notes internes Claude (mémoire de session) — pas du code app
+memory/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

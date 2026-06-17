@@ -7,6 +7,41 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.7.0] — 2026-06-17 — Agenda
+
+### Ajouté
+- **Page Agenda** (entrée de menu dédiée, `CalendarDays`) avec **3 vues
+  commutables** des prochaines actions planifiées des leads (les actions échues
+  sont signalées) :
+  - **Semaine** : 7 jours lundi→dimanche, navigation semaine.
+  - **Mois** : grille calendaire classique, pastilles compactes par jour avec
+    repli « +N de plus ».
+  - **Journée comparative** : une colonne par commercial côte à côte (vue
+    « réunion du lundi »), colonnes vides affichées, colonne « Autres » de
+    secours pour un événement dont le commercial n'est plus dans les colonnes
+    (aucune action masquée).
+- **Couleur par commercial** déterministe (palette par position, rien à
+  persister) + **filtre par commercial** et légende, partagés par les 3 vues.
+- **Interactif** (écriture exclusivement via `SET_NEXT_ACTION`, aucune nouvelle
+  action reducer) :
+  - **Créer** : clic sur une date → sélecteur type + lead. Le lead ne propose
+    que les leads actifs **sans action déjà planifiée** → l'écrasement du créneau
+    unique est impossible par construction (pas de confirmation). Message clair
+    si aucun lead éligible.
+  - **Replanifier** : glisser-déposer (`@dnd-kit/core`) en vue Semaine ;
+    re-sélecteur de date en vues Mois et Journée (cellule unique / cellules
+    denses). Le type d'action est préservé, seule la date change.
+- Le clic sur un événement (clic court, distinct du glisser) ouvre la fiche lead.
+
+### Technique
+- `lib/agenda.ts` (helpers purs) : `getCommercialColor`, `eventStatus`,
+  `buildAgendaEvents` (leads actifs uniquement), `groupEventsByDay`,
+  `getCreatableLeads`. Grilles construites avec date-fns (aucune dépendance
+  calendrier ajoutée). Harnais reducer porté à 91 assertions (créer /
+  replanifier / éligibles, isolation `SET_NEXT_ACTION` préservée).
+
+---
+
 ## [3.6.0] — 2026-06-17 — Bouton WhatsApp
 
 ### Ajouté
