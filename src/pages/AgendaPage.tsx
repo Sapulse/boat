@@ -71,7 +71,8 @@ export default function AgendaPage() {
 
   const activeCommercials = state.commercials.filter(c => c.active);
   const onOpen = (id: string) => navigate(`/leads/${id}`);
-  const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate);
+  // Replanification = on change UNIQUEMENT la date ; type ET heure preserves.
+  const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time);
   const onCreate: OnCreate = (dateISO) => setCreateDate(dateISO);
   const doCreate = (leadId: string, type: ActionType) => {
     if (createDate) setNextAction(leadId, type, createDate);
@@ -176,6 +177,7 @@ function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boole
     return (
       <span className="flex-1 min-w-0 flex items-center gap-1">
         {overdue && <AlertTriangle className="w-2.5 h-2.5 text-danger-600 shrink-0" />}
+        {event.time && <span className="font-semibold shrink-0">{event.time}</span>}
         <span className="truncate">{event.leadName}</span>
       </span>
     );
@@ -184,7 +186,7 @@ function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boole
     <span className="flex-1 min-w-0">
       <span className="flex items-center gap-1 font-medium">
         {overdue && <AlertTriangle className="w-3 h-3 text-danger-600 shrink-0" />}
-        <span className="truncate">{actionLabel(event.type)}</span>
+        <span className="truncate">{event.time ? `${event.time} · ${actionLabel(event.type)}` : actionLabel(event.type)}</span>
       </span>
       <span className="block truncate text-gray-600">{event.leadName}</span>
     </span>
@@ -192,7 +194,8 @@ function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boole
 }
 
 function chipTitle(event: AgendaEvent): string {
-  return `${actionLabel(event.type)} — ${event.leadName}${event.status === 'overdue' ? ' (échu)' : ''}`;
+  const prefix = event.time ? `${event.time} · ` : '';
+  return `${prefix}${actionLabel(event.type)} — ${event.leadName}${event.status === 'overdue' ? ' (échu)' : ''}`;
 }
 
 // Bouton de replanification : ouvre le selecteur de date natif (showPicker) ;

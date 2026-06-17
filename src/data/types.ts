@@ -95,6 +95,11 @@ export interface Lead {
   priority: Priority;
   nextActionType: ActionType | '';
   nextActionDate: string;
+  // Heure optionnelle de la prochaine action ("HH:mm"). Absente = "toute la
+  // journee" (comportement historique). CHAMP SEPARE volontaire : nextActionDate
+  // reste un "YYYY-MM-DD" compare en chaine (hasFutureNextAction, eventStatus,
+  // groupEventsByDay, tris) — on n'y touche jamais.
+  nextActionTime?: string;
   lastActionDate: string;
   lossReason: string;
   signedAt: string;

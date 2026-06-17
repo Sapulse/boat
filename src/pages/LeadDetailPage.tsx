@@ -26,7 +26,7 @@ export default function LeadDetailPage() {
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingNextAction, setEditingNextAction] = useState(false);
-  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string }>({ type: '', date: '' });
+  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string }>({ type: '', date: '', time: '' });
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showSmsMenu, setShowSmsMenu] = useState(false);
   const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
@@ -146,11 +146,15 @@ export default function LeadDetailPage() {
 
   // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
   const openNextActionEditor = () => {
-    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate });
+    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate, time: lead.nextActionTime ?? '' });
     setEditingNextAction(true);
   };
   const saveNextAction = () => {
-    setNextAction(lead.id, nextActionDraft.type, nextActionDraft.type ? nextActionDraft.date : '');
+    // Pas de type -> on efface date ET heure. Pas d'heure sans jour : l'heure
+    // n'est transmise que si une date est posee (sinon undefined = all-day).
+    const date = nextActionDraft.type ? nextActionDraft.date : '';
+    const time = date ? (nextActionDraft.time || undefined) : undefined;
+    setNextAction(lead.id, nextActionDraft.type, date, time);
     setEditingNextAction(false);
   };
   const clearNextAction = () => {
@@ -457,9 +461,15 @@ export default function LeadDetailPage() {
                     {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="label">Date</label>
-                  <input className="input" type="date" value={nextActionDraft.date} disabled={!nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, date: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Date</label>
+                    <input className="input" type="date" value={nextActionDraft.date} disabled={!nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, date: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Heure (facultative)</label>
+                    <input className="input" type="time" value={nextActionDraft.time} disabled={!nextActionDraft.date} onChange={e => setNextActionDraft(d => ({ ...d, time: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-1">
                   <button onClick={() => setEditingNextAction(false)} className="btn-secondary btn-sm">Annuler</button>
@@ -476,7 +486,7 @@ export default function LeadDetailPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Date</span>
-                      <span className="text-gray-900">{formatDate(lead.nextActionDate)}</span>
+                      <span className="text-gray-900">{formatDate(lead.nextActionDate)}{lead.nextActionTime ? ` à ${lead.nextActionTime}` : ''}</span>
                     </div>
                   </div>
                 ) : (

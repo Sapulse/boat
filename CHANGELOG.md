@@ -7,6 +7,31 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.8.0] — 2026-06-17 — Heure sur les actions
+
+### Ajouté
+- **Heure optionnelle sur la prochaine action d'un lead** : l'éditeur « Prochaine
+  action » (fiche lead) gagne un champ heure facultatif à côté de la date (grisé
+  tant qu'aucune date n'est posée). Absence d'heure = « toute la journée »
+  (comportement historique strictement inchangé).
+- **Agenda — affichage et tri horaires** : l'heure apparaît dans les pastilles
+  (`14:00 · RDV`), et les actions d'un même jour sont triées **sans-heure
+  d'abord puis par heure croissante** (convention Google/Outlook), dans les 3
+  vues. La replanification (glisser en Semaine, re-sélecteur en Mois/Journée)
+  **conserve l'heure** (seule la date change).
+
+### Technique
+- Champ **séparé** `Lead.nextActionTime?: "HH:mm"` — `nextActionDate` reste un
+  `"YYYY-MM-DD"` comparé en chaîne (`hasFutureNextAction`, `eventStatus`,
+  `groupEventsByDay`, tris) : aucune de ces comparaisons n'est touchée. Écriture
+  toujours via la seule action `SET_NEXT_ACTION` (signature `setNextAction(id,
+  type, date, time?)`). Migration localStorage **nulle** (champ optionnel,
+  absent = all-day). Harnais reducer porté à **103** (créer avec/sans heure,
+  replanifier type+heure préservés, effacer date+heure ensemble ; isolation et
+  cas agenda existants verts).
+
+---
+
 ## [3.7.0] — 2026-06-17 — Agenda
 
 ### Ajouté

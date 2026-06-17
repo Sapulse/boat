@@ -16,7 +16,7 @@ export type Action =
   | { type: 'ADD_ACTION'; payload: LeadAction }
   | { type: 'UPDATE_ACTION'; payload: { id: string; data: Partial<LeadAction> } }
   | { type: 'DELETE_ACTION'; payload: string }
-  | { type: 'SET_NEXT_ACTION'; payload: { id: string; nextActionType: ActionType | ''; nextActionDate: string } }
+  | { type: 'SET_NEXT_ACTION'; payload: { id: string; nextActionType: ActionType | ''; nextActionDate: string; nextActionTime?: string } }
   | { type: 'SAVE_MONTHLY_STATS'; payload: MonthlyStat[] }
   | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] }
   | { type: 'ADD_COMMERCIAL'; payload: Commercial }
@@ -192,7 +192,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         leads: state.leads.map(l =>
           l.id === action.payload.id
-            ? { ...l, nextActionType: action.payload.nextActionType, nextActionDate: action.payload.nextActionDate }
+            ? { ...l, nextActionType: action.payload.nextActionType, nextActionDate: action.payload.nextActionDate, nextActionTime: action.payload.nextActionTime || undefined }
             : l
         ),
       };

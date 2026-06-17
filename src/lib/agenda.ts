@@ -39,6 +39,7 @@ export interface AgendaEvent {
   commercialId: string;
   type: ActionType | '';
   date: string; // ISO YYYY-MM-DD (= lead.nextActionDate)
+  time?: string; // "HH:mm" optionnel (= lead.nextActionTime) ; absent = all-day
   status: EventStatus;
 }
 
@@ -58,8 +59,21 @@ export function buildAgendaEvents(leads: Lead[], todayISO: string): AgendaEvent[
       commercialId: l.commercialId,
       type: l.nextActionType,
       date: l.nextActionDate,
+      time: l.nextActionTime || undefined,
       status: eventStatus(l.nextActionDate, todayISO),
     }));
+}
+
+/**
+ * Ordre d'affichage des evenements d'un MEME jour : les sans-heure d'abord
+ * ("a faire dans la journee", convention Google/Outlook), puis les creneaux par
+ * heure croissante. Comparaison de chaines "HH:mm" (lexicographique = horaire).
+ */
+function compareDayEvents(a: AgendaEvent, b: AgendaEvent): number {
+  if (!a.time && !b.time) return 0;
+  if (!a.time) return -1;
+  if (!b.time) return 1;
+  return a.time.localeCompare(b.time);
 }
 
 /**
@@ -83,5 +97,8 @@ export function groupEventsByDay(events: AgendaEvent[]): Map<string, AgendaEvent
     if (arr) arr.push(e);
     else map.set(e.date, [e]);
   }
+  // Tri intra-jour : sans-heure d'abord, puis par heure croissante (toutes les
+  // vues consomment cette Map, donc l'ordre est garanti partout).
+  for (const arr of map.values()) arr.sort(compareDayEvents);
   return map;
 }

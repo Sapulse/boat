@@ -16,7 +16,7 @@ export interface AppContextType {
   addAction: (action: Omit<LeadAction, 'id'>) => void;
   updateAction: (id: string, data: Partial<LeadAction>) => void;
   deleteAction: (id: string) => void;
-  setNextAction: (id: string, nextActionType: ActionType | '', nextActionDate: string) => void;
+  setNextAction: (id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string) => void;
   getLeadActions: (leadId: string) => LeadAction[];
   getCommercialName: (id: string) => string;
   saveMonthlyStats: (stats: MonthlyStat[]) => void;

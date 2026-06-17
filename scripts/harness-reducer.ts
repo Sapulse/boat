@@ -456,6 +456,45 @@ section('Agenda — REPLANIFIER : date changee, type PRESERVE, aucun effet de bo
   check('historique (actions) MEME REFERENCE (aucun effet de bord)', s.actions === state.actions);
 }
 
+section('Agenda heures — CREER AVEC heure : date + heure posees');
+{
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-22', nextActionTime: '14:00' } });
+  check('nextActionDate posee', s.leads[0].nextActionDate === '2026-06-22', `=${s.leads[0].nextActionDate}`);
+  check('nextActionTime posee', s.leads[0].nextActionTime === '14:00', `=${s.leads[0].nextActionTime}`);
+}
+
+section('Agenda heures — CREER SANS heure (all-day, retro-compat) : heure absente');
+{
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'appel', nextActionDate: '2026-06-22' } });
+  check('nextActionDate posee', s.leads[0].nextActionDate === '2026-06-22', `=${s.leads[0].nextActionDate}`);
+  check('nextActionTime absente (undefined = toute la journee)', s.leads[0].nextActionTime === undefined, `=${s.leads[0].nextActionTime}`);
+}
+
+section('Agenda heures — REPLANIFIER : date changee, type ET heure PRESERVES, aucun effet de bord');
+{
+  const lead = makeLead({ id: 'l1', status: 'signe', signedAt: '2026-06-03', lastActionDate: '2026-06-05', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '09:30' });
+  const a1 = makeAction({ id: 'a1' });
+  const state = makeState({ leads: [lead], actions: [a1] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-27', nextActionTime: '09:30' } });
+  check('date replanifiee', s.leads[0].nextActionDate === '2026-06-27', `=${s.leads[0].nextActionDate}`);
+  check('type PRESERVE (rdv)', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
+  check('heure PRESERVEE (09:30)', s.leads[0].nextActionTime === '09:30', `=${s.leads[0].nextActionTime}`);
+  check('statut / jalon signedAt intacts', s.leads[0].status === 'signe' && s.leads[0].signedAt === '2026-06-03');
+  check('historique (actions) MEME REFERENCE', s.actions === state.actions);
+}
+
+section('Agenda heures — EFFACER (pas de type) : date ET heure effacees ensemble');
+{
+  const lead = makeLead({ id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '11:00' });
+  const state = makeState({ leads: [lead], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: '', nextActionDate: '' } });
+  check('nextActionDate effacee', s.leads[0].nextActionDate === '', `=${s.leads[0].nextActionDate}`);
+  check('nextActionTime effacee (undefined)', s.leads[0].nextActionTime === undefined, `=${s.leads[0].nextActionTime}`);
+  check('nextActionType efface', s.leads[0].nextActionType === '', `=${s.leads[0].nextActionType}`);
+}
+
 // ---------------------------------------------------------------------------
 // WhatsApp — toWaNumber : format international wa.me (constat ephemere)
 // ---------------------------------------------------------------------------
