@@ -1,6 +1,9 @@
 import { useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, AlertTriangle, CalendarDays } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2,
+  Users, Palmtree, Plane, User, Tag, type LucideIcon,
+} from 'lucide-react';
 import {
   startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, format, isSameDay,
   startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, addDays, subDays,
@@ -12,15 +15,41 @@ import {
 } from '@dnd-kit/core';
 import { useApp } from '../context/useApp';
 import Modal from '../components/ui/Modal';
-import { ACTION_TYPES } from '../data/constants';
+import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
   buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots,
-  type AgendaEvent, type CommercialColor, type DayGridLayout, type PositionedEvent,
+  type AgendaEvent, type DayGridLayout, type PositionedEvent,
 } from '../lib/agenda';
-import type { Commercial, ActionType, Lead } from '../data/types';
+import type { Commercial, ActionType, Lead, CalendarEvent, CalendarEventCategory } from '../data/types';
+
+// Icone par categorie d'evenement libre (distinction visuelle vs actions de lead).
+const CATEGORY_ICON: Record<CalendarEventCategory, LucideIcon> = {
+  reunion: Users,
+  conge: Palmtree,
+  deplacement: Plane,
+  perso: User,
+  autre: Tag,
+};
+
+// Item unifie de la grille : action de lead OU evenement libre. Le layout
+// (layoutDayGrid) et la grille (TimeGrid) operent dessus ; le rendu branche sur
+// `kind`. Champs horaires a plat (date/time/endTime) pour le positionnement.
+type GridItem =
+  | { kind: 'lead'; id: string; date: string; time?: string; endTime?: string; lead: AgendaEvent }
+  | { kind: 'event'; id: string; date: string; time?: string; endTime?: string; event: CalendarEvent };
+
+function leadToItem(ev: AgendaEvent): GridItem {
+  return { kind: 'lead', id: ev.leadId, date: ev.date, time: ev.time, endTime: ev.endTime, lead: ev };
+}
+function calToItem(ce: CalendarEvent): GridItem {
+  return { kind: 'event', id: ce.id, date: ce.date, time: ce.time, endTime: ce.endTime, event: ce };
+}
+function itemCommercialId(item: GridItem): string | undefined {
+  return item.kind === 'lead' ? item.lead.commercialId : item.event.commercialId;
+}
 
 type AgendaView = 'semaine' | 'mois' | 'jour';
 
@@ -48,59 +77,86 @@ function actionLabel(type: AgendaEvent['type']): string {
 
 // Libelle horaire d'un evenement : "" (all-day), "14:00" (ponctuel) ou
 // "14:00–16:00" (avec duree).
-function timeLabel(event: AgendaEvent): string {
+function timeLabel(event: { time?: string; endTime?: string }): string {
   if (!event.time) return '';
   return event.endTime ? `${event.time}–${event.endTime}` : event.time;
 }
 
-// onReplan : deplace une action existante (type PRESERVE, date changee) via
-// setNextAction. onCreate : ouvre le createur pour une date donnee.
+// onReplan : re-selecteur de DATE d'une action de lead (type/heure/duree preserves).
 type OnReplan = (event: AgendaEvent, newDate: string) => void;
-// Deplacement par drag-creneau : nouveau jour + nouvelle heure de debut/fin
-// (heure/fin absentes = action all-day deplacee, jour seul).
-type OnMove = (event: AgendaEvent, newDate: string, newTime?: string, newEndTime?: string) => void;
-// Redimensionnement (poignee bas) : seule la fin change (slotDelta creneaux).
-type OnResize = (event: AgendaEvent, slotDelta: number) => void;
+// Drag par creneau d'un item (lead OU evenement) : la page calcule la cible
+// (computeDrop) et route l'ecriture selon kind (setNextAction / updateCalendarEvent).
+type OnItemMove = (item: GridItem, newDate: string, deltaY: number) => void;
+// Redimensionnement (poignee bas) d'un item : seule la fin change. Route par kind.
+type OnItemResize = (item: GridItem, slotDelta: number) => void;
 // Ouvre le createur pour une date + heure (heure absente = "toute la journee").
 type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
 export default function AgendaPage() {
-  const { state, setNextAction } = useApp();
+  const { state, setNextAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
   const navigate = useNavigate();
 
   const [view, setView] = useState<AgendaView>('semaine');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [filterCommercial, setFilterCommercial] = useState('');
-  const [createSlot, setCreateSlot] = useState<{ date: string; time?: string } | null>(null);
+  // Createur : clic-creneau -> choix (action de lead / evenement) puis la bonne modale.
+  const [creator, setCreator] = useState<{ date: string; time?: string; mode: 'choose' | 'lead' | 'event' } | null>(null);
+  // Edition d'un evenement libre existant (clic sur le bloc).
+  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
 
   const todayISO = toISODate(new Date());
 
-  // Evenements (prochaines actions des leads actifs), indexes par jour, filtres
-  // par commercial. Memo : recalcul seulement si leads / filtre changent.
+  // Items unifies (actions de leads + evenements libres), indexes par jour,
+  // filtres par commercial. Memo : recalcul si leads / evenements / filtre changent.
   const byDay = useMemo(() => {
-    const events = buildAgendaEvents(state.leads, todayISO)
-      .filter(e => !filterCommercial || e.commercialId === filterCommercial);
-    return groupEventsByDay(events);
-  }, [state.leads, filterCommercial, todayISO]);
+    const items: GridItem[] = [
+      ...buildAgendaEvents(state.leads, todayISO).map(leadToItem),
+      ...state.calendarEvents.map(calToItem),
+    ].filter(it => !filterCommercial || itemCommercialId(it) === filterCommercial);
+    return groupEventsByDay(items);
+  }, [state.leads, state.calendarEvents, filterCommercial, todayISO]);
 
   const activeCommercials = state.commercials.filter(c => c.active);
   const onOpen = (id: string) => navigate(`/leads/${id}`);
+  const onEditEvent = (event: CalendarEvent) => setEditEvent(event);
   // Replanification (re-selecteur de date) = on change UNIQUEMENT la date ; type,
-  // heure ET duree preserves.
+  // heure ET duree preserves (leads, vue Journee).
   const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time, event.endTime);
-  // Drag par creneau = nouveau jour ET nouvelle heure (la duree suit, deja calculee).
-  const onMove: OnMove = (event, newDate, newTime, newEndTime) => setNextAction(event.leadId, event.type, newDate, newTime, newEndTime);
-  // Resize = seule la fin change (debut/jour fixes) ; min 1 creneau, clamp 18h.
-  const onResize: OnResize = (event, slotDelta) => {
-    if (!event.time) return;
-    const newEndTime = resizeEventBySlots(event.time, event.endTime, slotDelta);
-    setNextAction(event.leadId, event.type, event.date, event.time, newEndTime);
+  // Drag par creneau (lead OU evenement) : la page calcule la cible et route
+  // l'ecriture selon kind. Lead -> SET_NEXT_ACTION ; evenement -> UPDATE_CALENDAR_EVENT.
+  const onItemMove: OnItemMove = (item, newDate, deltaY) => {
+    const drop = computeDrop(item, newDate, deltaY);
+    if (!drop) return;
+    if (item.kind === 'lead') setNextAction(item.lead.leadId, item.lead.type, drop.date, drop.time, drop.endTime);
+    else updateCalendarEvent(item.event.id, { date: drop.date, time: drop.time, endTime: drop.endTime });
   };
-  const onCreate: OnCreate = (dateISO, timeHHmm) => setCreateSlot({ date: dateISO, time: timeHHmm });
-  // Heure de debut et de fin viennent du createur (debut pre-rempli depuis le creneau).
+  // Resize = seule la fin change (debut/jour fixes), min 1 creneau, clamp 18h.
+  const onItemResize: OnItemResize = (item, slotDelta) => {
+    if (item.kind === 'lead') {
+      if (!item.lead.time) return;
+      setNextAction(item.lead.leadId, item.lead.type, item.lead.date, item.lead.time, resizeEventBySlots(item.lead.time, item.lead.endTime, slotDelta));
+    } else {
+      if (!item.event.time) return;
+      updateCalendarEvent(item.event.id, { endTime: resizeEventBySlots(item.event.time, item.event.endTime, slotDelta) });
+    }
+  };
+  const onCreate: OnCreate = (dateISO, timeHHmm) => setCreator({ date: dateISO, time: timeHHmm, mode: 'choose' });
+  // Action de lead : heure debut/fin viennent du createur (debut pre-rempli).
   const doCreate = (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => {
-    if (createSlot) setNextAction(leadId, type, createSlot.date, timeHHmm, endTimeHHmm);
-    setCreateSlot(null);
+    if (creator) setNextAction(leadId, type, creator.date, timeHHmm, endTimeHHmm);
+    setCreator(null);
+  };
+  // Evenement libre : creation (ADD) ou edition (UPDATE), + suppression.
+  const saveEvent = (data: Omit<CalendarEvent, 'id'>) => {
+    if (editEvent) updateCalendarEvent(editEvent.id, data);
+    else addCalendarEvent(data);
+    setCreator(null);
+    setEditEvent(null);
+  };
+  const removeEvent = () => {
+    if (editEvent) deleteCalendarEvent(editEvent.id);
+    setEditEvent(null);
+    setCreator(null);
   };
 
   return (
@@ -112,7 +168,7 @@ export default function AgendaPage() {
             <CalendarDays className="w-5 h-5 text-primary-600" /> Agenda
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Prochaines actions planifiées des leads, par commercial. Cliquez une date pour planifier, glissez (ou changez la date) pour replanifier.
+            Actions des leads et événements d'agenda, par commercial. Cliquez un créneau pour planifier, glissez pour replanifier.
           </p>
         </div>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -137,14 +193,14 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      {/* Legende des couleurs par commercial */}
+      {/* Legende : couleurs commerciaux + categories d'evenement */}
       <CommercialLegend />
 
       {view === 'semaine' && (
-        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} onMove={onMove} onResize={onResize} />
+        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onEditEvent={onEditEvent} onCreate={onCreate} onItemMove={onItemMove} onItemResize={onItemResize} />
       )}
       {view === 'mois' && (
-        <MonthView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
+        <MonthView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onEditEvent={onEditEvent} onCreate={onCreate} onReplan={onReplan} />
       )}
       {view === 'jour' && (
         <DayView
@@ -153,25 +209,45 @@ export default function AgendaPage() {
           byDay={byDay}
           columns={filterCommercial ? activeCommercials.filter(c => c.id === filterCommercial) : activeCommercials}
           onOpen={onOpen}
+          onEditEvent={onEditEvent}
           onCreate={onCreate}
           onReplan={onReplan}
-          onMove={onMove}
-          onResize={onResize}
+          onItemMove={onItemMove}
+          onItemResize={onItemResize}
         />
       )}
 
-      {createSlot !== null && (
-        <CreateActionModal dateISO={createSlot.date} initialTime={createSlot.time} leads={state.leads} onClose={() => setCreateSlot(null)} onCreate={doCreate} />
+      {/* Createur : etape 1 = choix du type, puis la modale dediee */}
+      {creator?.mode === 'choose' && (
+        <Modal open onClose={() => setCreator(null)} title={`Planifier — ${formatDate(creator.date)}${creator.time ? ` à ${creator.time}` : ''}`} size="sm">
+          <div className="space-y-2">
+            <button onClick={() => setCreator(c => c && { ...c, mode: 'lead' })} className="btn-secondary w-full justify-start">Action de lead</button>
+            <button onClick={() => setCreator(c => c && { ...c, mode: 'event' })} className="btn-secondary w-full justify-start">Événement (réunion, congé, déplacement…)</button>
+          </div>
+        </Modal>
+      )}
+      {creator?.mode === 'lead' && (
+        <CreateActionModal dateISO={creator.date} initialTime={creator.time} leads={state.leads} onClose={() => setCreator(null)} onCreate={doCreate} />
+      )}
+      {(creator?.mode === 'event' || editEvent) && (
+        <CalendarEventModal
+          existing={editEvent}
+          initialDate={editEvent ? editEvent.date : creator!.date}
+          initialTime={editEvent ? editEvent.time : creator?.time}
+          commercials={state.commercials}
+          onSave={saveEvent}
+          onDelete={editEvent ? removeEvent : undefined}
+          onClose={() => { setCreator(null); setEditEvent(null); }}
+        />
       )}
     </div>
   );
 }
 
-// --- Legende : pastille de couleur par commercial actif (position = couleur) ---
+// --- Legende : couleur par commercial (actions de leads) + categories d'evenement ---
 function CommercialLegend() {
   const { state } = useApp();
   const active = state.commercials.filter(c => c.active);
-  if (active.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600">
       {active.map(c => {
@@ -183,12 +259,22 @@ function CommercialLegend() {
           </span>
         );
       })}
+      <span className="text-gray-300">|</span>
+      {CALENDAR_EVENT_CATEGORIES.map(cat => {
+        const Icon = CATEGORY_ICON[cat.value];
+        return (
+          <span key={cat.value} className="inline-flex items-center gap-1 text-gray-500">
+            <Icon className={cn('w-3 h-3', cat.text)} />
+            {cat.label}
+          </span>
+        );
+      })}
     </div>
   );
 }
 
-// --- Pastille evenement : classes communes (couleur commercial + echu) ---
-function chipClasses(color: CommercialColor, overdue: boolean, compact: boolean): string {
+// --- Pastille evenement : classes communes (couleur commercial OU categorie) ---
+function chipClasses(color: { bg: string; text: string; border: string; dot: string }, overdue: boolean, compact: boolean): string {
   return cn(
     compact ? 'rounded px-1 py-0.5 text-[10px]' : 'rounded-md px-1.5 py-1 text-[11px]',
     'w-full flex items-center gap-1 border leading-tight transition-shadow hover:shadow-sm cursor-pointer',
@@ -279,35 +365,75 @@ function EventChip({ event, onOpen, compact = false, onReplan }: {
   );
 }
 
-// Pastille DRAGGABLE (Semaine/Journee) : glisser -> autre jour ET/OU creneau ;
-// clic court -> fiche. `onReplan` optionnel ajoute le re-selecteur de DATE dans
-// le chip (utile en Journee : drag change l'heure, bouton change le jour).
-// transform construit a la main (@dnd-kit/utilities a ete retire).
-function DraggableEvent({ event, onOpen, compact = false, onReplan }: { event: AgendaEvent; onOpen: (leadId: string) => void; compact?: boolean; onReplan?: OnReplan }) {
+// Contenu visuel d'un evenement libre (icone categorie + heure + titre).
+function CalendarEventInner({ event }: { event: CalendarEvent }) {
+  const Icon = CATEGORY_ICON[event.category ?? 'autre'];
+  const tl = timeLabel(event);
+  return (
+    <span className="flex-1 min-w-0 flex items-center gap-1">
+      <Icon className="w-3 h-3 shrink-0" />
+      {tl && <span className="font-semibold shrink-0">{tl}</span>}
+      <span className="truncate">{event.title}</span>
+    </span>
+  );
+}
+
+function calendarEventTitle(event: CalendarEvent): string {
+  const tl = timeLabel(event);
+  return `${getCategoryInfo(event.category).label} — ${event.title}${tl ? ` (${tl})` : ''}`;
+}
+
+// Pastille NON draggable d'un evenement libre (vue Mois) : clic -> modale d'edition.
+function CalendarEventChip({ event, onOpen, compact = false }: { event: CalendarEvent; onOpen: (event: CalendarEvent) => void; compact?: boolean }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      title={calendarEventTitle(event)}
+      onClick={e => { e.stopPropagation(); onOpen(event); }}
+      onKeyDown={activateOnKey(() => onOpen(event))}
+      className={chipClasses(getCategoryInfo(event.category), false, compact)}
+    >
+      <CalendarEventInner event={event} />
+    </div>
+  );
+}
+
+// Pastille DRAGGABLE unifiee (grille Semaine/Journee) : lead OU evenement libre.
+// Glisser -> autre jour ET/OU creneau (route par kind cote page) ; clic court ->
+// fiche (lead) ou modale (evenement). `onReplan` (leads, Journee) ajoute le
+// re-selecteur de DATE. La drag-data porte le GridItem (handleDragEnd branche).
+function DraggableGridItem({ item, onOpen, onEditEvent, onReplan, compact = false }: {
+  item: GridItem;
+  onOpen: (leadId: string) => void;
+  onEditEvent: (event: CalendarEvent) => void;
+  onReplan?: OnReplan;
+  compact?: boolean;
+}) {
   const { state } = useApp();
-  const color = getCommercialColor(event.commercialId, state.commercials);
-  const overdue = event.status === 'overdue';
   const pointerDownAt = useRef<{ x: number; y: number } | null>(null);
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: event.leadId,
-    data: { event },
-  });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id, data: { item } });
+
+  const isLead = item.kind === 'lead';
+  const color = isLead ? getCommercialColor(item.lead.commercialId, state.commercials) : getCategoryInfo(item.event.category);
+  const overdue = isLead && item.lead.status === 'overdue';
+  const open = () => isLead ? onOpen(item.lead.leadId) : onEditEvent(item.event);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     const start = pointerDownAt.current;
     pointerDownAt.current = null;
     if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) >= CLICK_MOVE_THRESHOLD) return;
-    onOpen(event.leadId);
+    open();
   };
 
   return (
     <div
       ref={setNodeRef}
-      title={chipTitle(event)}
+      title={isLead ? chipTitle(item.lead) : calendarEventTitle(item.event)}
       onPointerDownCapture={e => { pointerDownAt.current = { x: e.clientX, y: e.clientY }; }}
       onClick={handleClick}
-      onKeyDown={activateOnKey(() => onOpen(event.leadId))}
+      onKeyDown={activateOnKey(open)}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         opacity: isDragging ? 0.5 : 1,
@@ -318,8 +444,8 @@ function DraggableEvent({ event, onOpen, compact = false, onReplan }: { event: A
       {...listeners}
       className={chipClasses(color, overdue, compact)}
     >
-      <EventChipInner event={event} compact={compact} />
-      {onReplan && <ReplanControl event={event} onReplan={onReplan} />}
+      {isLead ? <EventChipInner event={item.lead} compact={compact} /> : <CalendarEventInner event={item.event} />}
+      {isLead && onReplan && <ReplanControl event={item.lead} onReplan={onReplan} />}
     </div>
   );
 }
@@ -342,15 +468,15 @@ function ViewNav({ onPrev, onToday, onNext, label, prevLabel, nextLabel, today }
 // Drag PAR CRENEAU : glisser change le JOUR (colonne) ET l'HEURE (deplacement
 // vertical) ; la duree suit (computeDrop -> shiftEventBySlots). Un all-day /
 // hors-plage ne change que de jour.
-function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove, onResize }: {
+function WeekView({ anchor, setAnchor, byDay, onOpen, onEditEvent, onCreate, onItemMove, onItemResize }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
-  byDay: Map<string, AgendaEvent[]>;
+  byDay: Map<string, GridItem[]>;
   onOpen: (leadId: string) => void;
+  onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
-  onReplan: OnReplan;
-  onMove: OnMove;
-  onResize: OnResize;
+  onItemMove: OnItemMove;
+  onItemResize: OnItemResize;
 }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -377,10 +503,9 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over, delta } = e;
     if (!over) return;
-    const ev = active.data.current?.event as AgendaEvent | undefined;
-    if (!ev) return;
-    const drop = computeDrop(ev, String(over.id), delta.y);
-    if (drop) onMove(ev, drop.date, drop.time, drop.endTime);
+    const item = active.data.current?.item as GridItem | undefined;
+    if (!item) return;
+    onItemMove(item, String(over.id), delta.y);
   };
 
   return (
@@ -397,12 +522,10 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove
         <TimeGrid
           slots={slots}
           columns={gridColumns}
-          onOpen={onOpen}
-          onReplan={onReplan}
           droppable
-          renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} compact />}
+          renderEvent={item => <DraggableGridItem item={item} onOpen={onOpen} onEditEvent={onEditEvent} compact />}
           onSlotClick={(colId, time) => onCreate(colId, time)}
-          onResize={onResize}
+          onResize={onItemResize}
         />
       </DndContext>
     </div>
@@ -422,11 +545,12 @@ function WeekDayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTH_CELL_MAX = 3;
 
-function MonthView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
+function MonthView({ anchor, setAnchor, byDay, onOpen, onEditEvent, onCreate, onReplan }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
-  byDay: Map<string, AgendaEvent[]>;
+  byDay: Map<string, GridItem[]>;
   onOpen: (leadId: string) => void;
+  onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
 }) {
@@ -473,7 +597,9 @@ function MonthView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
                 </span>
               </div>
               <div className="space-y-0.5 mt-0.5 flex-1">
-                {shown.map(e => <EventChip key={e.leadId} event={e} onOpen={onOpen} onReplan={onReplan} compact />)}
+                {shown.map(item => item.kind === 'lead'
+                  ? <EventChip key={item.id} event={item.lead} onOpen={onOpen} onReplan={onReplan} compact />
+                  : <CalendarEventChip key={item.id} event={item.event} onOpen={onEditEvent} compact />)}
                 {extra > 0 && <p className="text-[10px] text-gray-400 pl-1">+{extra} de plus</p>}
               </div>
             </div>
@@ -493,7 +619,7 @@ const SLOT_PX = 40; // hauteur d'une ligne de creneau
 // (via le deplacement vertical delta.y -> creneaux). Renvoie null si rien ne
 // change. Un evenement horodate dans la plage decale son heure (duree preservee,
 // clamp grille) ; un all-day / hors-plage ne change QUE de jour.
-function computeDrop(ev: AgendaEvent, newDate: string, deltaY: number): { date: string; time?: string; endTime?: string } | null {
+function computeDrop(ev: { date: string; time?: string; endTime?: string }, newDate: string, deltaY: number): { date: string; time?: string; endTime?: string } | null {
   if (ev.time && startSlotIndex(ev.time) !== null) {
     const slotDelta = Math.round(deltaY / SLOT_PX);
     const { time, endTime } = shiftEventBySlots(ev.time, ev.endTime, slotDelta);
@@ -507,7 +633,7 @@ function computeDrop(ev: AgendaEvent, newDate: string, deltaY: number): { date: 
 interface GridColumn {
   id: string;
   header: React.ReactNode;
-  layout: DayGridLayout;
+  layout: DayGridLayout<GridItem>;
 }
 
 // Colonne = corps relatif (Semaine : cible de drop unique au niveau JOUR). Les
@@ -521,14 +647,17 @@ function DroppableColumn({ id, className, children }: { id: string; className?: 
 // bas (pointer events, apercu LIVE de la hauteur, commit au relachement). La
 // poignee est SOEUR du chip -> son pointerdown ne declenche pas le drag du chip.
 function GridBlock({ p, slotCount, render, onResize }: {
-  p: PositionedEvent;
+  p: PositionedEvent<GridItem>;
   slotCount: number;
-  render: (event: AgendaEvent) => React.ReactNode;
-  onResize?: OnResize;
+  render: (item: GridItem) => React.ReactNode;
+  onResize?: OnItemResize;
 }) {
   const [liveDelta, setLiveDelta] = useState(0);
   const startY = useRef(0);
   const resizing = useRef(false);
+  // Tout bloc positionne a une heure -> resize possible (lead ET evenement libre).
+  const item = p.event;
+  const resizable = !!onResize;
 
   const minDelta = 1 - p.span;                       // duree mini 1 creneau
   const maxDelta = slotCount - p.startIndex - p.span; // fin <= 18h
@@ -551,7 +680,7 @@ function GridBlock({ p, slotCount, render, onResize }: {
     e.stopPropagation();
     const d = clampDelta(liveDelta);
     setLiveDelta(0);
-    if (d !== 0 && onResize) onResize(p.event, d);
+    if (d !== 0 && onResize) onResize(item, d);
   };
 
   const span = Math.max(1, p.span + liveDelta);
@@ -567,8 +696,8 @@ function GridBlock({ p, slotCount, render, onResize }: {
       }}
     >
       <div className="relative h-full">
-        <div className="h-full [&>*]:h-full">{render(p.event)}</div>
-        {onResize && (
+        <div className="h-full [&>*]:h-full">{render(item)}</div>
+        {resizable && (
           <div
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -592,8 +721,8 @@ function ColumnBody({ col, slots, droppable, onSlotClick, render, onResize }: {
   slots: string[];
   droppable: boolean;
   onSlotClick?: (colId: string, time?: string) => void;
-  render: (event: AgendaEvent) => React.ReactNode;
-  onResize?: OnResize;
+  render: (item: GridItem) => React.ReactNode;
+  onResize?: OnItemResize;
 }) {
   const inner = (
     <>
@@ -606,7 +735,7 @@ function ColumnBody({ col, slots, droppable, onSlotClick, render, onResize }: {
         />
       ))}
       {col.layout.positioned.map(p => (
-        <GridBlock key={p.event.leadId} p={p} slotCount={col.layout.slotCount} render={render} onResize={onResize} />
+        <GridBlock key={p.event.id} p={p} slotCount={col.layout.slotCount} render={render} onResize={onResize} />
       ))}
     </>
   );
@@ -618,19 +747,17 @@ function ColumnBody({ col, slots, droppable, onSlotClick, render, onResize }: {
 // Grille horaire generique (column-major). `renderEvent` decide du rendu d'un
 // bloc (Journee = EventChip + re-selecteur ; Semaine = DraggableEvent).
 // `droppable` fait de chaque colonne UNE cible de drop (drag niveau jour).
-function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = false, onSlotClick, onResize }: {
+function TimeGrid({ slots, columns, renderEvent, droppable = false, onSlotClick, onResize }: {
   slots: string[];
   columns: GridColumn[];
-  onOpen: (leadId: string) => void;
-  onReplan: OnReplan;
-  renderEvent?: (event: AgendaEvent) => React.ReactNode;
+  renderEvent: (item: GridItem) => React.ReactNode;
   droppable?: boolean;
   onSlotClick?: (colId: string, time?: string) => void;
-  onResize?: OnResize;
+  onResize?: OnItemResize;
 }) {
   const templateCols = `3.5rem repeat(${columns.length}, minmax(8rem, 1fr))`;
   const hasBanner = columns.some(c => c.layout.allDay.length > 0 || c.layout.outOfRange.length > 0);
-  const render = renderEvent ?? ((e: AgendaEvent) => <EventChip event={e} onOpen={onOpen} onReplan={onReplan} compact />);
+  const render = renderEvent;
 
   return (
     <div className="card p-0 overflow-x-auto">
@@ -654,8 +781,8 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
                 onClick={onSlotClick ? () => onSlotClick(c.id, undefined) : undefined}
                 className={cn('p-1 space-y-1 border-r border-gray-100 last:border-r-0', onSlotClick && 'cursor-pointer hover:bg-primary-50/30')}
               >
-                {c.layout.allDay.map(e => <div key={e.leadId}>{render(e)}</div>)}
-                {c.layout.outOfRange.map(e => <div key={e.leadId}>{render(e)}</div>)}
+                {c.layout.allDay.map(e => <div key={e.id}>{render(e)}</div>)}
+                {c.layout.outOfRange.map(e => <div key={e.id}>{render(e)}</div>)}
                 {c.layout.allDay.length === 0 && c.layout.outOfRange.length === 0 && <span className="block text-[10px] text-gray-300">+</span>}
               </div>
             ))}
@@ -686,16 +813,17 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
 // lead encore assigne, hors filtre) tombe dans "Autres" -> aucune action masquee.
 // Drag = change l'HEURE (la date reste le jour affiche ; le commercial ne change
 // jamais) ; le re-selecteur de DATE reste sur le bloc pour changer le jour.
-function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan, onMove, onResize }: {
+function DayView({ anchor, setAnchor, byDay, columns, onOpen, onEditEvent, onCreate, onReplan, onItemMove, onItemResize }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
-  byDay: Map<string, AgendaEvent[]>;
+  byDay: Map<string, GridItem[]>;
   columns: Commercial[];
   onOpen: (leadId: string) => void;
+  onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
-  onMove: OnMove;
-  onResize: OnResize;
+  onItemMove: OnItemMove;
+  onItemResize: OnItemResize;
 }) {
   const { state } = useApp();
   const dayISO = toISODate(anchor);
@@ -712,17 +840,16 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over, delta } = e;
     if (!over) return;
-    const ev = active.data.current?.event as AgendaEvent | undefined;
-    if (!ev) return;
-    const drop = computeDrop(ev, dayISO, delta.y);
-    if (drop) onMove(ev, drop.date, drop.time, drop.endTime);
+    const item = active.data.current?.item as GridItem | undefined;
+    if (!item) return;
+    onItemMove(item, dayISO, delta.y);
   };
 
   const colIds = new Set(columns.map(c => c.id));
-  const orphans = events.filter(e => !colIds.has(e.commercialId));
+  const orphans = events.filter(e => !colIds.has(itemCommercialId(e) ?? ''));
 
   const gridColumns: GridColumn[] = columns.map(c => {
-    const colEvents = events.filter(e => e.commercialId === c.id);
+    const colEvents = events.filter(e => itemCommercialId(e) === c.id);
     const color = getCommercialColor(c.id, state.commercials);
     return {
       id: c.id,
@@ -756,12 +883,10 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
         <TimeGrid
           slots={slots}
           columns={gridColumns}
-          onOpen={onOpen}
-          onReplan={onReplan}
           droppable
-          renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} onReplan={onReplan} compact />}
+          renderEvent={item => <DraggableGridItem item={item} onOpen={onOpen} onEditEvent={onEditEvent} onReplan={onReplan} compact />}
           onSlotClick={(_colId, time) => onCreate(dayISO, time)}
-          onResize={onResize}
+          onResize={onItemResize}
         />
       </DndContext>
     </div>
@@ -775,6 +900,97 @@ function ColumnHeader({ dot, title, count }: { dot: string; title: string; count
       <span className="text-sm font-medium text-gray-800 truncate">{title}</span>
       <span className="text-xs text-gray-400 ml-auto shrink-0">{count}</span>
     </div>
+  );
+}
+
+// --- Modale evenement libre : creation OU edition (+ suppression) ---
+function CalendarEventModal({ existing, initialDate, initialTime, commercials, onSave, onDelete, onClose }: {
+  existing: CalendarEvent | null;
+  initialDate: string;
+  initialTime?: string;
+  commercials: Commercial[];
+  onSave: (data: Omit<CalendarEvent, 'id'>) => void;
+  onDelete?: () => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(existing?.title ?? '');
+  const [date, setDate] = useState(existing?.date ?? initialDate);
+  const [time, setTime] = useState(existing?.time ?? initialTime ?? '');
+  const [endTime, setEndTime] = useState(existing?.endTime ?? '');
+  const [commercialId, setCommercialId] = useState(existing?.commercialId ?? '');
+  const [category, setCategory] = useState<CalendarEventCategory>(existing?.category ?? 'autre');
+  const [note, setNote] = useState(existing?.note ?? '');
+
+  const endTimeInvalid = !!endTime && !isEndAfterStart(time, endTime);
+  const canSave = !!title.trim() && !!date && !endTimeInvalid;
+
+  const submit = () => {
+    if (!canSave) return;
+    onSave({
+      title: title.trim(),
+      date,
+      time: time || undefined,
+      endTime: time && endTime && isEndAfterStart(time, endTime) ? endTime : undefined,
+      commercialId: commercialId || undefined,
+      category,
+      note: note.trim() || undefined,
+    });
+  };
+
+  return (
+    <Modal open onClose={onClose} title={existing ? "Modifier l'événement" : 'Nouvel événement'} size="sm">
+      <div className="space-y-4">
+        <div>
+          <label className="label">Titre *</label>
+          <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Réunion, congé, déplacement…" autoFocus />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="label">Date</label>
+            <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Heure</label>
+            <input className="input" type="time" value={time} onChange={e => { setTime(e.target.value); if (!e.target.value) setEndTime(''); }} />
+          </div>
+          <div>
+            <label className="label">Fin</label>
+            <input className="input" type="time" value={endTime} disabled={!time} onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+        {endTimeInvalid && <p className="text-xs text-danger-600">L'heure de fin doit être postérieure à l'heure de début.</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Commercial</label>
+            <select className="select" value={commercialId} onChange={e => setCommercialId(e.target.value)}>
+              <option value="">Général (équipe)</option>
+              {commercials.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Catégorie</label>
+            <select className="select" value={category} onChange={e => setCategory(e.target.value as CalendarEventCategory)}>
+              {CALENDAR_EVENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="label">Note</label>
+          <textarea className="input min-h-[70px]" value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2 pt-1">
+          {onDelete && (
+            <button onClick={onDelete} className="btn-ghost btn-sm text-danger-600 hover:bg-danger-50 mr-auto">
+              <Trash2 className="w-4 h-4" /> Supprimer
+            </button>
+          )}
+          <button onClick={onClose} className="btn-secondary btn-sm ml-auto">Annuler</button>
+          <button onClick={submit} disabled={!canSave} className="btn-primary btn-sm disabled:opacity-50">
+            {existing ? 'Enregistrer' : 'Créer'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

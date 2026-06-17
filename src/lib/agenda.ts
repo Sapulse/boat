@@ -153,7 +153,7 @@ export function resizeEventBySlots(time: string, endTime: string | undefined, sl
  * ("a faire dans la journee", convention Google/Outlook), puis les creneaux par
  * heure croissante. Comparaison de chaines "HH:mm" (lexicographique = horaire).
  */
-function compareDayEvents(a: AgendaEvent, b: AgendaEvent): number {
+function compareDayEvents(a: { time?: string }, b: { time?: string }): number {
   if (!a.time && !b.time) return 0;
   if (!a.time) return -1;
   if (!b.time) return 1;
@@ -174,8 +174,8 @@ export function getCreatableLeads(leads: Lead[]): Lead[] {
  * Indexe les evenements par jour ISO -> lookup O(1) depuis les cellules d'une
  * grille (semaine / mois / journee). N'altere pas l'ordre d'insertion.
  */
-export function groupEventsByDay(events: AgendaEvent[]): Map<string, AgendaEvent[]> {
-  const map = new Map<string, AgendaEvent[]>();
+export function groupEventsByDay<T extends { date: string; time?: string }>(events: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
   for (const e of events) {
     const arr = map.get(e.date);
     if (arr) arr.push(e);
@@ -249,19 +249,21 @@ export interface DayLayout {
  * groupEventsByDay). Aucun evenement n'est perdu.
  */
 // Evenement positionne dans la grille horaire (vues Semaine/Journee en blocs).
-export interface PositionedEvent {
-  event: AgendaEvent;
+// Generique : T = AgendaEvent (actions de leads) OU un item unifie (GridItem cote
+// UI) — tout ce qui porte time?/endTime?.
+export interface PositionedEvent<T = AgendaEvent> {
+  event: T;
   startIndex: number; // index du creneau de debut (0-based)
   span: number;       // nombre de creneaux couverts (>= 1)
   lane: number;       // couloir attribue (0-based) en cas de chevauchement
   lanes: number;      // nb total de couloirs du cluster (largeur = 1 / lanes)
 }
 
-export interface DayGridLayout {
-  allDay: AgendaEvent[];          // sans heure
-  outOfRange: AgendaEvent[];      // debut hors plage affichee
-  positioned: PositionedEvent[];  // evenements horodates, places + couloirs
-  slotCount: number;              // nb de creneaux de la grille (hauteur)
+export interface DayGridLayout<T = AgendaEvent> {
+  allDay: T[];                       // sans heure
+  outOfRange: T[];                   // debut hors plage affichee
+  positioned: PositionedEvent<T>[];  // evenements horodates, places + couloirs
+  slotCount: number;                 // nb de creneaux de la grille (hauteur)
 }
 
 /**
@@ -273,15 +275,15 @@ export interface DayGridLayout {
  *    gloutonne par cluster). Aucun evenement perdu (all-day / hors-plage / place).
  * Helper PUR (constantes de plage), testable au harnais.
  */
-export function layoutDayGrid(events: AgendaEvent[]): DayGridLayout {
+export function layoutDayGrid<T extends { time?: string; endTime?: string }>(events: T[]): DayGridLayout<T> {
   const startMin = AGENDA_HOUR_START * 60;
   const endMin = AGENDA_HOUR_END * 60;
   const slotMin = AGENDA_SLOT_MIN;
   const slotCount = Math.max(0, Math.floor((endMin - startMin) / slotMin));
 
-  const allDay: AgendaEvent[] = [];
-  const outOfRange: AgendaEvent[] = [];
-  const timed: { event: AgendaEvent; startIndex: number; span: number }[] = [];
+  const allDay: T[] = [];
+  const outOfRange: T[] = [];
+  const timed: { event: T; startIndex: number; span: number }[] = [];
 
   for (const e of events) {
     if (!e.time) { allDay.push(e); continue; }
@@ -305,7 +307,7 @@ export function layoutDayGrid(events: AgendaEvent[]): DayGridLayout {
   // assignation gloutonne du 1er couloir libre ; tous les events d'un cluster
   // partagent le meme nb de couloirs (largeurs egales).
   timed.sort((a, b) => a.startIndex - b.startIndex || b.span - a.span);
-  const positioned: PositionedEvent[] = [];
+  const positioned: PositionedEvent<T>[] = [];
   let i = 0;
   while (i < timed.length) {
     let clusterEnd = timed[i].startIndex + timed[i].span;

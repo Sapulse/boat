@@ -1,5 +1,5 @@
 import { useReducer, useEffect, type ReactNode } from 'react';
-import type { Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, MessageTemplate, ActionType } from '../data/types';
+import type { Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
 import { saveState } from '../lib/storage';
 import { generateId } from '../lib/utils';
 import { reducer, getInitialState } from './appReducer';
@@ -82,6 +82,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'DELETE_TEMPLATE', payload: id });
   };
 
+  const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>): string => {
+    const id = generateId();
+    dispatch({ type: 'ADD_CALENDAR_EVENT', payload: { ...event, id } });
+    return id;
+  };
+
+  const updateCalendarEvent = (id: string, data: Partial<CalendarEvent>) => {
+    dispatch({ type: 'UPDATE_CALENDAR_EVENT', payload: { id, data } });
+  };
+
+  const deleteCalendarEvent = (id: string) => {
+    dispatch({ type: 'DELETE_CALENDAR_EVENT', payload: id });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -102,6 +116,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addTemplate,
         updateTemplate,
         deleteTemplate,
+        addCalendarEvent,
+        updateCalendarEvent,
+        deleteCalendarEvent,
       }}
     >
       {children}

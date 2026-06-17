@@ -1,4 +1,4 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, MessageTemplate, ActionType } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -24,7 +24,10 @@ export type Action =
   | { type: 'TOGGLE_COMMERCIAL'; payload: string }
   | { type: 'ADD_TEMPLATE'; payload: MessageTemplate }
   | { type: 'UPDATE_TEMPLATE'; payload: { id: string; data: Partial<MessageTemplate> } }
-  | { type: 'DELETE_TEMPLATE'; payload: string };
+  | { type: 'DELETE_TEMPLATE'; payload: string }
+  | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
+  | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
+  | { type: 'DELETE_CALENDAR_EVENT'; payload: string };
 
 /**
  * Migration templates : double lecture (champ `templates` actuel, OU champ
@@ -63,6 +66,8 @@ export function getInitialState(): AppState {
       monthlyStats: stored.monthlyStats ?? [],
       acquisitionVolumes: stored.acquisitionVolumes ?? [],
       templates: hydrateTemplates(stored),
+      // Migration v3.13 : tableau absent des anciens states -> [] (aucune perte).
+      calendarEvents: stored.calendarEvents ?? [],
     };
   }
 
@@ -77,6 +82,7 @@ export function getInitialState(): AppState {
     monthlyStats: [],
     acquisitionVolumes: [],
     templates: DEFAULT_TEMPLATES,
+    calendarEvents: [],
   };
 }
 
@@ -242,6 +248,26 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         templates: state.templates.filter(t => t.id !== action.payload),
+      };
+
+    // Evenements d'agenda libres : actions confinees a state.calendarEvents,
+    // AUCUN effet de bord sur leads / actions / templates (entite isolee).
+    // Contrairement aux leads, un evenement peut etre SUPPRIME librement.
+    case 'ADD_CALENDAR_EVENT':
+      return { ...state, calendarEvents: [...state.calendarEvents, action.payload] };
+
+    case 'UPDATE_CALENDAR_EVENT':
+      return {
+        ...state,
+        calendarEvents: state.calendarEvents.map(e =>
+          e.id === action.payload.id ? { ...e, ...action.payload.data } : e
+        ),
+      };
+
+    case 'DELETE_CALENDAR_EVENT':
+      return {
+        ...state,
+        calendarEvents: state.calendarEvents.filter(e => e.id !== action.payload),
       };
 
     default:

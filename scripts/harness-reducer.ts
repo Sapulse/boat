@@ -30,7 +30,7 @@ import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
 import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots } from '../src/lib/agenda';
 import type { AgendaEvent } from '../src/lib/agenda';
-import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate, CalendarEvent } from '../src/data/types';
 
 const STORAGE_KEY = 'crm-nautisme-data';
 
@@ -111,6 +111,7 @@ function makeState(over: Partial<AppState> = {}): AppState {
     monthlyStats: [],
     acquisitionVolumes: [],
     templates: DEFAULT_TEMPLATES,
+    calendarEvents: [],
     ...over,
   };
 }
@@ -721,6 +722,86 @@ section('Agenda grille — CREER depuis un creneau : date + heure du creneau pos
   check('date du creneau posee', s.leads[0].nextActionDate === '2026-06-24', `=${s.leads[0].nextActionDate}`);
   check('heure du creneau posee', s.leads[0].nextActionTime === '09:30', `=${s.leads[0].nextActionTime}`);
   check('type pose', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
+}
+
+// ---------------------------------------------------------------------------
+// Evenements libres (lot agenda-evenements-libres, etape 1) — entite CalendarEvent
+// ---------------------------------------------------------------------------
+
+function makeCalendarEvent(over: Partial<CalendarEvent> = {}): CalendarEvent {
+  return { id: 'ev-1', title: 'Réunion', date: '2026-06-22', time: '09:00', endTime: '10:00', category: 'reunion', ...over };
+}
+
+section('Evenements libres — MIGRATION : tableau absent -> [] (N1 preserve, aucune perte)');
+{
+  store.clear();
+  // Ancien state SANS calendarEvents (avant v3.13).
+  store.set(STORAGE_KEY, JSON.stringify({ leads: [makeLead()], commercials: DEFAULT_COMMERCIALS, templates: DEFAULT_TEMPLATES }));
+  const s = getInitialState();
+  check('calendarEvents absent -> [] (migration nulle)', Array.isArray(s.calendarEvents) && s.calendarEvents.length === 0);
+  check('lead stocke restaure (N1, pas de re-seed)', s.leads.length === 1 && s.leads[0].id === 'lead-1');
+}
+
+section('Evenements libres — stored absent (base vierge) -> calendarEvents []');
+{
+  store.clear();
+  const s = getInitialState();
+  check('calendarEvents []', Array.isArray(s.calendarEvents) && s.calendarEvents.length === 0);
+}
+
+section('Evenements libres — ADD/UPDATE/DELETE confines, aucun effet de bord');
+{
+  const state = makeState({ calendarEvents: [] });
+  const ev = makeCalendarEvent({ id: 'e1' });
+  const added = reducer(state, { type: 'ADD_CALENDAR_EVENT', payload: ev });
+  check('ADD : evenement ajoute', added.calendarEvents.length === 1 && added.calendarEvents[0].id === 'e1');
+  check('ADD : leads MEME REFERENCE (aucun effet de bord)', added.leads === state.leads);
+  check('ADD : actions MEME REFERENCE', added.actions === state.actions);
+  check('ADD : templates MEME REFERENCE', added.templates === state.templates);
+
+  const updated = reducer(added, { type: 'UPDATE_CALENDAR_EVENT', payload: { id: 'e1', data: { title: 'Congé', endTime: '12:00' } } });
+  check('UPDATE : champ modifie', updated.calendarEvents[0].title === 'Congé' && updated.calendarEvents[0].endTime === '12:00');
+  check('UPDATE : autres champs intacts (date)', updated.calendarEvents[0].date === '2026-06-22');
+  check('UPDATE : leads/actions MEMES REFERENCES', updated.leads === state.leads && updated.actions === state.actions);
+
+  const deleted = reducer(updated, { type: 'DELETE_CALENDAR_EVENT', payload: 'e1' });
+  check('DELETE : evenement supprime (suppression libre, pas de garde min-1)', deleted.calendarEvents.length === 0);
+  check('DELETE : leads/actions MEMES REFERENCES', deleted.leads === state.leads && deleted.actions === state.actions);
+}
+
+section('Evenements libres — DRAG (gesture) : date + heure + fin decalee via UPDATE_CALENDAR_EVENT');
+{
+  // Drop d'un evenement 10:00–11:00 a 13:00 le lendemain : shiftEventBySlots
+  // calcule le nouveau creneau (duree preservee), l'ecriture passe par UPDATE.
+  const ev = makeCalendarEvent({ id: 'e1', date: '2026-06-22', time: '10:00', endTime: '11:00' });
+  const state = makeState({ calendarEvents: [ev] });
+  const moved = shiftEventBySlots('10:00', '11:00', 6); // -> 13:00 / 14:00
+  const s = reducer(state, { type: 'UPDATE_CALENDAR_EVENT', payload: { id: 'e1', data: { date: '2026-06-23', time: moved.time, endTime: moved.endTime } } });
+  check('jour change', s.calendarEvents[0].date === '2026-06-23', `=${s.calendarEvents[0].date}`);
+  check('heure decalee a 13:00', s.calendarEvents[0].time === '13:00', `=${s.calendarEvents[0].time}`);
+  check('fin decalee a 14:00 (duree preservee)', s.calendarEvents[0].endTime === '14:00', `=${s.calendarEvents[0].endTime}`);
+  check('titre/categorie intacts', s.calendarEvents[0].title === 'Réunion' && s.calendarEvents[0].category === 'reunion');
+  check('leads/actions MEMES REFERENCES', s.leads === state.leads && s.actions === state.actions);
+}
+
+section('Evenements libres — RESIZE (gesture) : SEULE la fin change via UPDATE_CALENDAR_EVENT');
+{
+  const ev = makeCalendarEvent({ id: 'e1', date: '2026-06-22', time: '09:00', endTime: '10:00' });
+  const state = makeState({ calendarEvents: [ev] });
+  const newEnd = resizeEventBySlots('09:00', '10:00', 2); // -> 11:00
+  const s = reducer(state, { type: 'UPDATE_CALENDAR_EVENT', payload: { id: 'e1', data: { endTime: newEnd } } });
+  check('fin etiree a 11:00', s.calendarEvents[0].endTime === '11:00', `=${s.calendarEvents[0].endTime}`);
+  check('debut/jour inchanges', s.calendarEvents[0].time === '09:00' && s.calendarEvents[0].date === '2026-06-22');
+}
+
+section('Evenements libres — UPDATE/DELETE ne touchent QUE la cible');
+{
+  const state = makeState({ calendarEvents: [makeCalendarEvent({ id: 'a' }), makeCalendarEvent({ id: 'b', title: 'Déplacement' })] });
+  const s = reducer(state, { type: 'UPDATE_CALENDAR_EVENT', payload: { id: 'a', data: { title: 'Modifié' } } });
+  check('cible modifiee', s.calendarEvents[0].title === 'Modifié');
+  check('autre evenement intact (meme reference)', s.calendarEvents[1] === state.calendarEvents[1]);
+  const d = reducer(state, { type: 'DELETE_CALENDAR_EVENT', payload: 'a' });
+  check('seule la cible supprimee', d.calendarEvents.length === 1 && d.calendarEvents[0].id === 'b');
 }
 
 // ---------------------------------------------------------------------------

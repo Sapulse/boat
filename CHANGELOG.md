@@ -7,6 +7,33 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.13.0] — 2026-06-17 — Événements d'agenda libres
+
+### Ajouté
+- **Événements d'agenda non liés à un lead** (réunion, congé, déplacement, bloc
+  perso) : nouvelle entité `CalendarEvent` indépendante, affichée dans la même
+  grille horaire que les actions, **distinguée par catégorie** (couleur + icône)
+  et **assignable à un commercial ou générale** (équipe).
+  - **Création** : clic sur un créneau → choix « Action de lead » / « Événement ».
+  - **Modale** : titre, date, heure, fin, commercial, catégorie, note +
+    **suppression** (un événement se supprime librement, contrairement à un lead).
+  - **Gestes** : drag par créneau (change jour + heure, durée préservée) et
+    resize à la poignée (change la fin), comme les actions ; en Journée le drag
+    change l'heure sans toucher au commercial. Présents dans les 3 vues
+    (Semaine/Mois/Journée) ; all-day et hors-plage non perdus (bandeau).
+
+### Technique
+- Entité **isolée** (tableau `state.calendarEvents` + actions reducer dédiées
+  `ADD/UPDATE/DELETE_CALENDAR_EVENT`, confinées) pour un **rebranchement backend**
+  ultérieur — seul le lieu de lecture/écriture changera ; données **mono-poste**
+  assumées en test localStorage. Migration **nulle** (tableau absent → `[]`, N1
+  préservé). Affichage unifié via un `GridItem` (`kind: 'lead' | 'event'`) ;
+  `layoutDayGrid`/`groupEventsByDay` rendus génériques ; gestes routés par `kind`
+  (`setNextAction` vs `updateCalendarEvent`), helpers purs réutilisés. Harnais
+  reducer porté à **198** (migration, CRUD confiné, drag/resize via gesture).
+
+---
+
 ## [3.12.0] — 2026-06-17 — Redimensionner un bloc à la poignée
 
 ### Ajouté

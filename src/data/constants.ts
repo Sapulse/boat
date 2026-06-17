@@ -1,4 +1,4 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate } from './types';
+import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate, CalendarEventCategory } from './types';
 
 export const LEAD_STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'nouveau', label: 'Nouveau', color: 'bg-gray-100 text-gray-800' },
@@ -155,6 +155,21 @@ export const COMMERCIAL_COLORS = [
 export const NEUTRAL_COMMERCIAL_COLOR = {
   bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300', dot: 'bg-gray-400',
 } as const;
+
+// Categories d'evenement d'agenda libre (lot v3.13) : couleur + libelle. Teintes
+// volontairement distinctes de la palette commerciaux (+ icone cote UI) pour
+// distinguer un evenement d'une action de lead. Classes en toutes lettres (JIT).
+export const CALENDAR_EVENT_CATEGORIES: { value: CalendarEventCategory; label: string; bg: string; text: string; border: string; dot: string }[] = [
+  { value: 'reunion', label: 'Réunion', bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-300', dot: 'bg-indigo-500' },
+  { value: 'conge', label: 'Congé', bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-300', dot: 'bg-teal-500' },
+  { value: 'deplacement', label: 'Déplacement', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-500' },
+  { value: 'perso', label: 'Perso', bg: 'bg-pink-100', text: 'text-pink-800', border: 'border-pink-300', dot: 'bg-pink-500' },
+  { value: 'autre', label: 'Autre', bg: 'bg-slate-100', text: 'text-slate-800', border: 'border-slate-300', dot: 'bg-slate-500' },
+];
+
+export function getCategoryInfo(category?: CalendarEventCategory) {
+  return CALENDAR_EVENT_CATEGORIES.find(c => c.value === category) ?? CALENDAR_EVENT_CATEGORIES[4];
+}
 
 // Variables interpolables dans les sujets / corps de templates — email ET sms
 // (affichage de l'aide dans l'UI d'edition). Doit rester aligne avec buildLeadVars().

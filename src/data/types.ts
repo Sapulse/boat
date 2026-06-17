@@ -130,6 +130,26 @@ export interface AcquisitionVolume {
   leadCount: number;
 }
 
+export type CalendarEventCategory = 'reunion' | 'conge' | 'deplacement' | 'perso' | 'autre';
+
+/**
+ * Evenement d'agenda INDEPENDANT des leads (reunion, conge, deplacement, bloc
+ * perso). Memes conventions horaires que les actions (date "YYYY-MM-DD",
+ * time/endTime "HH:mm") -> reutilise les helpers purs de lib/agenda. Entite
+ * isolee (tableau + actions reducer dediees) pour rebranchement backend ulterieur
+ * sans toucher au reste. `commercialId` absent = evenement general (equipe).
+ */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;             // "YYYY-MM-DD"
+  time?: string;            // "HH:mm" — absent = toute la journee
+  endTime?: string;         // "HH:mm" — donne une duree
+  commercialId?: string;    // assigne a un commercial, ou absent = general
+  category?: CalendarEventCategory;
+  note?: string;
+}
+
 export interface AppState {
   leads: Lead[];
   actions: LeadAction[];
@@ -139,4 +159,7 @@ export interface AppState {
   // Avant v3.2 le champ s'appelait `emailTemplates` (templates email only) :
   // l'hydratation (appReducer.getInitialState) lit encore l'ancien nom.
   templates: MessageTemplate[];
+  // Evenements d'agenda non lies aux leads (v3.13). Absent des anciens states
+  // -> hydrate en [] (migration nulle, voir getInitialState).
+  calendarEvents: CalendarEvent[];
 }

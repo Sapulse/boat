@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, MessageTemplate, ActionType } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
 import type { Action } from './appReducer';
 
 // Module sans composant : contexte + hook d'acces. Separe de AppContext.tsx
@@ -24,6 +24,9 @@ export interface AppContextType {
   addTemplate: (template: Omit<MessageTemplate, 'id'>) => string;
   updateTemplate: (id: string, data: Partial<MessageTemplate>) => void;
   deleteTemplate: (id: string) => void;
+  addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
+  updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
+  deleteCalendarEvent: (id: string) => void;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);
