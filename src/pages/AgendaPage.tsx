@@ -17,8 +17,8 @@ import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
-  buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots,
-  type AgendaEvent, type CommercialColor, type DayGridLayout,
+  buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots,
+  type AgendaEvent, type CommercialColor, type DayGridLayout, type PositionedEvent,
 } from '../lib/agenda';
 import type { Commercial, ActionType, Lead } from '../data/types';
 
@@ -59,6 +59,8 @@ type OnReplan = (event: AgendaEvent, newDate: string) => void;
 // Deplacement par drag-creneau : nouveau jour + nouvelle heure de debut/fin
 // (heure/fin absentes = action all-day deplacee, jour seul).
 type OnMove = (event: AgendaEvent, newDate: string, newTime?: string, newEndTime?: string) => void;
+// Redimensionnement (poignee bas) : seule la fin change (slotDelta creneaux).
+type OnResize = (event: AgendaEvent, slotDelta: number) => void;
 // Ouvre le createur pour une date + heure (heure absente = "toute la journee").
 type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
@@ -88,6 +90,12 @@ export default function AgendaPage() {
   const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time, event.endTime);
   // Drag par creneau = nouveau jour ET nouvelle heure (la duree suit, deja calculee).
   const onMove: OnMove = (event, newDate, newTime, newEndTime) => setNextAction(event.leadId, event.type, newDate, newTime, newEndTime);
+  // Resize = seule la fin change (debut/jour fixes) ; min 1 creneau, clamp 18h.
+  const onResize: OnResize = (event, slotDelta) => {
+    if (!event.time) return;
+    const newEndTime = resizeEventBySlots(event.time, event.endTime, slotDelta);
+    setNextAction(event.leadId, event.type, event.date, event.time, newEndTime);
+  };
   const onCreate: OnCreate = (dateISO, timeHHmm) => setCreateSlot({ date: dateISO, time: timeHHmm });
   // Heure de debut et de fin viennent du createur (debut pre-rempli depuis le creneau).
   const doCreate = (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => {
@@ -133,7 +141,7 @@ export default function AgendaPage() {
       <CommercialLegend />
 
       {view === 'semaine' && (
-        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} onMove={onMove} />
+        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} onMove={onMove} onResize={onResize} />
       )}
       {view === 'mois' && (
         <MonthView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
@@ -148,6 +156,7 @@ export default function AgendaPage() {
           onCreate={onCreate}
           onReplan={onReplan}
           onMove={onMove}
+          onResize={onResize}
         />
       )}
 
@@ -333,7 +342,7 @@ function ViewNav({ onPrev, onToday, onNext, label, prevLabel, nextLabel, today }
 // Drag PAR CRENEAU : glisser change le JOUR (colonne) ET l'HEURE (deplacement
 // vertical) ; la duree suit (computeDrop -> shiftEventBySlots). Un all-day /
 // hors-plage ne change que de jour.
-function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove }: {
+function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove, onResize }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, AgendaEvent[]>;
@@ -341,6 +350,7 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove
   onCreate: OnCreate;
   onReplan: OnReplan;
   onMove: OnMove;
+  onResize: OnResize;
 }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -392,6 +402,7 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove
           droppable
           renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} compact />}
           onSlotClick={(colId, time) => onCreate(colId, time)}
+          onResize={onResize}
         />
       </DndContext>
     </div>
@@ -506,15 +517,83 @@ function DroppableColumn({ id, className, children }: { id: string; className?: 
   return <div ref={setNodeRef} className={cn(className, isOver && 'bg-primary-50/40')}>{children}</div>;
 }
 
+// Bloc positionne dans la grille : chip (deplacement/clic) + poignee de resize en
+// bas (pointer events, apercu LIVE de la hauteur, commit au relachement). La
+// poignee est SOEUR du chip -> son pointerdown ne declenche pas le drag du chip.
+function GridBlock({ p, slotCount, render, onResize }: {
+  p: PositionedEvent;
+  slotCount: number;
+  render: (event: AgendaEvent) => React.ReactNode;
+  onResize?: OnResize;
+}) {
+  const [liveDelta, setLiveDelta] = useState(0);
+  const startY = useRef(0);
+  const resizing = useRef(false);
+
+  const minDelta = 1 - p.span;                       // duree mini 1 creneau
+  const maxDelta = slotCount - p.startIndex - p.span; // fin <= 18h
+  const clampDelta = (d: number) => Math.min(Math.max(d, minDelta), maxDelta);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    startY.current = e.clientY;
+    resizing.current = true;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!resizing.current) return;
+    setLiveDelta(clampDelta(Math.round((e.clientY - startY.current) / SLOT_PX)));
+  };
+  const endResize = (e: React.PointerEvent) => {
+    if (!resizing.current) return;
+    resizing.current = false;
+    e.stopPropagation();
+    const d = clampDelta(liveDelta);
+    setLiveDelta(0);
+    if (d !== 0 && onResize) onResize(p.event, d);
+  };
+
+  const span = Math.max(1, p.span + liveDelta);
+  return (
+    <div
+      className="absolute p-0.5"
+      style={{
+        top: p.startIndex * SLOT_PX,
+        height: span * SLOT_PX,
+        left: `${(p.lane / p.lanes) * 100}%`,
+        width: `${(1 / p.lanes) * 100}%`,
+        zIndex: liveDelta !== 0 ? 40 : undefined,
+      }}
+    >
+      <div className="relative h-full">
+        <div className="h-full [&>*]:h-full">{render(p.event)}</div>
+        {onResize && (
+          <div
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+            onClick={e => e.stopPropagation()}
+            title="Étirer pour changer la durée"
+            style={{ touchAction: 'none' }}
+            className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize bg-black/5 hover:bg-black/20 rounded-b"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Corps d'une colonne : cellules-fond empilees (hauteur de la grille + clic-
-// creation par creneau) + blocs d'evenements en ABSOLU (top/height = creneaux,
-// left/width = couloir de chevauchement).
-function ColumnBody({ col, slots, droppable, onSlotClick, render }: {
+// creation par creneau) + blocs d'evenements en ABSOLU (GridBlock).
+function ColumnBody({ col, slots, droppable, onSlotClick, render, onResize }: {
   col: GridColumn;
   slots: string[];
   droppable: boolean;
   onSlotClick?: (colId: string, time?: string) => void;
   render: (event: AgendaEvent) => React.ReactNode;
+  onResize?: OnResize;
 }) {
   const inner = (
     <>
@@ -527,18 +606,7 @@ function ColumnBody({ col, slots, droppable, onSlotClick, render }: {
         />
       ))}
       {col.layout.positioned.map(p => (
-        <div
-          key={p.event.leadId}
-          className="absolute p-0.5 [&>*]:h-full"
-          style={{
-            top: p.startIndex * SLOT_PX,
-            height: p.span * SLOT_PX,
-            left: `${(p.lane / p.lanes) * 100}%`,
-            width: `${(1 / p.lanes) * 100}%`,
-          }}
-        >
-          {render(p.event)}
-        </div>
+        <GridBlock key={p.event.leadId} p={p} slotCount={col.layout.slotCount} render={render} onResize={onResize} />
       ))}
     </>
   );
@@ -550,7 +618,7 @@ function ColumnBody({ col, slots, droppable, onSlotClick, render }: {
 // Grille horaire generique (column-major). `renderEvent` decide du rendu d'un
 // bloc (Journee = EventChip + re-selecteur ; Semaine = DraggableEvent).
 // `droppable` fait de chaque colonne UNE cible de drop (drag niveau jour).
-function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = false, onSlotClick }: {
+function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = false, onSlotClick, onResize }: {
   slots: string[];
   columns: GridColumn[];
   onOpen: (leadId: string) => void;
@@ -558,6 +626,7 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
   renderEvent?: (event: AgendaEvent) => React.ReactNode;
   droppable?: boolean;
   onSlotClick?: (colId: string, time?: string) => void;
+  onResize?: OnResize;
 }) {
   const templateCols = `3.5rem repeat(${columns.length}, minmax(8rem, 1fr))`;
   const hasBanner = columns.some(c => c.layout.allDay.length > 0 || c.layout.outOfRange.length > 0);
@@ -603,7 +672,7 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
             ))}
           </div>
           {columns.map(c => (
-            <ColumnBody key={c.id} col={c} slots={slots} droppable={droppable} onSlotClick={onSlotClick} render={render} />
+            <ColumnBody key={c.id} col={c} slots={slots} droppable={droppable} onSlotClick={onSlotClick} render={render} onResize={onResize} />
           ))}
         </div>
       </div>
@@ -617,7 +686,7 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
 // lead encore assigne, hors filtre) tombe dans "Autres" -> aucune action masquee.
 // Drag = change l'HEURE (la date reste le jour affiche ; le commercial ne change
 // jamais) ; le re-selecteur de DATE reste sur le bloc pour changer le jour.
-function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan, onMove }: {
+function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan, onMove, onResize }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, AgendaEvent[]>;
@@ -626,6 +695,7 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
   onCreate: OnCreate;
   onReplan: OnReplan;
   onMove: OnMove;
+  onResize: OnResize;
 }) {
   const { state } = useApp();
   const dayISO = toISODate(anchor);
@@ -691,6 +761,7 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
           droppable
           renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} onReplan={onReplan} compact />}
           onSlotClick={(_colId, time) => onCreate(dayISO, time)}
+          onResize={onResize}
         />
       </DndContext>
     </div>

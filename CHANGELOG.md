@@ -7,6 +7,27 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.12.0] — 2026-06-17 — Redimensionner un bloc à la poignée
+
+### Ajouté
+- **Poignée de redimensionnement** en bas de chaque bloc de la grille horaire
+  (vues Semaine et Journée) : tirer vers le bas **allonge** la durée, vers le
+  haut la **raccourcit** (par pas de 30 min), avec **aperçu en direct**.
+  **Souris et tactile** (Pointer Events + capture du pointeur). L'heure de
+  **début ne bouge pas** (seule la fin change) ; durée **minimale 30 min** ;
+  la fin est **clampée à 18h**. Plus besoin de passer par le champ « Fin ».
+
+### Technique
+- Poignée = élément dédié (frère du chip) avec ses propres pointer events +
+  `stopPropagation`/`touch-action:none` → cohabite sans conflit avec les 3 gestes
+  existants (clic-fiche, clic-création, drag-déplacement). Helper pur
+  `resizeEventBySlots` (min 1 créneau, clamp fin de plage, début fixe). Écriture
+  via la seule action `SET_NEXT_ACTION` (seul `nextActionEndTime` change). Harnais
+  reducer porté à **176** (étirer/raccourcir/min/clamp/ponctuel + contrat ; cas
+  existants verts).
+
+---
+
 ## [3.11.0] — 2026-06-17 — Drag par créneau (jour + heure)
 
 ### Ajouté

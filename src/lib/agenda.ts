@@ -123,6 +123,32 @@ export function shiftEventBySlots(time: string, endTime: string | undefined, slo
 }
 
 /**
+ * Redimensionne une action de `slotDelta` creneaux (poignee de resize) : SEULE la
+ * fin change, le DEBUT est fixe. Duree minimale = 1 creneau (>= 30 min) ; clamp a
+ * la fin de plage (la fin ne depasse jamais END). Renvoie la nouvelle heure de
+ * fin ("HH:mm"). Debut hors plage / invalide -> renvoie la fin actuelle (ou le
+ * debut a defaut), defensif.
+ */
+export function resizeEventBySlots(time: string, endTime: string | undefined, slotDelta: number): string {
+  const startMin = AGENDA_HOUR_START * 60;
+  const endMin = AGENDA_HOUR_END * 60;
+  const slotMin = AGENDA_SLOT_MIN;
+  const slotCount = Math.floor((endMin - startMin) / slotMin);
+
+  const startParsed = parseHHmm(time);
+  if (startParsed === null || startParsed < startMin || startParsed >= endMin) return endTime ?? time;
+  const startIdx = Math.floor((startParsed - startMin) / slotMin);
+
+  const endParsed = endTime ? parseHHmm(endTime) : null;
+  const curSpan = endParsed !== null && endParsed > startParsed
+    ? Math.max(1, Math.ceil((endParsed - startParsed) / slotMin))
+    : 1;
+
+  const newSpan = Math.min(Math.max(curSpan + slotDelta, 1), slotCount - startIdx);
+  return minutesToHHmm(startMin + (startIdx + newSpan) * slotMin);
+}
+
+/**
  * Ordre d'affichage des evenements d'un MEME jour : les sans-heure d'abord
  * ("a faire dans la journee", convention Google/Outlook), puis les creneaux par
  * heure croissante. Comparaison de chaines "HH:mm" (lexicographique = horaire).

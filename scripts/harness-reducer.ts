@@ -28,7 +28,7 @@ const store = new Map<string, string>();
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
-import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots } from '../src/lib/agenda';
+import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots } from '../src/lib/agenda';
 import type { AgendaEvent } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
@@ -675,6 +675,28 @@ section('Agenda drag-creneau — NON-REGRESSION : drag inter-jours sans decalage
   const state = makeState({ leads: [lead], actions: [] });
   const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-21', nextActionTime: same.time, nextActionEndTime: same.endTime } });
   check('jour change, heure+duree intactes', s.leads[0].nextActionDate === '2026-06-21' && s.leads[0].nextActionTime === '14:00' && s.leads[0].nextActionEndTime === '16:00');
+}
+
+section('Agenda resize — resizeEventBySlots : etire/raccourcit la fin, min 1 creneau, clamp 18h');
+{
+  check('09:00–09:30 +1 -> 10:00', resizeEventBySlots('09:00', '09:30', 1) === '10:00', `=${resizeEventBySlots('09:00', '09:30', 1)}`);
+  check('09:00–10:00 +2 -> 11:00', resizeEventBySlots('09:00', '10:00', 2) === '11:00', `=${resizeEventBySlots('09:00', '10:00', 2)}`);
+  check('09:00–10:00 -5 -> 09:30 (min 1 creneau)', resizeEventBySlots('09:00', '10:00', -5) === '09:30', `=${resizeEventBySlots('09:00', '10:00', -5)}`);
+  check('17:00–17:30 +10 -> 18:00 (clamp fin de plage)', resizeEventBySlots('17:00', '17:30', 10) === '18:00', `=${resizeEventBySlots('17:00', '17:30', 10)}`);
+  check('ponctuel 09:00 (sans fin) +1 -> 10:00', resizeEventBySlots('09:00', undefined, 1) === '10:00', `=${resizeEventBySlots('09:00', undefined, 1)}`);
+  check('ponctuel 09:00 -3 -> 09:30 (min 1 creneau)', resizeEventBySlots('09:00', undefined, -3) === '09:30', `=${resizeEventBySlots('09:00', undefined, -3)}`);
+}
+
+section('Agenda resize — SET_NEXT_ACTION : SEULE la fin change (debut/jour/type intacts)');
+{
+  const lead = makeLead({ id: 'l1', status: 'qualifie', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '09:00', nextActionEndTime: '10:00' });
+  const state = makeState({ leads: [lead], actions: [] });
+  const newEnd = resizeEventBySlots('09:00', '10:00', 2); // -> 11:00
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '09:00', nextActionEndTime: newEnd } });
+  check('fin etiree a 11:00', s.leads[0].nextActionEndTime === '11:00', `=${s.leads[0].nextActionEndTime}`);
+  check('debut inchange (09:00)', s.leads[0].nextActionTime === '09:00', `=${s.leads[0].nextActionTime}`);
+  check('jour inchange', s.leads[0].nextActionDate === '2026-06-20', `=${s.leads[0].nextActionDate}`);
+  check('type inchange', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
 }
 
 section('Agenda grille — layoutDayGrid : all-day / hors-plage non perdus');
