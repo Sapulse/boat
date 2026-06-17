@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.12** (dernier tag `v3.12.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.13** (dernier tag `v3.13.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -90,6 +90,12 @@ déploiement auto) → tag annoté. Commits sémantiques.
 - **`v3.12.0`** — **redimensionner un bloc à la poignée** (souris + tactile,
   aperçu live, min 30 min, clamp 18h, début fixe). Helper pur `resizeEventBySlots`.
   Harnais reducer **176**. *(= le « glisser-pour-définir-la-durée » envisagé, fait.)*
+- **`v3.13.0`** — **événements d'agenda libres** (non liés à un lead) : entité
+  `CalendarEvent` isolée (tableau + ADD/UPDATE/DELETE confinés, migration nulle),
+  catégories colorées (réunion/congé/déplacement/perso), création (clic créneau →
+  choix Action/Événement) / édition / suppression, drag + resize, 3 vues. Affichage
+  unifié `GridItem`. Harnais reducer **198**. *(= L3 du diagnostic, version
+  localStorage ; L4 agenda partagé = backend.)*
 
 ---
 
@@ -127,11 +133,11 @@ déploiement auto) → tag annoté. Commits sémantiques.
   - **L2 — grille horaire visuelle** (vues Semaine/Journée) → ✅ **FAIT en v3.9.0**,
     enrichi ensuite : **durée/blocs** (v3.10.0), **drag par créneau** jour+heure
     (v3.11.0), **resize à la poignée** (v3.12.0). Axe 8h-18h, créneaux 30 min.
-  - **L3 — événements libres** (réunion, congé, bloc-temps, non liés à un lead) :
-    nouvelle entité `CalendarEvent` + tableau + reducer (ADD/UPDATE/DELETE) + migration.
-    🔵 **En cours** (lot `feat/agenda-evenements-libres`, démarré 17/06) **en
-    localStorage**, entité **isolée pour rebranchement backend** ultérieur ; données
-    **mono-poste** assumées en test (non partagées tant qu'il n'y a pas de backend).
+  - **L3 — événements libres** (réunion, congé, déplacement, bloc perso, non liés à
+    un lead) → ✅ **FAIT en v3.13.0** (version test localStorage) : entité
+    `CalendarEvent` isolée (tableau + ADD/UPDATE/DELETE confinés), catégories
+    colorées, CRUD modale, drag + resize, 3 vues. Données **mono-poste** (non
+    partagées) ; entité **isolée pour rebranchement backend** (L4) sans réécriture.
   - **L4 — agenda d'équipe PARTAGÉ** : impossible en localStorage (chaque poste est isolé).
     **Dépend du backend.** 👉 Reco du diagnostic : quand le backend arrivera, **évaluer
     d'abord la synchro Outlook 365** (Microsoft Graph) plutôt que reconstruire un
