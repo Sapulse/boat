@@ -17,7 +17,7 @@ import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
-  buildTimeSlots, layoutDayGrid, isEndAfterStart,
+  buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots,
   type AgendaEvent, type CommercialColor, type DayGridLayout,
 } from '../lib/agenda';
 import type { Commercial, ActionType, Lead } from '../data/types';
@@ -56,6 +56,9 @@ function timeLabel(event: AgendaEvent): string {
 // onReplan : deplace une action existante (type PRESERVE, date changee) via
 // setNextAction. onCreate : ouvre le createur pour une date donnee.
 type OnReplan = (event: AgendaEvent, newDate: string) => void;
+// Deplacement par drag-creneau : nouveau jour + nouvelle heure de debut/fin
+// (heure/fin absentes = action all-day deplacee, jour seul).
+type OnMove = (event: AgendaEvent, newDate: string, newTime?: string, newEndTime?: string) => void;
 // Ouvre le createur pour une date + heure (heure absente = "toute la journee").
 type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
@@ -80,8 +83,11 @@ export default function AgendaPage() {
 
   const activeCommercials = state.commercials.filter(c => c.active);
   const onOpen = (id: string) => navigate(`/leads/${id}`);
-  // Replanification = on change UNIQUEMENT la date ; type, heure ET duree preserves.
+  // Replanification (re-selecteur de date) = on change UNIQUEMENT la date ; type,
+  // heure ET duree preserves.
   const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time, event.endTime);
+  // Drag par creneau = nouveau jour ET nouvelle heure (la duree suit, deja calculee).
+  const onMove: OnMove = (event, newDate, newTime, newEndTime) => setNextAction(event.leadId, event.type, newDate, newTime, newEndTime);
   const onCreate: OnCreate = (dateISO, timeHHmm) => setCreateSlot({ date: dateISO, time: timeHHmm });
   // Heure de debut et de fin viennent du createur (debut pre-rempli depuis le creneau).
   const doCreate = (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => {
@@ -127,7 +133,7 @@ export default function AgendaPage() {
       <CommercialLegend />
 
       {view === 'semaine' && (
-        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
+        <WeekView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} onMove={onMove} />
       )}
       {view === 'mois' && (
         <MonthView anchor={anchor} setAnchor={setAnchor} byDay={byDay} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
@@ -141,6 +147,7 @@ export default function AgendaPage() {
           onOpen={onOpen}
           onCreate={onCreate}
           onReplan={onReplan}
+          onMove={onMove}
         />
       )}
 
@@ -263,9 +270,11 @@ function EventChip({ event, onOpen, compact = false, onReplan }: {
   );
 }
 
-// Pastille DRAGGABLE (Semaine) : glisser -> autre jour (replan) ; clic court ->
-// fiche. transform construit a la main (@dnd-kit/utilities a ete retire).
-function DraggableEvent({ event, onOpen, compact = false }: { event: AgendaEvent; onOpen: (leadId: string) => void; compact?: boolean }) {
+// Pastille DRAGGABLE (Semaine/Journee) : glisser -> autre jour ET/OU creneau ;
+// clic court -> fiche. `onReplan` optionnel ajoute le re-selecteur de DATE dans
+// le chip (utile en Journee : drag change l'heure, bouton change le jour).
+// transform construit a la main (@dnd-kit/utilities a ete retire).
+function DraggableEvent({ event, onOpen, compact = false, onReplan }: { event: AgendaEvent; onOpen: (leadId: string) => void; compact?: boolean; onReplan?: OnReplan }) {
   const { state } = useApp();
   const color = getCommercialColor(event.commercialId, state.commercials);
   const overdue = event.status === 'overdue';
@@ -301,6 +310,7 @@ function DraggableEvent({ event, onOpen, compact = false }: { event: AgendaEvent
       className={chipClasses(color, overdue, compact)}
     >
       <EventChipInner event={event} compact={compact} />
+      {onReplan && <ReplanControl event={event} onReplan={onReplan} />}
     </div>
   );
 }
@@ -320,16 +330,17 @@ function ViewNav({ onPrev, onToday, onNext, label, prevLabel, nextLabel, today }
 }
 
 // --- Vue SEMAINE en GRILLE HORAIRE : 7 colonnes jour x heures ---
-// Drag NIVEAU JOUR : glisser vers une cellule d'un autre jour change la date,
-// l'heure est conservee (onReplan preserve event.time). Le changement d'heure
-// par drag (drop par creneau) est un raffinement futur.
-function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
+// Drag PAR CRENEAU : glisser change le JOUR (colonne) ET l'HEURE (deplacement
+// vertical) ; la duree suit (computeDrop -> shiftEventBySlots). Un all-day /
+// hors-plage ne change que de jour.
+function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan, onMove }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, AgendaEvent[]>;
   onOpen: (leadId: string) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
+  onMove: OnMove;
 }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -351,15 +362,15 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
     };
   });
 
-  // Chaque colonne = une droppable (id = jourISO). Drag NIVEAU JOUR : on lit le
-  // jour cible ; l'heure et la duree de l'action suivent (onReplan les preserve).
+  // Chaque colonne = une droppable (id = jourISO) -> nouveau jour. delta.y ->
+  // nouveau creneau (computeDrop). La duree est preservee, clamp dans la grille.
   const handleDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e;
+    const { active, over, delta } = e;
     if (!over) return;
     const ev = active.data.current?.event as AgendaEvent | undefined;
-    const targetDay = String(over.id);
-    if (!ev || targetDay === ev.date) return;
-    onReplan(ev, targetDay);
+    if (!ev) return;
+    const drop = computeDrop(ev, String(over.id), delta.y);
+    if (drop) onMove(ev, drop.date, drop.time, drop.endTime);
   };
 
   return (
@@ -466,6 +477,21 @@ function MonthView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
 // Gouttiere d'heures a gauche + N colonnes ; bandeau "toute la journee / hors
 // plage" en haut (aucune action perdue) ; une ligne par creneau. Defilable en x.
 const SLOT_PX = 40; // hauteur d'une ligne de creneau
+
+// Calcule la cible d'un drop : nouveau jour (via la colonne) + nouvelle heure
+// (via le deplacement vertical delta.y -> creneaux). Renvoie null si rien ne
+// change. Un evenement horodate dans la plage decale son heure (duree preservee,
+// clamp grille) ; un all-day / hors-plage ne change QUE de jour.
+function computeDrop(ev: AgendaEvent, newDate: string, deltaY: number): { date: string; time?: string; endTime?: string } | null {
+  if (ev.time && startSlotIndex(ev.time) !== null) {
+    const slotDelta = Math.round(deltaY / SLOT_PX);
+    const { time, endTime } = shiftEventBySlots(ev.time, ev.endTime, slotDelta);
+    if (newDate === ev.date && time === ev.time && endTime === ev.endTime) return null;
+    return { date: newDate, time, endTime };
+  }
+  if (newDate === ev.date) return null;
+  return { date: newDate, time: ev.time, endTime: ev.endTime };
+}
 
 interface GridColumn {
   id: string;
@@ -589,7 +615,9 @@ function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = f
 // (vue "reunion du lundi" + creneaux). Toutes les colonnes affichees meme vides.
 // Un evenement dont le commercial n'est PAS dans les colonnes (desactive mais
 // lead encore assigne, hors filtre) tombe dans "Autres" -> aucune action masquee.
-function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan }: {
+// Drag = change l'HEURE (la date reste le jour affiche ; le commercial ne change
+// jamais) ; le re-selecteur de DATE reste sur le bloc pour changer le jour.
+function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan, onMove }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, AgendaEvent[]>;
@@ -597,12 +625,28 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
   onOpen: (leadId: string) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
+  onMove: OnMove;
 }) {
   const { state } = useApp();
   const dayISO = toISODate(anchor);
   const events = byDay.get(dayISO) ?? [];
   const isToday = isSameDay(anchor, new Date());
   const slots = buildTimeSlots();
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+  // En Journee, toutes les colonnes partagent la date affichee (anchor) : le drag
+  // ne change que l'HEURE (delta.y), jamais le jour ni le commercial.
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over, delta } = e;
+    if (!over) return;
+    const ev = active.data.current?.event as AgendaEvent | undefined;
+    if (!ev) return;
+    const drop = computeDrop(ev, dayISO, delta.y);
+    if (drop) onMove(ev, drop.date, drop.time, drop.endTime);
+  };
 
   const colIds = new Set(columns.map(c => c.id));
   const orphans = events.filter(e => !colIds.has(e.commercialId));
@@ -635,15 +679,20 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
         nextLabel="Jour suivant"
         today={isToday}
       />
-      {/* En Journee, les colonnes sont des COMMERCIAUX : la date de creation est
-          toujours le jour affiche (anchor), pas le colId. */}
-      <TimeGrid
-        slots={slots}
-        columns={gridColumns}
-        onOpen={onOpen}
-        onReplan={onReplan}
-        onSlotClick={(_colId, time) => onCreate(dayISO, time)}
-      />
+      {/* En Journee, les colonnes sont des COMMERCIAUX : creation et drag visent
+          toujours le jour affiche (anchor), pas le colId. Le drag change l'heure ;
+          le bouton re-selecteur (onReplan) change la date. */}
+      <DndContext sensors={sensors} collisionDetection={dayCollision} onDragEnd={handleDragEnd}>
+        <TimeGrid
+          slots={slots}
+          columns={gridColumns}
+          onOpen={onOpen}
+          onReplan={onReplan}
+          droppable
+          renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} onReplan={onReplan} compact />}
+          onSlotClick={(_colId, time) => onCreate(dayISO, time)}
+        />
+      </DndContext>
     </div>
   );
 }

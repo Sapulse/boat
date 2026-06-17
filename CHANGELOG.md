@@ -7,6 +7,32 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.11.0] — 2026-06-17 — Drag par créneau (jour + heure)
+
+### Ajouté
+- **Glisser-déposer par créneau** dans la grille horaire : déplacer un bloc change
+  désormais le **jour ET l'heure** (avant : le jour seul). La **durée est
+  préservée** — un bloc 10:00–11:00 déposé à 13:00 devient 13:00–14:00. Un
+  glisser horizontal pur change le jour en gardant l'heure. Si le bloc
+  déborderait après 18h, il est **calé** pour rentrer (fin = 18h max, durée
+  intacte).
+- **Drag activé en vue Journée** : glisser verticalement un bloc change son
+  **heure** (la date reste le jour affiché ; le **commercial ne change jamais**).
+  Le bouton re-sélecteur de date reste disponible sur le bloc pour changer le
+  jour. Les actions « toute la journée » / hors-plage ne changent que de jour.
+- Les trois gestes cohabitent sans conflit : clic court → fiche, clic sur une
+  cellule vide → création, glisser réel → déplacement.
+
+### Technique
+- 1 droppable par colonne (le jour) + créneau déduit du déplacement vertical
+  (`Math.round(event.delta.y / SLOT_PX)`) — pas de multiplication des droppables.
+  Helpers purs `startSlotIndex` et `shiftEventBySlots` (décalage, durée préservée,
+  clamp dans la plage). Écriture via la seule action `SET_NEXT_ACTION`. Harnais
+  reducer porté à **166** (décalage / clamp haut-bas / ponctuel / hors-plage /
+  contrat drag + non-régression drag inter-jours ; cas existants verts).
+
+---
+
 ## [3.10.0] — 2026-06-17 — Durée des actions (blocs horaires)
 
 ### Ajouté

@@ -81,6 +81,48 @@ export function isEndAfterStart(start: string, end: string): boolean {
 }
 
 /**
+ * Index de creneau de debut (plancher) d'une heure DANS la plage affichee, ou
+ * null si l'heure est invalide / hors plage. Sert au drag par creneau.
+ */
+export function startSlotIndex(time: string): number | null {
+  const mins = parseHHmm(time);
+  if (mins === null) return null;
+  const startMin = AGENDA_HOUR_START * 60;
+  const endMin = AGENDA_HOUR_END * 60;
+  if (mins < startMin || mins >= endMin) return null;
+  return Math.floor((mins - startMin) / AGENDA_SLOT_MIN);
+}
+
+/**
+ * Deplace une action de `slotDelta` creneaux (drag par creneau) en PRESERVANT la
+ * duree. Clamp dans la plage [START, END) : le bloc ne sort jamais de la grille
+ * (debut borne a [0, slotCount - span]) -> si le bloc deborderait apres END, on
+ * remonte le debut pour qu'il rentre (fin = END max), duree intacte. Heure de
+ * depart invalide / hors plage -> renvoie l'original (pas de deplacement ; le
+ * drag de ces evenements ne change que le jour).
+ */
+export function shiftEventBySlots(time: string, endTime: string | undefined, slotDelta: number): { time: string; endTime?: string } {
+  const startMin = AGENDA_HOUR_START * 60;
+  const endMin = AGENDA_HOUR_END * 60;
+  const slotMin = AGENDA_SLOT_MIN;
+  const slotCount = Math.floor((endMin - startMin) / slotMin);
+
+  const startParsed = parseHHmm(time);
+  if (startParsed === null || startParsed < startMin || startParsed >= endMin) return { time, endTime };
+  const idx0 = Math.floor((startParsed - startMin) / slotMin);
+
+  const endParsed = endTime ? parseHHmm(endTime) : null;
+  const hasDuration = endParsed !== null && endParsed > startParsed;
+  const durationMin = hasDuration ? endParsed - startParsed : 0;
+  const span = hasDuration ? Math.max(1, Math.ceil(durationMin / slotMin)) : 1;
+
+  const newIdx = Math.min(Math.max(idx0 + slotDelta, 0), slotCount - span);
+  const newStartMin = startMin + newIdx * slotMin;
+  const newTime = minutesToHHmm(newStartMin);
+  return hasDuration ? { time: newTime, endTime: minutesToHHmm(newStartMin + durationMin) } : { time: newTime };
+}
+
+/**
  * Ordre d'affichage des evenements d'un MEME jour : les sans-heure d'abord
  * ("a faire dans la journee", convention Google/Outlook), puis les creneaux par
  * heure croissante. Comparaison de chaines "HH:mm" (lexicographique = horaire).

@@ -28,7 +28,7 @@ const store = new Map<string, string>();
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
-import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart } from '../src/lib/agenda';
+import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots } from '../src/lib/agenda';
 import type { AgendaEvent } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
@@ -622,6 +622,59 @@ section('Agenda grille — layoutDayGrid : couloirs (lanes) de chevauchement');
   check('A et B en 2 couloirs (lanes=2)', byId('A')?.lanes === 2 && byId('B')?.lanes === 2, `A=${byId('A')?.lanes} B=${byId('B')?.lanes}`);
   check('A et B sur des couloirs distincts', byId('A')?.lane !== byId('B')?.lane, `A=${byId('A')?.lane} B=${byId('B')?.lane}`);
   check('C isole : un seul couloir (lanes=1)', byId('C')?.lanes === 1, `=${byId('C')?.lanes}`);
+}
+
+section('Agenda drag-creneau — startSlotIndex : index ou null hors plage');
+{
+  check("'08:00' -> 0", startSlotIndex('08:00') === 0, `=${startSlotIndex('08:00')}`);
+  check("'17:30' -> 19", startSlotIndex('17:30') === 19, `=${startSlotIndex('17:30')}`);
+  check("'09:15' -> 2 (plancher)", startSlotIndex('09:15') === 2, `=${startSlotIndex('09:15')}`);
+  check("'07:00' -> null (avant plage)", startSlotIndex('07:00') === null);
+  check("'18:00' -> null (>= fin)", startSlotIndex('18:00') === null);
+}
+
+section('Agenda drag-creneau — shiftEventBySlots : decalage, duree preservee, clamp');
+{
+  const a = shiftEventBySlots('10:00', '11:00', 6); // +3h
+  check('10:00–11:00 +6 creneaux -> 13:00', a.time === '13:00', `=${a.time}`);
+  check('duree 1h preservee -> fin 14:00', a.endTime === '14:00', `=${a.endTime}`);
+
+  const b = shiftEventBySlots('09:00', undefined, 2); // ponctuel
+  check('ponctuel 09:00 +2 -> 10:00, pas de fin', b.time === '10:00' && b.endTime === undefined, JSON.stringify(b));
+
+  const c = shiftEventBySlots('09:00', '11:00', 20); // bloc 2h lache tres bas -> cale a la fin
+  check('bloc 2h cale pour rentrer : debut 16:00', c.time === '16:00', `=${c.time}`);
+  check('bloc 2h cale : fin 18:00 (duree 2h preservee)', c.endTime === '18:00', `=${c.endTime}`);
+
+  const d = shiftEventBySlots('09:00', '10:00', -20); // clamp haut
+  check('clamp haut -> 08:00', d.time === '08:00', `=${d.time}`);
+  check('duree preservee au clamp haut -> 09:00', d.endTime === '09:00', `=${d.endTime}`);
+
+  const e = shiftEventBySlots('07:00', '08:00', 4); // debut hors plage -> inchange
+  check('heure hors plage -> aucun deplacement', e.time === '07:00' && e.endTime === '08:00', JSON.stringify(e));
+}
+
+section('Agenda drag-creneau — SET_NEXT_ACTION pose le nouveau jour + heure + fin decalee');
+{
+  const lead = makeLead({ id: 'l1', status: 'qualifie', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '10:00', nextActionEndTime: '11:00' });
+  const state = makeState({ leads: [lead], actions: [] });
+  // Drop a 13:00 le 2026-06-22 -> 13:00–14:00 (helper) puis ecriture.
+  const moved = shiftEventBySlots('10:00', '11:00', 6);
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-22', nextActionTime: moved.time, nextActionEndTime: moved.endTime } });
+  check('jour change', s.leads[0].nextActionDate === '2026-06-22', `=${s.leads[0].nextActionDate}`);
+  check('heure de debut decalee a 13:00', s.leads[0].nextActionTime === '13:00', `=${s.leads[0].nextActionTime}`);
+  check('fin decalee a 14:00 (duree preservee)', s.leads[0].nextActionEndTime === '14:00', `=${s.leads[0].nextActionEndTime}`);
+}
+
+section('Agenda drag-creneau — NON-REGRESSION : drag inter-jours sans decalage = jour seul');
+{
+  // delta.y ~ 0 -> slotDelta 0 -> heure inchangee ; seul le jour bouge.
+  const same = shiftEventBySlots('14:00', '16:00', 0);
+  check('slotDelta 0 -> heure inchangee', same.time === '14:00' && same.endTime === '16:00', JSON.stringify(same));
+  const lead = makeLead({ id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-20', nextActionTime: '14:00', nextActionEndTime: '16:00' });
+  const state = makeState({ leads: [lead], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-21', nextActionTime: same.time, nextActionEndTime: same.endTime } });
+  check('jour change, heure+duree intactes', s.leads[0].nextActionDate === '2026-06-21' && s.leads[0].nextActionTime === '14:00' && s.leads[0].nextActionEndTime === '16:00');
 }
 
 section('Agenda grille — layoutDayGrid : all-day / hors-plage non perdus');
