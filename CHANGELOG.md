@@ -7,6 +7,36 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.9.0] — 2026-06-17 — Agenda en grille horaire
+
+### Ajouté
+- **Vues Semaine et Journée en grille horaire** (type Google Agenda) : axe
+  vertical des heures **8h-18h**, créneaux de 30 min. La **Journée** reste
+  **comparative** (une colonne par commercial, « réunion du lundi » + créneaux) ;
+  la **Semaine** affiche 7 colonnes jour × heures, défilable horizontalement sur
+  mobile. La vue **Mois** est inchangée (pastilles).
+- **Bandeau « toute la journée »** en haut de la grille pour les actions sans
+  heure, et **report des actions hors plage** (avant 8h / après 18h) dans ce même
+  bandeau avec leur heure réelle — aucune action n'est jamais masquée.
+- **Clic sur un créneau → création avec heure pré-remplie** (modifiable) : le
+  créateur (lead + type) s'ouvre avec l'heure du créneau cliqué ; clic sur le
+  bandeau → action « toute la journée ». Le sélecteur reste filtré sur les leads
+  sans action planifiée. Création active en Semaine **et** Journée.
+- Le **drag** de replanification (Semaine) est conservé au **niveau jour** :
+  glisser vers un autre jour change la date, l'heure est préservée. (Le drag
+  par créneau pour changer l'heure est un raffinement futur.)
+
+### Technique
+- Plage horaire en **constantes** (`AGENDA_HOUR_START`, `AGENDA_HOUR_END`,
+  `AGENDA_SLOT_MIN`) — réglage en une ligne (un onglet Paramètres serait un lot
+  séparé). Helpers purs `lib/agenda.ts` : `buildTimeSlots`, `eventSlot`
+  (détection hors-plage), `layoutDayEvents` (sans perte). Composant `TimeGrid`
+  réutilisable (Semaine + Journée). Écriture toujours via la seule action
+  `SET_NEXT_ACTION`. Harnais reducer porté à **121** (grille + création depuis
+  un créneau ; isolation et cas existants verts).
+
+---
+
 ## [3.8.0] — 2026-06-17 — Heure sur les actions
 
 ### Ajouté

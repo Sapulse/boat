@@ -1,4 +1,7 @@
-import { COMMERCIAL_COLORS, NEUTRAL_COMMERCIAL_COLOR } from '../data/constants';
+import {
+  COMMERCIAL_COLORS, NEUTRAL_COMMERCIAL_COLOR,
+  AGENDA_HOUR_START, AGENDA_HOUR_END, AGENDA_SLOT_MIN,
+} from '../data/constants';
 import { isLeadActive } from './utils';
 import type { Lead, Commercial, ActionType } from '../data/types';
 
@@ -101,4 +104,80 @@ export function groupEventsByDay(events: AgendaEvent[]): Map<string, AgendaEvent
   // vues consomment cette Map, donc l'ordre est garanti partout).
   for (const arr of map.values()) arr.sort(compareDayEvents);
   return map;
+}
+
+// ---------------------------------------------------------------------------
+// Grille horaire (lot agenda-grille-horaire) — helpers PURS
+// ---------------------------------------------------------------------------
+
+/** "HH:mm" -> minutes depuis minuit ; null si format invalide. */
+export function parseHHmm(t: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function minutesToHHmm(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Liste ordonnee des creneaux affiches : ["08:00", "08:30", ...] sur
+ * [AGENDA_HOUR_START:00, AGENDA_HOUR_END:00), pas de AGENDA_SLOT_MIN minutes.
+ */
+export function buildTimeSlots(): string[] {
+  const slots: string[] = [];
+  for (let m = AGENDA_HOUR_START * 60; m < AGENDA_HOUR_END * 60; m += AGENDA_SLOT_MIN) {
+    slots.push(minutesToHHmm(m));
+  }
+  return slots;
+}
+
+/**
+ * Classe un evenement par rapport a la grille :
+ *  - 'none' : pas d'heure (action "toute la journee") ou heure invalide ;
+ *  - 'out'  : heure hors plage affichee (avant START ou >= END) ;
+ *  - { slot } : creneau d'accueil (arrondi PLANCHER au pas de SLOT, ex. 14:15 -> 14:00).
+ * Garantit qu'AUCUN evenement n'est perdu (tout retombe dans none/out/slot).
+ */
+export function eventSlot(event: AgendaEvent): 'none' | 'out' | { slot: string } {
+  if (!event.time) return 'none';
+  const mins = parseHHmm(event.time);
+  if (mins === null) return 'none';
+  const startMin = AGENDA_HOUR_START * 60;
+  const endMin = AGENDA_HOUR_END * 60;
+  if (mins < startMin || mins >= endMin) return 'out';
+  const floored = startMin + Math.floor((mins - startMin) / AGENDA_SLOT_MIN) * AGENDA_SLOT_MIN;
+  return { slot: minutesToHHmm(floored) };
+}
+
+export interface DayLayout {
+  allDay: AgendaEvent[];                  // sans heure ("toute la journee")
+  outOfRange: AgendaEvent[];              // heure hors plage affichee
+  bySlot: Map<string, AgendaEvent[]>;     // "HH:mm" creneau -> evenements
+}
+
+/**
+ * Repartit les evenements d'UN jour pour la grille horaire : sans-heure,
+ * hors-plage, et par creneau. Preserve l'ordre d'entree (deja trie par
+ * groupEventsByDay). Aucun evenement n'est perdu.
+ */
+export function layoutDayEvents(events: AgendaEvent[]): DayLayout {
+  const allDay: AgendaEvent[] = [];
+  const outOfRange: AgendaEvent[] = [];
+  const bySlot = new Map<string, AgendaEvent[]>();
+  for (const e of events) {
+    const s = eventSlot(e);
+    if (s === 'none') { allDay.push(e); continue; }
+    if (s === 'out') { outOfRange.push(e); continue; }
+    const arr = bySlot.get(s.slot);
+    if (arr) arr.push(e);
+    else bySlot.set(s.slot, [e]);
+  }
+  return { allDay, outOfRange, bySlot };
 }

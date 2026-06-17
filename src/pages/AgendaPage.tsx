@@ -17,7 +17,8 @@ import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
-  type AgendaEvent, type CommercialColor,
+  buildTimeSlots, layoutDayEvents,
+  type AgendaEvent, type CommercialColor, type DayLayout,
 } from '../lib/agenda';
 import type { Commercial, ActionType, Lead } from '../data/types';
 
@@ -48,7 +49,8 @@ function actionLabel(type: AgendaEvent['type']): string {
 // onReplan : deplace une action existante (type PRESERVE, date changee) via
 // setNextAction. onCreate : ouvre le createur pour une date donnee.
 type OnReplan = (event: AgendaEvent, newDate: string) => void;
-type OnCreate = (dateISO: string) => void;
+// Ouvre le createur pour une date + heure (heure absente = "toute la journee").
+type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
 export default function AgendaPage() {
   const { state, setNextAction } = useApp();
@@ -57,7 +59,7 @@ export default function AgendaPage() {
   const [view, setView] = useState<AgendaView>('semaine');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [filterCommercial, setFilterCommercial] = useState('');
-  const [createDate, setCreateDate] = useState<string | null>(null);
+  const [createSlot, setCreateSlot] = useState<{ date: string; time?: string } | null>(null);
 
   const todayISO = toISODate(new Date());
 
@@ -73,10 +75,11 @@ export default function AgendaPage() {
   const onOpen = (id: string) => navigate(`/leads/${id}`);
   // Replanification = on change UNIQUEMENT la date ; type ET heure preserves.
   const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time);
-  const onCreate: OnCreate = (dateISO) => setCreateDate(dateISO);
-  const doCreate = (leadId: string, type: ActionType) => {
-    if (createDate) setNextAction(leadId, type, createDate);
-    setCreateDate(null);
+  const onCreate: OnCreate = (dateISO, timeHHmm) => setCreateSlot({ date: dateISO, time: timeHHmm });
+  // L'heure finale vient du createur (pre-remplie depuis le creneau, modifiable).
+  const doCreate = (leadId: string, type: ActionType, timeHHmm?: string) => {
+    if (createSlot) setNextAction(leadId, type, createSlot.date, timeHHmm);
+    setCreateSlot(null);
   };
 
   return (
@@ -134,8 +137,8 @@ export default function AgendaPage() {
         />
       )}
 
-      {createDate !== null && (
-        <CreateActionModal dateISO={createDate} leads={state.leads} onClose={() => setCreateDate(null)} onCreate={doCreate} />
+      {createSlot !== null && (
+        <CreateActionModal dateISO={createSlot.date} initialTime={createSlot.time} leads={state.leads} onClose={() => setCreateSlot(null)} onCreate={doCreate} />
       )}
     </div>
   );
@@ -253,7 +256,7 @@ function EventChip({ event, onOpen, compact = false, onReplan }: {
 
 // Pastille DRAGGABLE (Semaine) : glisser -> autre jour (replan) ; clic court ->
 // fiche. transform construit a la main (@dnd-kit/utilities a ete retire).
-function DraggableEvent({ event, onOpen }: { event: AgendaEvent; onOpen: (leadId: string) => void }) {
+function DraggableEvent({ event, onOpen, compact = false }: { event: AgendaEvent; onOpen: (leadId: string) => void; compact?: boolean }) {
   const { state } = useApp();
   const color = getCommercialColor(event.commercialId, state.commercials);
   const overdue = event.status === 'overdue';
@@ -286,9 +289,9 @@ function DraggableEvent({ event, onOpen }: { event: AgendaEvent; onOpen: (leadId
       }}
       {...attributes}
       {...listeners}
-      className={chipClasses(color, overdue, false)}
+      className={chipClasses(color, overdue, compact)}
     >
-      <EventChipInner event={event} compact={false} />
+      <EventChipInner event={event} compact={compact} />
     </div>
   );
 }
@@ -307,7 +310,10 @@ function ViewNav({ onPrev, onToday, onNext, label, prevLabel, nextLabel, today }
   );
 }
 
-// --- Vue SEMAINE : 7 colonnes lundi -> dimanche, drag-and-drop pour replanifier ---
+// --- Vue SEMAINE en GRILLE HORAIRE : 7 colonnes jour x heures ---
+// Drag NIVEAU JOUR : glisser vers une cellule d'un autre jour change la date,
+// l'heure est conservee (onReplan preserve event.time). Le changement d'heure
+// par drag (drop par creneau) est un raffinement futur.
 function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
@@ -324,14 +330,27 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
   const end = endOfWeek(anchor, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start, end });
   const rangeLabel = `${format(start, 'd MMM', { locale: fr })} – ${format(end, 'd MMM yyyy', { locale: fr })}`;
+  const slots = buildTimeSlots();
 
+  const gridColumns: GridColumn[] = days.map(day => {
+    const dayISO = toISODate(day);
+    const isToday = isSameDay(day, new Date());
+    return {
+      id: dayISO,
+      header: <WeekDayHeader day={day} isToday={isToday} />,
+      layout: layoutDayEvents(byDay.get(dayISO) ?? []),
+    };
+  });
+
+  // Drop par cellule : l'id encode `${dayISO}#${slot}` ; on n'extrait que le
+  // jour (drag niveau jour). L'heure de l'action suit (onReplan -> event.time).
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over) return;
     const ev = active.data.current?.event as AgendaEvent | undefined;
-    const targetISO = String(over.id);
-    if (!ev || targetISO === ev.date) return;
-    onReplan(ev, targetISO);
+    const targetDay = String(over.id).split('#')[0];
+    if (!ev || !targetDay || targetDay === ev.date) return;
+    onReplan(ev, targetDay);
   };
 
   return (
@@ -345,50 +364,25 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
         nextLabel="Semaine suivante"
       />
       <DndContext sensors={sensors} collisionDetection={dayCollision} onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-          {days.map(day => {
-            const dayISO = toISODate(day);
-            const events = byDay.get(dayISO) ?? [];
-            const isToday = isSameDay(day, new Date());
-            return (
-              <DroppableDay key={dayISO} dayISO={dayISO} isToday={isToday} onCreate={onCreate}>
-                <div className="flex items-baseline justify-between mb-2">
-                  <span className="text-xs font-medium text-gray-500 capitalize">{format(day, 'EEE', { locale: fr })}</span>
-                  <span className={cn('text-sm', isToday ? 'font-bold text-primary-600' : 'text-gray-700')}>{format(day, 'd', { locale: fr })}</span>
-                </div>
-                <div className="space-y-1.5 flex-1">
-                  {events.length === 0 ? (
-                    <p className="text-[11px] text-gray-300 text-center pt-2">+ planifier</p>
-                  ) : (
-                    events.map(e => <DraggableEvent key={e.leadId} event={e} onOpen={onOpen} />)
-                  )}
-                </div>
-              </DroppableDay>
-            );
-          })}
-        </div>
+        <TimeGrid
+          slots={slots}
+          columns={gridColumns}
+          onOpen={onOpen}
+          onReplan={onReplan}
+          droppable
+          renderEvent={e => <DraggableEvent event={e} onOpen={onOpen} compact />}
+          onSlotClick={(colId, time) => onCreate(colId, time)}
+        />
       </DndContext>
     </div>
   );
 }
 
-// Cellule-jour = cible de drop ET zone de creation (clic -> createur a cette date).
-function DroppableDay({ dayISO, isToday, onCreate, children }: {
-  dayISO: string; isToday: boolean; onCreate: OnCreate; children: React.ReactNode;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: dayISO });
+function WeekDayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
   return (
-    <div
-      ref={setNodeRef}
-      onClick={() => onCreate(dayISO)}
-      title="Cliquer pour planifier une action"
-      className={cn(
-        'card p-2 min-h-[120px] flex flex-col cursor-pointer',
-        isToday && 'ring-2 ring-primary-300',
-        isOver && 'ring-2 ring-primary-400 bg-primary-50/40'
-      )}
-    >
-      {children}
+    <div className="text-center">
+      <div className="text-xs font-medium text-gray-500 capitalize">{format(day, 'EEE', { locale: fr })}</div>
+      <div className={cn('text-sm', isToday ? 'font-bold text-primary-600' : 'text-gray-700')}>{format(day, 'd', { locale: fr })}</div>
     </div>
   );
 }
@@ -459,12 +453,110 @@ function MonthView({ anchor, setAnchor, byDay, onOpen, onCreate, onReplan }: {
   );
 }
 
-// --- Vue JOURNEE COMPARATIVE : une journee, une colonne par commercial ---
-// (vue "reunion du lundi"). Toutes les colonnes affichees meme vides. Un
-// evenement dont le commercial n'est PAS dans les colonnes (commercial
-// desactive mais lead encore assigne, hors filtre) tombe dans "Autres" ->
-// aucune action masquee. Replanification = re-selecteur de date (la vue ne
-// montre qu'UN jour : un drag ne pourrait pas changer la date).
+// --- Grille horaire reutilisable (Journee maintenant, Semaine a l'etape 2) ---
+// Gouttiere d'heures a gauche + N colonnes ; bandeau "toute la journee / hors
+// plage" en haut (aucune action perdue) ; une ligne par creneau. Defilable en x.
+const SLOT_PX = 40; // hauteur d'une ligne de creneau
+
+interface GridColumn {
+  id: string;
+  header: React.ReactNode;
+  layout: DayLayout;
+}
+
+// Cellule = cible de drop (Semaine). L'id encode `${colId}#${slot}` ; le drag
+// etant au niveau JOUR ce lot, onDragEnd n'extrait que le colId (le jour).
+function DroppableCell({ id, className, style, onClick, children }: {
+  id: string; className?: string; style?: React.CSSProperties; onClick?: () => void; children?: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} style={style} onClick={onClick} className={cn(className, isOver && 'bg-primary-50/60 ring-1 ring-inset ring-primary-300')}>
+      {children}
+    </div>
+  );
+}
+
+// Grille horaire generique. `renderEvent` decide du rendu d'une pastille (Journee
+// = EventChip + re-selecteur ; Semaine = DraggableEvent). `droppable` enrobe les
+// cellules en cibles de drop (Semaine uniquement).
+function TimeGrid({ slots, columns, onOpen, onReplan, renderEvent, droppable = false, onSlotClick }: {
+  slots: string[];
+  columns: GridColumn[];
+  onOpen: (leadId: string) => void;
+  onReplan: OnReplan;
+  renderEvent?: (event: AgendaEvent) => React.ReactNode;
+  droppable?: boolean;
+  onSlotClick?: (colId: string, time?: string) => void;
+}) {
+  const templateCols = `3.5rem repeat(${columns.length}, minmax(8rem, 1fr))`;
+  const hasBanner = columns.some(c => c.layout.allDay.length > 0 || c.layout.outOfRange.length > 0);
+  const render = renderEvent ?? ((e: AgendaEvent) => <EventChip event={e} onOpen={onOpen} onReplan={onReplan} compact />);
+
+  // Cellule de donnees : droppable (Semaine) ou simple div (Journee). Cliquable
+  // si onSlotClick fourni (creation au creneau ; `time` undefined sur le bandeau
+  // = action toute la journee). Les pastilles stoppent la propagation -> cliquer
+  // une pastille n'ouvre pas le createur.
+  const Cell = ({ colId, slotKey, time, className, children }: { colId: string; slotKey: string; time?: string; className: string; children?: React.ReactNode }) => {
+    const handleClick = onSlotClick ? () => onSlotClick(colId, time) : undefined;
+    const cls = cn(className, onSlotClick && 'cursor-pointer hover:bg-primary-50/30');
+    return droppable
+      ? <DroppableCell id={`${colId}#${slotKey}`} className={cls} style={{ minHeight: SLOT_PX }} onClick={handleClick}>{children}</DroppableCell>
+      : <div className={cls} style={{ minHeight: SLOT_PX }} onClick={handleClick}>{children}</div>;
+  };
+
+  return (
+    <div className="card p-0 overflow-x-auto">
+      <div className="min-w-max">
+        {/* En-tetes de colonnes (gouttiere vide + colonnes) */}
+        <div className="grid sticky top-0 bg-white z-10 border-b border-gray-200" style={{ gridTemplateColumns: templateCols }}>
+          <div className="border-r border-gray-100" />
+          {columns.map(c => (
+            <div key={c.id} className="px-2 py-2 border-r border-gray-100 last:border-r-0">{c.header}</div>
+          ))}
+        </div>
+
+        {/* Bandeau "toute la journee" + hors-plage (jamais perdues) */}
+        {hasBanner && (
+          <div className="grid bg-gray-50/60 border-b border-gray-200" style={{ gridTemplateColumns: templateCols }}>
+            <div className="px-1 py-1 text-[10px] text-gray-400 text-right pr-2 border-r border-gray-100 self-center">toute la j.</div>
+            {columns.map(c => (
+              <Cell key={c.id} colId={c.id} slotKey="__banner" className="p-1 space-y-1 border-r border-gray-100 last:border-r-0">
+                {c.layout.allDay.map(e => <div key={e.leadId}>{render(e)}</div>)}
+                {c.layout.outOfRange.map(e => <div key={e.leadId}>{render(e)}</div>)}
+                {c.layout.allDay.length === 0 && c.layout.outOfRange.length === 0 && <span className="block text-[10px] text-gray-300">+</span>}
+              </Cell>
+            ))}
+          </div>
+        )}
+
+        {/* Lignes de creneaux */}
+        {slots.map(slot => (
+          <div key={slot} className="grid" style={{ gridTemplateColumns: templateCols }}>
+            <div className="px-1 text-[10px] text-gray-400 text-right pr-2 border-r border-t border-gray-100" style={{ minHeight: SLOT_PX }}>
+              {slot.endsWith(':00') ? slot : ''}
+            </div>
+            {columns.map(c => {
+              const cellEvents = c.layout.bySlot.get(slot) ?? [];
+              return (
+                <Cell key={c.id} colId={c.id} slotKey={slot} time={slot} className="border-r border-t border-gray-100 last:border-r-0 p-0.5 flex gap-0.5">
+                  {cellEvents.map(e => (
+                    <div key={e.leadId} className="flex-1 min-w-0">{render(e)}</div>
+                  ))}
+                </Cell>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- Vue JOURNEE COMPARATIVE en GRILLE HORAIRE : heures x commerciaux ---
+// (vue "reunion du lundi" + creneaux). Toutes les colonnes affichees meme vides.
+// Un evenement dont le commercial n'est PAS dans les colonnes (desactive mais
+// lead encore assigne, hors filtre) tombe dans "Autres" -> aucune action masquee.
 function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
@@ -478,9 +570,27 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
   const dayISO = toISODate(anchor);
   const events = byDay.get(dayISO) ?? [];
   const isToday = isSameDay(anchor, new Date());
+  const slots = buildTimeSlots();
 
   const colIds = new Set(columns.map(c => c.id));
   const orphans = events.filter(e => !colIds.has(e.commercialId));
+
+  const gridColumns: GridColumn[] = columns.map(c => {
+    const colEvents = events.filter(e => e.commercialId === c.id);
+    const color = getCommercialColor(c.id, state.commercials);
+    return {
+      id: c.id,
+      header: <ColumnHeader dot={color.dot} title={c.name} count={colEvents.length} />,
+      layout: layoutDayEvents(colEvents),
+    };
+  });
+  if (orphans.length > 0) {
+    gridColumns.push({
+      id: '__autres',
+      header: <ColumnHeader dot="bg-gray-400" title="Autres" count={orphans.length} />,
+      layout: layoutDayEvents(orphans),
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -493,64 +603,43 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onCreate, onReplan
         nextLabel="Jour suivant"
         today={isToday}
       />
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {columns.map(c => {
-          const colEvents = events.filter(e => e.commercialId === c.id);
-          const color = getCommercialColor(c.id, state.commercials);
-          return (
-            <DayColumn key={c.id} title={c.name} dot={color.dot} events={colEvents} dayISO={dayISO} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
-          );
-        })}
-        {orphans.length > 0 && (
-          <DayColumn title="Autres" dot="bg-gray-400" events={orphans} dayISO={dayISO} onOpen={onOpen} onCreate={onCreate} onReplan={onReplan} />
-        )}
-      </div>
+      {/* En Journee, les colonnes sont des COMMERCIAUX : la date de creation est
+          toujours le jour affiche (anchor), pas le colId. */}
+      <TimeGrid
+        slots={slots}
+        columns={gridColumns}
+        onOpen={onOpen}
+        onReplan={onReplan}
+        onSlotClick={(_colId, time) => onCreate(dayISO, time)}
+      />
     </div>
   );
 }
 
-function DayColumn({ title, dot, events, dayISO, onOpen, onCreate, onReplan }: {
-  title: string;
-  dot: string;
-  events: AgendaEvent[];
-  dayISO: string;
-  onOpen: (leadId: string) => void;
-  onCreate: OnCreate;
-  onReplan: OnReplan;
-}) {
+function ColumnHeader({ dot, title, count }: { dot: string; title: string; count: number }) {
   return (
-    <div
-      onClick={() => onCreate(dayISO)}
-      title="Cliquer pour planifier une action"
-      className="card p-2 w-56 shrink-0 flex flex-col min-h-[160px] cursor-pointer"
-    >
-      <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-gray-100">
-        <span className={cn('w-2.5 h-2.5 rounded-full', dot)} />
-        <span className="text-sm font-medium text-gray-800 truncate">{title}</span>
-        <span className="text-xs text-gray-400 ml-auto">{events.length}</span>
-      </div>
-      <div className="space-y-1.5 flex-1">
-        {events.length === 0 ? (
-          <p className="text-[11px] text-gray-300 text-center pt-2">Aucune action</p>
-        ) : (
-          events.map(e => <EventChip key={e.leadId} event={e} onOpen={onOpen} onReplan={onReplan} />)
-        )}
-      </div>
+    <div className="flex items-center gap-1.5">
+      <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', dot)} />
+      <span className="text-sm font-medium text-gray-800 truncate">{title}</span>
+      <span className="text-xs text-gray-400 ml-auto shrink-0">{count}</span>
     </div>
   );
 }
 
-// --- Createur : choisir un lead ELIGIBLE (sans action) + un type pour la date ---
-function CreateActionModal({ dateISO, leads, onClose, onCreate }: {
+// --- Createur : lead ELIGIBLE (sans action) + type + heure (pre-remplie depuis
+// le creneau clique, modifiable ; vide = action toute la journee) ---
+function CreateActionModal({ dateISO, initialTime, leads, onClose, onCreate }: {
   dateISO: string;
+  initialTime?: string;
   leads: Lead[];
   onClose: () => void;
-  onCreate: (leadId: string, type: ActionType) => void;
+  onCreate: (leadId: string, type: ActionType, timeHHmm?: string) => void;
 }) {
   const { getCommercialName } = useApp();
   const eligible = useMemo(() => getCreatableLeads(leads), [leads]);
   const [leadId, setLeadId] = useState('');
   const [type, setType] = useState<ActionType>('appel');
+  const [time, setTime] = useState(initialTime ?? '');
 
   return (
     <Modal open onClose={onClose} title={`Planifier une action — ${formatDate(dateISO)}`} size="sm">
@@ -571,15 +660,21 @@ function CreateActionModal({ dateISO, leads, onClose, onCreate }: {
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Type d'action</label>
-            <select className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
-              {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Type d'action</label>
+              <select className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
+                {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Heure (facultative)</label>
+              <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="btn-secondary btn-sm">Annuler</button>
-            <button onClick={() => onCreate(leadId, type)} disabled={!leadId} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
+            <button onClick={() => onCreate(leadId, type, time || undefined)} disabled={!leadId} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
           </div>
         </div>
       )}

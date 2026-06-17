@@ -28,7 +28,8 @@ const store = new Map<string, string>();
 import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
-import { getCreatableLeads } from '../src/lib/agenda';
+import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents } from '../src/lib/agenda';
+import type { AgendaEvent } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate } from '../src/data/types';
 
 const STORAGE_KEY = 'crm-nautisme-data';
@@ -493,6 +494,65 @@ section('Agenda heures — EFFACER (pas de type) : date ET heure effacees ensemb
   check('nextActionDate effacee', s.leads[0].nextActionDate === '', `=${s.leads[0].nextActionDate}`);
   check('nextActionTime effacee (undefined)', s.leads[0].nextActionTime === undefined, `=${s.leads[0].nextActionTime}`);
   check('nextActionType efface', s.leads[0].nextActionType === '', `=${s.leads[0].nextActionType}`);
+}
+
+// ---------------------------------------------------------------------------
+// Agenda grille horaire (lot agenda-grille-horaire, etape 1) — helpers PURS
+// ---------------------------------------------------------------------------
+
+function makeEvent(over: Partial<AgendaEvent> = {}): AgendaEvent {
+  return { leadId: 'l1', leadName: 'Test', commercialId: 'fred', type: 'rdv', date: '2026-06-22', status: 'future', ...over };
+}
+
+section('Agenda grille — buildTimeSlots : creneaux 8:00..17:30 (pas de 30 min)');
+{
+  const slots = buildTimeSlots();
+  check('20 creneaux ((18-8)*2)', slots.length === 20, `=${slots.length}`);
+  check('premier creneau 08:00', slots[0] === '08:00', `=${slots[0]}`);
+  check('dernier creneau 17:30', slots[slots.length - 1] === '17:30', `=${slots[slots.length - 1]}`);
+}
+
+section('Agenda grille — eventSlot : none / out / creneau (arrondi plancher)');
+{
+  check('sans heure -> none', eventSlot(makeEvent({ time: undefined })) === 'none');
+  check('07:00 (avant plage) -> out', eventSlot(makeEvent({ time: '07:00' })) === 'out');
+  check('18:00 (>= fin) -> out', eventSlot(makeEvent({ time: '18:00' })) === 'out');
+  check('19:30 (apres plage) -> out', eventSlot(makeEvent({ time: '19:30' })) === 'out');
+  const s1 = eventSlot(makeEvent({ time: '14:15' }));
+  check('14:15 -> creneau 14:00 (arrondi plancher)', typeof s1 === 'object' && s1.slot === '14:00', JSON.stringify(s1));
+  const s2 = eventSlot(makeEvent({ time: '08:00' }));
+  check('08:00 -> creneau 08:00 (borne incluse)', typeof s2 === 'object' && s2.slot === '08:00', JSON.stringify(s2));
+  const s3 = eventSlot(makeEvent({ time: '17:45' }));
+  check('17:45 -> creneau 17:30', typeof s3 === 'object' && s3.slot === '17:30', JSON.stringify(s3));
+}
+
+section('Agenda grille — layoutDayEvents : repartit sans perdre aucun evenement');
+{
+  const events = [
+    makeEvent({ leadId: 'a', time: undefined }),   // all-day
+    makeEvent({ leadId: 'b', time: '07:30' }),     // hors plage
+    makeEvent({ leadId: 'c', time: '09:00' }),     // creneau 09:00
+    makeEvent({ leadId: 'd', time: '09:20' }),     // creneau 09:00 (meme cellule)
+    makeEvent({ leadId: 'e', time: '14:30' }),     // creneau 14:30
+  ];
+  const lay = layoutDayEvents(events);
+  check('1 all-day', lay.allDay.length === 1 && lay.allDay[0].leadId === 'a');
+  check('1 hors-plage', lay.outOfRange.length === 1 && lay.outOfRange[0].leadId === 'b');
+  check('2 evenements dans le creneau 09:00', (lay.bySlot.get('09:00') ?? []).length === 2);
+  check('1 evenement dans le creneau 14:30', (lay.bySlot.get('14:30') ?? []).length === 1);
+  const total = lay.allDay.length + lay.outOfRange.length + [...lay.bySlot.values()].reduce((n, a) => n + a.length, 0);
+  check('aucun evenement perdu (5 en entree, 5 repartis)', total === 5, `=${total}`);
+}
+
+section('Agenda grille — CREER depuis un creneau : date + heure du creneau posees (via SET_NEXT_ACTION)');
+{
+  // Clic sur le creneau 09:30 d'un jour -> le createur planifie l'action a cette
+  // date ET cette heure pour un lead sans action (ecriture confinee a SET_NEXT_ACTION).
+  const state = makeState({ leads: [makeLead({ id: 'l1', nextActionType: '', nextActionDate: '' })], actions: [] });
+  const s = reducer(state, { type: 'SET_NEXT_ACTION', payload: { id: 'l1', nextActionType: 'rdv', nextActionDate: '2026-06-24', nextActionTime: '09:30' } });
+  check('date du creneau posee', s.leads[0].nextActionDate === '2026-06-24', `=${s.leads[0].nextActionDate}`);
+  check('heure du creneau posee', s.leads[0].nextActionTime === '09:30', `=${s.leads[0].nextActionTime}`);
+  check('type pose', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
 }
 
 // ---------------------------------------------------------------------------

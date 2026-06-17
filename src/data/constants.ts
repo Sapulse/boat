@@ -125,6 +125,15 @@ export const MONTHS = [
 // Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
 export const COMPANY_NAME = 'Brest Ocean Boat';
 
+// Plage horaire des vues Semaine/Journee en grille (lot agenda-grille-horaire).
+// CONSTANTE pour l'instant (un onglet Parametres reglable = lot separe) :
+// modifiable ici en une ligne. Plage affichee = [START:00, END:00), creneaux de
+// AGENDA_SLOT_MIN minutes. Une action hors de cette plage tombe dans le bandeau
+// "toute la journee / hors plage" (jamais perdue), pas sur un creneau.
+export const AGENDA_HOUR_START = 8;
+export const AGENDA_HOUR_END = 18;
+export const AGENDA_SLOT_MIN = 30;
+
 // Palette deterministe pour identifier visuellement chaque commercial dans
 // l'agenda. Attribuee par POSITION dans la liste des commerciaux (stable au
 // rechargement, AUCUN champ a persister sur Commercial). >= 8 teintes pour
