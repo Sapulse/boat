@@ -1,6 +1,6 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.8** (dernier tag `v3.8.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.9** (dernier tag `v3.9.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
@@ -70,6 +70,14 @@ déploiement auto) → tag annoté. Commits sémantiques.
   puis chronologique (3 vues), drag/re-sélecteur conservent l'heure. Migration
   localStorage nulle. Harnais reducer **103**. *(= L1 du diagnostic « agenda
   complet », voir ci-dessous.)*
+- **`v3.9.0`** — **agenda en grille horaire** : vues **Semaine** (7 jours × heures)
+  et **Journée** (comparative préservée : heures × commerciaux) en grille type
+  Google Agenda, plage **8h-18h** / créneaux **30 min** (en constantes). Bandeau
+  « toute la journée » + report des actions hors-plage (aucune masquée).
+  **Clic-créneau → création avec heure pré-remplie** (Semaine + Journée), drag
+  conservé au **niveau jour** (l'heure suit). Mois inchangé. Helpers purs
+  `buildTimeSlots`/`eventSlot`/`layoutDayEvents` + composant `TimeGrid`. Harnais
+  reducer **121**. *(= L2 du diagnostic « agenda complet ».)*
 
 ---
 
@@ -104,8 +112,9 @@ déploiement auto) → tag annoté. Commits sémantiques.
 - [ ] **Agenda complet type Google/Outlook** (étude de faisabilité faite, 17/06) :
   - **L1 — heures** → ✅ **FAIT en v3.8.0** (créneaux horaires sur les actions de leads,
     propre en localStorage car champ par lead).
-  - **L2 — grille horaire visuelle** (vues Semaine/Journée en 8h-20h) : faisable en
-    localStorage mais **grosse** réécriture UI ; pas prioritaire seule.
+  - **L2 — grille horaire visuelle** (vues Semaine/Journée) → ✅ **FAIT en v3.9.0**
+    (axe heures 8h-18h, créneaux 30 min, clic-créneau → création avec heure ;
+    Journée comparative préservée).
   - **L3 — événements libres** (réunion, congé, bloc-temps, non liés à un lead) :
     nouvelle entité `CalendarEvent` + tableau + reducer + migration. ⚠️ **valeur faible
     en localStorage** (données piégées par poste, non partagées) → **à faire avec le
@@ -139,6 +148,10 @@ déploiement auto) → tag annoté. Commits sémantiques.
 
 ## ➕ FONCTIONNALITÉS EN PLUS (faisables sans backend, en réserve)
 
+- [ ] **Onglet Paramètres** : exposer la **plage horaire de l'agenda** (aujourd'hui en
+  constantes `AGENDA_HOUR_START` / `AGENDA_HOUR_END` / `AGENDA_SLOT_MIN`) en réglage UI —
+  **petit lot séparé** à faire quand le besoin se présente. Porte d'entrée pour d'autres
+  réglages plus tard.
 - [ ] **Couche IA email** : pré-rédaction d'un mail lisant la fiche du lead (templates
   déjà en place ; nécessite une clé API). Recoupe l'import de leads par IA.
 - [ ] **Comptes / mot de passe entreprise** : n'a de sens qu'avec le backend.
