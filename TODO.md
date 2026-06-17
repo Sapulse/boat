@@ -1,11 +1,11 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.4** (dernier tag `v3.4.1`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.7** (dernier tag `v3.7.0`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
-→ branche → tsc + build + harnais → diff review → merge --ff-only → push (= déploiement
-auto). Commits sémantiques, sans Co-Authored-By.
+→ branche → tsc + build + lint + 3 harnais → diff review → merge --ff-only → push (=
+déploiement auto) → tag annoté. Commits sémantiques.
 
 ---
 
@@ -23,126 +23,118 @@ auto). Commits sémantiques, sans Co-Authored-By.
   renommage app, version affichée
 
 ### Patchs post-V3
-- **`v3.0.1`** — correctifs audit : lien Dashboard « Signés » (ouvrait une liste vide),
-  `saveState` try/catch (robustesse quota localStorage), compat vCard Safari < 16.4
-  (parser sans lookbehind regex)
-- **`v3.0.2`** — finition UI : libellés KPI non tronqués (`truncate` retiré) + accents
-  harmonisés sur tous les libellés affichés et en-têtes d'export CSV
+- **`v3.0.1`** — correctifs audit : lien Dashboard « Signés », `saveState` try/catch,
+  compat vCard Safari < 16.4 (parser sans lookbehind regex)
+- **`v3.0.2`** — finition UI : libellés KPI non tronqués + accents harmonisés
 - **`v3.1.0`** — gestion des actions d'un lead : prochaine action éditable,
   historique modifiable/supprimable (actions reducer confinées)
 
 ### Série de fiabilisation du 10/06 (check Fable complet → 5 lots)
-- **`v3.1.1`** — intégrité des données : re-seed destructif sur liste vide corrigé,
-  `lastActionDate` insensible aux actions antidatées, jalons posés dès la création
-  (+ harnais reducer)
-- **`v3.1.2`** — cohérence relances : prédicat unifié `hasPlannedNextAction` (source
-  de vérité unique alerte/risques/UI), détection des actions planifiées échues
-  (+ harnais risques)
-- **`v3.1.3`** — résilience : ErrorBoundary racine (écran de secours au lieu d'une
-  page blanche), page 404
-- **`v3.1.4`** — finition : 14 accents résiduels, encodage de l'adresse mailto
-- **`v3.1.5`** — lot petits & moyens : **lint 0 erreur** (découpage contexte,
-  React Compiler), **audit 0 vulnérabilité** (react-router 7.17), lockfile
-  resynchronisé, liens KPI Dashboard filtrés + vue « Inactifs >7j »
-  (correspondance compteur↔liste), import vCard QUOTED-PRINTABLE, a11y
-  (modale Échap/focus-trap, listes au clavier). **3 harnais committés** :
-  `scripts/harness-{reducer,risks,vcard}.ts` via `npx tsx`
+- **`v3.1.1`** — intégrité des données : re-seed destructif corrigé (**N1**),
+  `lastActionDate` insensible aux actions antidatées, jalons à la création (+ harnais)
+- **`v3.1.2`** — cohérence relances : prédicat unifié `hasPlannedNextAction`,
+  détection des actions planifiées échues (+ harnais risques)
+- **`v3.1.3`** — résilience : ErrorBoundary racine, page 404
+- **`v3.1.4`** — finition : accents résiduels, encodage mailto
+- **`v3.1.5`** — lot petits & moyens : **lint 0 erreur**, **audit 0 vulnérabilité**,
+  liens KPI filtrés, import vCard QUOTED-PRINTABLE, a11y. **3 harnais committés**
 
 ### Fonctionnalités & correctifs v3.2 → v3.4
-- **`v3.2.0`** — modèles de message : gestion libre (créer/renommer/supprimer,
-  garde-fou min-1), type **email | sms**, migration localStorage sans perte
-  (double lecture `templates`/`emailTemplates`, prouvée au harnais — 142
-  assertions au total)
-- **`v3.3.0`** — bouton « Envoyer SMS » sur la fiche lead : modèles SMS,
-  lien `sms:` (`buildSms`, compromis iOS/Android), action « SMS » journalisée,
-  désactivé sans numéro (validé sur mobile réel)
-- **`v3.4.0`** — suivi & mobile (retours Mickaël) : **suivi** — une action future
-  planifiée suspend l'inactivité sauf leads chauds (`hasFutureNextAction`, source
-  de vérité unique, harnais risques 66 assertions) ; **Kanban** — drop fiable
-  (colonnes seules cibles, `pointerWithin`, plus d'overlay fantôme) + tactile
-  (appui long = drag, glissement = scroll — validé sur mobile réel) ;
-  **responsive** — les 3 cassés corrigés (table Équipe scrollable, actions
-  visibles au tactile `pointer-fine:`, en-tête fiche lead wrap)
-- **`v3.4.1`** — confort mobile & dette : graphes lisibles en étroit (axe réduit
-  + libellés tronqués sous 640px, hook `useIsCompact`, tooltip complet au tap),
-  cibles tactiles ≥ 40px au doigt (`@media (pointer: coarse)`, desktop souris
-  inchangé), dépose de `@dnd-kit/sortable` + `@dnd-kit/utilities` (inutilisés)
+- **`v3.2.0`** — modèles de message : gestion libre (garde-fou min-1), type **email | sms**,
+  migration localStorage sans perte (prouvée au harnais)
+- **`v3.3.0`** — bouton « Envoyer SMS » : modèles SMS, lien `sms:` (`buildSms`),
+  action journalisée, désactivé sans numéro (validé sur mobile réel)
+- **`v3.4.0`** — suivi & mobile (retours Mickaël) : action future suspend l'inactivité
+  sauf leads chauds (`hasFutureNextAction`) ; Kanban drop fiable + tactile ; responsive
+- **`v3.4.1`** — confort mobile & dette : graphes lisibles en étroit, cibles tactiles
+  ≥ 40px, dépose `@dnd-kit/sortable` + `@dnd-kit/utilities` (inutilisés)
+
+### Lots du 17/06 (préparation déploiement + 3 canaux + agenda)
+- **`v3.5.0`** — **base vierge** : démarrage SANS données de démo à la première
+  installation (localStorage absent / JSON invalide) ; équipe (`DEFAULT_COMMERCIALS`)
+  et modèles (`DEFAULT_TEMPLATES`) conservés. Protection **N1 préservée** (un état
+  persisté, même vide, n'est jamais re-seedé). `generateSeed*` gardées mais plus
+  appelées. Harnais reducer 67.
+- **`v3.6.0`** — **bouton WhatsApp** (3e canal) : modèles type `whatsapp`, lien
+  `wa.me` au format international (`buildWhatsApp` / `toWaNumber`, indicatif défaut 33),
+  action `whatsapp` journalisée, migration des modèles sûre (type inconnu → email).
+  Harnais reducer 80. ⚠️ **Lien `wa.me` à confirmer sur mobile réel** (comme le SMS).
+- **`v3.7.0`** — **AGENDA** : page dédiée, **3 vues** (semaine / mois / journée
+  comparative par commercial), couleur par commercial + filtre + légende, actions
+  échues signalées. **Interactif** (créer sur date vide / replanifier par drag en
+  semaine + re-sélecteur en mois/journée), tout via `SET_NEXT_ACTION`. Helpers purs
+  `lib/agenda.ts`, aucune lib calendrier ajoutée. Harnais reducer **91**.
 
 ---
 
-## 🔧 CHANTIER DE FOND — passer de la démo à l'outil de production
+## 🗺️ ROADMAP — issue des 3 RDV Ocean Boat
 
-> Le bloc le plus important. Tout part du fait que l'app est en **localStorage**
-> (= une base isolée par navigateur). Pour un usage réel à plusieurs (Tom, Fred, Nico,
-> Lana), il faut un backend partagé. Tout le reste de ce bloc en dépend.
+### 🟢 À TRAITER — ne dépend de personne (prêt à démarrer)
 
-- [ ] **Backend / base partagée** (PIÈCE MAÎTRESSE)
-  - Décision archi : cloud (Supabase) vs auto-hébergé sur leur serveur
-  - ⚠️ BLOQUÉ : dépend de **leur infra serveur** (NAS ? VPS ? machine bureau ?) — à récupérer auprès d'Ocean Boat
-- [ ] **Comptes / mot de passe entreprise** (n'a de sens qu'avec backend)
-- [ ] **Mode base vierge** : supprimer le seed aléatoire (35 leads bidon au 1er chargement)
-- [ ] **Import du fichier Excel existant** d'Ocean Boat
-  - Spec de mapping déjà prête : voir `mapping-import-excel.md`
-  - ⚠️ À faire DANS la base partagée (backend), pas dans localStorage
-  - Pré-requis : créer les commerciaux dans Équipe avant l'import ; aligner sources / types bateau ; confirmer csv vs xlsx ; clarifier "DV"/"BO"
-- [ ] **Déploiement chez eux** (leur serveur, pas GitHub Pages)
-- [ ] **Doc RGPD** sur le localStorage (à présenter à Ocean Boat — disparaît avec le backend)
+- [ ] **BUG VCF** (signalé en RDV) : « le VCF ne sélectionne pas correctement les
+  contacts ». À diagnostiquer (export et/ou import). **Prochain candidat naturel.**
+- [ ] **Relances PROPOSÉES** (pré-remplies, modifiables) après certaines actions :
+  ex. devis envoyé → proposer une relance à J+3 / J+7. **Pré-remplissage, PAS
+  automatisme** (l'utilisateur valide/ajuste). S'appuie sur le mécanisme
+  `SET_NEXT_ACTION` + la détection de risques existante.
+- [ ] **Modèles multilingues** (FR / EN / PT) : étendre les modèles de message par langue.
 
----
+### 🟡 À CLARIFIER — décision Mickaël ou dépend d'Infocob (ne pas coder avant réponse)
 
-## ✨ NOUVELLES FONCTIONNALITÉS ENVISAGÉES
+- [ ] **Noms des colonnes du pipeline** + statut **« Qualifié » ambigu** : décision
+  métier qui touche le cœur (statuts). Attendre l'arbitrage de Mickaël.
+- [ ] **Types d'actions à aligner sur Infocob** : attendre la liste de référence Infocob.
+- [ ] **Export Infocob** : à quel moment exporter + quelles données synchroniser
+  (dépend d'Infocob).
+- [ ] **Historique de température** (oui/non) : le client penche pour **non** — à confirmer.
+- [ ] **Vue Prospects** : exclure aussi perdus/reportés ? (aujourd'hui seuls les signés
+  sont exclus — comportement documenté, changement = décision métier).
 
-- [x] ~~Audit + optimisation de la vue mobile~~ → **QUASI COMPLET (v3.4.0 + v3.4.1)** :
-  les 3 cassés corrigés, graphes lisibles en étroit, cibles tactiles ≥ 40px.
-  Reliquat très mineur : confort des longues tables (scroll latéral
-  Leads/Acquisition — pas de gain simple identifié) et liens `<a>` icône non
-  couverts par la règle tactile
-- [ ] *(déjà listées ci-dessous, candidates)* : règle auto-relance, couche IA email
+### 🔵 PLUS TARD — dépend du backend / d'éléments externes
 
-## ➕ FONCTIONNALITÉS EN PLUS (faisables sur l'archi actuelle, sans backend)
-
-- [ ] **Couche IA email** : pré-rédaction d'un mail lisant la fiche du lead. Terrain prêt
-  (templates existent). Nécessite une clé API.
-- [ ] **Règle auto-relance / suivi automatique** (symptôme C du diagnostic v3.4) :
-  passage auto en relance après X jours, notifications. Détection déjà là
-  (`getLeadRisks`, risque « action échue », règle action future v3.4) ; mais tout
-  est recalculé à l'affichage (pull) — un VRAI automatisme (push, app fermée)
-  **dépend du backend**. À formaliser SI Ocean Boat le confirme.
-- [ ] **Connexion Infocob** (leur CRM) : bouton "ajouter sur Infocob". Phase lointaine,
-  dépend de l'API Infocob.
+- [ ] **Import Excel** de la vraie base Ocean Boat (après validation client). Spec de
+  mapping prête : `mapping-import-excel.md`. ⚠️ À faire dans la base partagée, pas en
+  localStorage. Pré-requis : commerciaux créés, sources/types alignés, clarifier "DV"/"BO".
+- [ ] **Import de leads depuis emails** : semi-manuel d'abord, puis agent IA. *Le client
+  doit fournir 2-3 mails types* pour caler le parsing.
+- [ ] **Synchro Outlook / Infocob** : Infocob est déjà connecté à Outlook 365 — à étudier
+  comme point d'intégration.
+- [ ] **Base partagée multi-postes** (backend Vercel ou autre) — **LE grand jalon** : ce
+  qui fait passer du prototype à l'outil utilisé par 4 commerciaux. Débloque comptes,
+  déploiement chez eux, import Excel réel. Bloqué sur le choix d'infra.
+- [ ] **Enregistrement / transcription d'appels** : sujet à part, **enjeu RGPD** fort.
 
 ---
 
-## ❓ DÉCISIONS OUVERTES CÔTÉ OCEAN BOAT
+## ➕ FONCTIONNALITÉS EN PLUS (faisables sans backend, en réserve)
 
-- [ ] **Infra serveur** → débloque le choix backend (cloud vs auto-hébergé)
-- [ ] **Fichier Excel** : confirmer format (csv/xlsx), signification de "DV"/"BO",
-  liste complète des commerciaux et des sources
-- [ ] **Jeu de statuts définitif** + règle auto-relance (à valider à l'usage)
-- [ ] **Vue Prospects** : faut-il exclure aussi perdus/reportés (aujourd'hui seuls les
-  signés sont exclus — comportement documenté, changement = décision métier)
+- [ ] **Couche IA email** : pré-rédaction d'un mail lisant la fiche du lead (templates
+  déjà en place ; nécessite une clé API). Recoupe l'import de leads par IA.
+- [ ] **Comptes / mot de passe entreprise** : n'a de sens qu'avec le backend.
 
 ---
 
 ## 🐛 DETTE TECHNIQUE / À SURVEILLER (non bloquant)
 
-- [ ] **Bundle monolithique ~855 kB** (gzip ~245) : code-splitting par route (`React.lazy`)
-  pour alléger le 1er chargement
-- [ ] **Acquisition (onglets Volumes / Saisie)** : copient `state` dans un `useState` local
-  au montage → désync si l'état change ailleurs + perte de saisie si on quitte sans
-  « Enregistrer » — à refactorer
-- [ ] Le Dashboard refait des filtres "à relancer" inline au lieu de réutiliser
-  `getLeadRisks` (redondance logique avec la vue À relancer) — **partiellement entamé** :
-  les prédicats « prochaine action » et « inactif >7j » sont désormais partagés
-  (`hasPlannedNextAction`, `isInactiveOverWeek` dans `utils.ts`) ; restent les blocs
-  « chauds sans action » / « devis sans relance » à unifier un jour
-- [ ] Versions de dépendances très avancées (React 19, Vite 8, TS 6) — surveiller la
-  reproductibilité du build
+- [ ] **Bundle monolithique ~875 kB** (gzip ~250) : code-splitting par route
+  (`React.lazy`) pour alléger le 1er chargement.
+- [ ] **Agenda — reportés exclus volontairement** : `buildAgendaEvents` ne liste que les
+  leads actifs (cohérence alertes/risques). Ajoutable si Ocean Boat veut voir les
+  reportés à l'agenda (one-liner).
+- [ ] **Acquisition (onglets Volumes / Saisie)** : copient `state` dans un `useState`
+  local au montage → désync possible + perte de saisie si on quitte sans « Enregistrer ».
+- [ ] **Dashboard** : blocs « chauds sans action » / « devis sans relance » encore inline
+  au lieu de réutiliser `getLeadRisks` (partiellement unifié).
+- [ ] Dépendances très avancées (React 19, Vite 8, TS 6) — surveiller la repro du build.
 
 ---
 
 ## Prochain vrai jalon
 
-**Le backend.** C'est ce qui sépare le prototype de l'outil que 4 commerciaux utilisent
-vraiment. Bloqué sur l'infra serveur d'Ocean Boat. Une fois débloqué :
-backend → comptes → base vierge → import Excel → déploiement chez eux.
+Deux fronts en parallèle :
+1. **Court terme, autonome** : bug VCF → relances proposées → modèles multilingues.
+2. **Structurant** : **le backend / base partagée**, qui débloque comptes, déploiement
+   chez Ocean Boat et import Excel réel. Toujours en attente de l'arbitrage d'infra.
+
+En attente client : arbitrages Mickaël (statuts/pipeline), réponses Infocob (types
+d'actions, export), mails types pour l'import IA, et infra serveur pour le backend.
