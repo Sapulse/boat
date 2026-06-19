@@ -9,6 +9,34 @@ déploiement auto) → tag annoté. Commits sémantiques.
 
 ---
 
+## 🚧 EN COURS — lot `objectifs-prospection` (cible `v3.16.0`)
+
+Faire évoluer les Objectifs vers **6 indicateurs en 3 familles** + **auto-log de l'appel**.
+Branche `objectifs-prospection`. **Tenu à jour à chaque étape.**
+
+- [x] **Étape 1** — modèle : `CommercialGoal` (−`calls`, +`prospectsCreated`, +`coldCalls`),
+  `FOLLOWUP_TYPES += 'appel'` (un seul compteur recontact), `countLeadsCreated`, `hydrateGoals`
+  (migration nulle ; anciennes cibles `calls` abandonnées proprement). Harnais goals.
+- [x] **Étape 1bis** — sources : `SOURCES += 'Démarchage terrain' / 'Recommandation'`,
+  `PROSPECTION_SOURCES` (source de vérité du classement prospection vs flux entrant),
+  `countLeadsCreated` **filtré** dessus, **source OBLIGATOIRE** à la création (LeadForm, 2 rendus).
+  Assertion harnais `PROSPECTION_SOURCES ⊆ SOURCES`.
+- [x] **Étape 2** — auto-log appel : helper pur `buildCommunicationAction` (`lib/communication`)
+  + **factorisation** des 3 handlers email/SMS/WhatsApp (comportement identique — reducer
+  197 inchangé) + clic « Appeler » loggué (LeadDetailPage + LeadsPage, `addAction` câblé).
+  Harnais dédié `harness-communication` (14).
+- [x] **Étape 3** — UI : 6 cartes regroupées par 3 familles (Prospection / Suivi / Résultat,
+  sous-titres de section) + carte « Appels à froid » avec **saisie du réalisé** dans la carte
+  (manuel via override ; rappel « auto » masqué). Rendu uniquement, harnais inchangés (389).
+- [x] **Merge `v3.16.0`** : ff-only → main, CHANGELOG, tag annoté.
+
+⚠️ **Point de vigilance — « Recommandation »** : classée en source de **prospection active**
+aujourd'hui, mais **discutable** (une recommandation est souvent un flux entrant non sollicité).
+**Rebasculable en flux entrant** en retirant la valeur de `PROSPECTION_SOURCES` (un seul endroit,
+sans migration). À confirmer avec Nicolas/Mickaël.
+
+---
+
 ## ✅ FAIT (en prod, V3)
 
 - **Cohérence données** : dates de transition de statut centralisées (`statusMilestoneDates`)

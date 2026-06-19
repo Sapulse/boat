@@ -16,15 +16,25 @@ import type { CommercialGoal, GoalMetric } from '../data/types';
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = buildYearRange();
 
-type MetricKey = 'calls' | 'followups' | 'meetings' | 'revenue' | 'conversionRate';
+type MetricKey = 'prospectsCreated' | 'coldCalls' | 'followups' | 'meetings' | 'revenue' | 'conversionRate';
 type Unit = '' | '€' | '%';
+type Family = 'prospection' | 'suivi' | 'resultat';
 
-const METRICS: { key: MetricKey; label: string; unit: Unit; hint: string }[] = [
-  { key: 'calls', label: 'Appels', unit: '', hint: "actions de type « appel »" },
-  { key: 'followups', label: 'Relances', unit: '', hint: 'relance + email + sms + whatsapp' },
-  { key: 'meetings', label: 'RDV / visites', unit: '', hint: 'rdv + visite' },
-  { key: 'revenue', label: 'CA signé', unit: '€', hint: 'leads signés ce mois' },
-  { key: 'conversionRate', label: 'Taux de transformation', unit: '%', hint: 'signés / (signés + perdus)' },
+// 6 indicateurs en 3 familles. `manual` = réalisé PUREMENT saisi (cold-calls :
+// aucune source auto) -> carte avec champ de saisie + pas de rappel « auto ».
+const METRICS: { key: MetricKey; label: string; unit: Unit; hint: string; family: Family; manual?: boolean }[] = [
+  { key: 'prospectsCreated', family: 'prospection', label: 'Leads rentrés', unit: '', hint: 'leads de prospection créés ce mois' },
+  { key: 'coldCalls', family: 'prospection', manual: true, label: 'Appels à froid', unit: '', hint: 'réalisé saisi à la main' },
+  { key: 'followups', family: 'suivi', label: 'Relances', unit: '', hint: 'appel + relance + email + sms + whatsapp' },
+  { key: 'meetings', family: 'suivi', label: 'RDV / visites', unit: '', hint: 'rdv + visite' },
+  { key: 'revenue', family: 'resultat', label: 'CA signé', unit: '€', hint: 'leads signés ce mois' },
+  { key: 'conversionRate', family: 'resultat', label: 'Taux de transformation', unit: '%', hint: 'signés / (signés + perdus)' },
+];
+
+const FAMILIES: { id: Family; label: string }[] = [
+  { id: 'prospection', label: 'Prospection' },
+  { id: 'suivi', label: 'Suivi' },
+  { id: 'resultat', label: 'Résultat' },
 ];
 
 const INPUT_CLS =
@@ -52,7 +62,8 @@ function emptyGoal(commercialId: string, year: number, month: number): Commercia
     commercialId,
     year,
     month,
-    calls: emptyMetric(),
+    prospectsCreated: emptyMetric(),
+    coldCalls: emptyMetric(),
     followups: emptyMetric(),
     meetings: emptyMetric(),
     revenue: emptyMetric(),
@@ -86,6 +97,9 @@ function MetricCard({
   target,
   autoVal,
   overridden,
+  manual = false,
+  realizedInput = '',
+  onRealizedChange,
 }: {
   label: string;
   hint: string;
@@ -94,6 +108,9 @@ function MetricCard({
   target: number | null;
   autoVal: number | null;
   overridden: boolean;
+  manual?: boolean;
+  realizedInput?: string;
+  onRealizedChange?: (value: string) => void;
 }) {
   const pct = progressPct(realizedVal, target);
   const level = progressLevel(pct);
@@ -105,9 +122,26 @@ function MetricCard({
         <div className="text-[11px] text-gray-400">{hint}</div>
       </div>
       <div>
-        <div className={`text-3xl font-bold leading-tight ${heroColor}`}>
-          {formatValue(realizedVal, unit)}
-        </div>
+        {manual ? (
+          // Indicateur MANUEL (cold-calls) : le réalisé est SAISI dans la carte.
+          <div className="flex items-baseline gap-1">
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              className={`w-28 text-3xl font-bold leading-tight border-b-2 border-gray-200 focus:border-primary-400 outline-none ${heroColor}`}
+              value={realizedInput}
+              onChange={(e) => onRealizedChange?.(e.target.value)}
+              placeholder="0"
+              aria-label={`Réalisé — ${label}`}
+            />
+            {unit && <span className="text-lg font-semibold text-gray-400">{unit}</span>}
+          </div>
+        ) : (
+          <div className={`text-3xl font-bold leading-tight ${heroColor}`}>
+            {formatValue(realizedVal, unit)}
+          </div>
+        )}
         <div className="text-xs text-gray-400 mt-0.5">
           {target !== null ? `sur ${formatValue(target, unit)}` : "pas d'objectif"}
         </div>
@@ -125,8 +159,12 @@ function MetricCard({
           {pct !== null ? `${pct} %` : '—'}
         </span>
       </div>
-      {overridden && (
-        <div className="text-[11px] text-gray-400">auto {formatValue(autoVal, unit)}</div>
+      {/* Rappel « auto X » seulement pour les indicateurs AUTO corrigés (jamais
+          pour un manuel : « auto 0 » serait trompeur). */}
+      {manual ? (
+        <div className="text-[11px] text-gray-400">réalisé saisi manuellement</div>
+      ) : (
+        overridden && <div className="text-[11px] text-gray-400">auto {formatValue(autoVal, unit)}</div>
       )}
     </div>
   );
@@ -324,21 +362,31 @@ export default function ObjectifsPage() {
             </select>
           </div>
 
-          {/* ZONE SUIVI — grille de cartes (l'essentiel, en consultation) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {METRICS.map((m) => (
-              <MetricCard
-                key={m.key}
-                label={m.label}
-                hint={m.hint}
-                unit={m.unit}
-                realizedVal={realized[m.key]}
-                target={currentGoal?.[m.key]?.target ?? null}
-                autoVal={auto[m.key]}
-                overridden={currentGoal?.[m.key]?.override != null}
-              />
-            ))}
-          </div>
+          {/* ZONE SUIVI — cartes regroupées par famille (l'essentiel, consultation) */}
+          {FAMILIES.map((fam) => (
+            <div key={fam.id} className="space-y-3">
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                {fam.label}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {METRICS.filter((m) => m.family === fam.id).map((m) => (
+                  <MetricCard
+                    key={m.key}
+                    label={m.label}
+                    hint={m.hint}
+                    unit={m.unit}
+                    realizedVal={realized[m.key]}
+                    target={currentGoal?.[m.key]?.target ?? null}
+                    autoVal={auto[m.key]}
+                    overridden={currentGoal?.[m.key]?.override != null}
+                    manual={m.manual}
+                    realizedInput={metricValue(m.key, 'override')}
+                    onRealizedChange={(v) => updateMetric(m.key, 'override', v)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
 
           {/* ZONE SAISIE — repliable (édition en dessous de la consultation) */}
           <div className="card overflow-hidden">
