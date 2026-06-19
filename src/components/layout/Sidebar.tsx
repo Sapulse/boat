@@ -8,6 +8,7 @@ import {
   CalendarDays,
   BarChart3,
   Megaphone,
+  Target,
   UsersRound,
   Mail,
   Download,
@@ -28,6 +29,7 @@ const mainNav: NavItem[] = [
   { name: 'Agenda', href: '/agenda', icon: CalendarDays },
   { name: 'Performance', href: '/performance', icon: BarChart3 },
   { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
+  { name: 'Objectifs', href: '/objectifs', icon: Target },
 ];
 
 const settingsNav: NavItem[] = [
