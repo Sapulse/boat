@@ -9,6 +9,7 @@ import {
   BarChart3,
   Megaphone,
   Target,
+  CircleUser,
   UsersRound,
   Mail,
   Download,
@@ -30,6 +31,7 @@ const mainNav: NavItem[] = [
   { name: 'Performance', href: '/performance', icon: BarChart3 },
   { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
   { name: 'Objectifs', href: '/objectifs', icon: Target },
+  { name: 'Espace commercial', href: '/espace-commercial', icon: CircleUser },
 ];
 
 const settingsNav: NavItem[] = [
