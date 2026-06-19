@@ -119,9 +119,15 @@ export interface MonthlyStat {
   source: string;
   budget: number | null;
   leads: number | null;
+  // @deprecated (refonte-acquisition) : le CPL est desormais DERIVE (computeCpl,
+  // lib/acquisition) et ne doit plus etre stocke. Champ conserve le temps que
+  // l'UI/seed/exports cessent de le lire (retrait prevu en etape 3).
   cpl: number | null;
 }
 
+// @deprecated (refonte-acquisition, etape 1) : fusionne dans MonthlyStat
+// (mergeAcquisition). Plus aucune ecriture ; le tableau est vide a l'hydratation.
+// Type conserve pour la migration (lecture des anciens states) ; retrait en etape 3.
 export interface AcquisitionVolume {
   id: string;
   source: string;

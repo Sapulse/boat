@@ -2,6 +2,7 @@ import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVo
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
+import { mergeAcquisition } from '../lib/acquisition';
 
 // Module PUR (sans composant ni JSX) : initialisation du state + reducer.
 // Separe de AppContext.tsx pour la regle react-refresh/only-export-components
@@ -63,8 +64,12 @@ export function getInitialState(): AppState {
       leads: stored.leads ?? [],
       actions: stored.actions ?? [],
       commercials: stored.commercials ?? DEFAULT_COMMERCIALS,
-      monthlyStats: stored.monthlyStats ?? [],
-      acquisitionVolumes: stored.acquisitionVolumes ?? [],
+      // Migration refonte-acquisition (etape 1) : UNE seule source de verite.
+      // Les anciens acquisitionVolumes sont replies dans monthlyStats (sans perte,
+      // idempotent : cf. mergeAcquisition) puis le tableau legacy est vide. Re-
+      // hydrater un state deja migre laisse monthlyStats inchange (volumes = []).
+      monthlyStats: mergeAcquisition(stored.monthlyStats ?? [], stored.acquisitionVolumes ?? []),
+      acquisitionVolumes: [],
       templates: hydrateTemplates(stored),
       // Migration v3.13 : tableau absent des anciens states -> [] (aucune perte).
       calendarEvents: stored.calendarEvents ?? [],

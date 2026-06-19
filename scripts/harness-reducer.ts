@@ -144,8 +144,18 @@ section('N1 — state stocke avec leads:[] mais commerciaux/templates remplis ->
     && s.templates[0].subject === 'S' && s.templates[0].body === 'B',
     JSON.stringify(s.templates));
   check("migration : type 'email' pose par defaut", s.templates[0].type === 'email', `=${s.templates[0].type}`);
-  check('stats mensuelles preservees', s.monthlyStats.length === 1 && s.monthlyStats[0].id === 'm1');
-  check('volumes acquisition preserves', s.acquisitionVolumes.length === 1 && s.acquisitionVolumes[0].id === 'v1');
+  // Migration refonte-acquisition : les volumes sont replies dans monthlyStats
+  // (UNE source de verite) sans perte, et le tableau legacy est vide.
+  check('migration acquisition : m1 (regie) + v1 (volume) -> 2 stats',
+    s.monthlyStats.length === 2, `monthlyStats.length=${s.monthlyStats.length}`);
+  const m1 = s.monthlyStats.find(st => st.id === 'm1');
+  check('stat regie m1 preservee (budget 100 / leads 4)',
+    !!m1 && m1.budget === 100 && m1.leads === 4);
+  const youboat = s.monthlyStats.find(st => st.source === 'Youboat');
+  check('volume Youboat replie en stat (leads=7, budget null)',
+    !!youboat && youboat.leads === 7 && youboat.budget === null);
+  check('acquisitionVolumes vide apres migration (legacy consolide)',
+    s.acquisitionVolumes.length === 0, `acquisitionVolumes.length=${s.acquisitionVolumes.length}`);
 }
 
 section('Migration templates — state FUTUR (champ templates) lu tel quel, type sms preserve');
