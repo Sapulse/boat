@@ -7,6 +7,30 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.17.0] — 2026-06-19 — Espace commercial
+
+### Ajouté
+- **Nouvelle page « Espace commercial »** (menu + route `/espace-commercial`) : une vue de
+  **synthèse par commercial** qui regroupe, pour le commercial sélectionné, ses **Objectifs**,
+  ses **Performances**, son **Pipeline** et son **Agenda** sur un mois choisi.
+  - **Objectifs** : les 6 indicateurs condensés (réalisé / objectif / %), lecture seule.
+  - **Performances** : CA signé + taux de transformation du mois.
+  - **Pipeline** (état courant) : compteurs de leads par statut + leads chauds.
+  - **Agenda** (à venir) : prochaines actions/RDV + événements libres du commercial.
+  - Sélecteur de commercial mis en avant (en-tête + pastille couleur) ; le mois pilote
+    Objectifs/Performances, le Pipeline reste l'état courant, l'Agenda le à-venir.
+
+### Technique
+- **Page d'agrégation pure** : elle réutilise et filtre l'existant (`lib/goals`,
+  `buildAgendaEvents`, `LEAD_STATUSES`, helpers de filtrage), **aucune logique métier
+  nouvelle**. Au backend, seule la source changera (poste → base partagée) + le sélecteur
+  deviendra le login. **Extraction de composants partagés** : `CommercialHeader` (en-tête
+  commercial) et `MetricCard` (+ mode `compact`) / `metricsConfig`, consommés par Objectifs
+  ET Espace commercial — `ObjectifsPage` refactorisée à comportement identique. Les 6 harnais
+  restent verts (389) : la page n'agrège que de la logique déjà testée.
+
+---
+
 ## [3.16.0] — 2026-06-19 — Objectifs : prospection & auto-log
 
 ### Modifié
