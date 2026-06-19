@@ -1,19 +1,41 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Info, DollarSign, Percent } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { buildYearRange } from '../lib/utils';
+import { buildYearRange, formatCurrency } from '../lib/utils';
 import { MONTHS } from '../data/constants';
 import CommercialHeader from '../components/commercial/CommercialHeader';
+import MetricCard from '../components/objectifs/MetricCard';
+import { METRICS } from '../components/objectifs/metricsConfig';
+import {
+  computeAutoRealized,
+  applyOverrides,
+  sumSignedRevenue,
+  conversionRate,
+} from '../lib/goals';
+import type { ReactNode } from 'react';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = buildYearRange();
 
-// Placeholder de bloc (étapes 2-3 : Objectifs / Performances / Pipeline / Agenda).
+// Placeholder de bloc (étape 3 : Pipeline / Agenda).
 function BlockPlaceholder({ title, note }: { title: string; note: string }) {
   return (
     <div className="card p-5">
       <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
       <p className="text-sm text-gray-400 mt-2">{note}</p>
+    </div>
+  );
+}
+
+// Tuile KPI simple (bloc Performances).
+function Kpi({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-4 flex items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-medium text-gray-500">{label}</p>
+        <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+      </div>
+      <div className="p-2 rounded-lg bg-gray-50 text-gray-400">{icon}</div>
     </div>
   );
 }
@@ -26,6 +48,20 @@ export default function EspaceCommercialPage() {
   const [year, setYear] = useState(CURRENT_YEAR);
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [commercialId, setCommercialId] = useState(activeCommercials[0]?.id ?? '');
+
+  // Objectifs (lecture seule) : réalisé auto + override, pour ce commercial/mois.
+  const auto = useMemo(
+    () => computeAutoRealized(state.actions, state.leads, commercialId, year, month),
+    [state.actions, state.leads, commercialId, year, month],
+  );
+  const goal = state.goals.find(
+    (g) => g.commercialId === commercialId && g.year === year && g.month === month,
+  );
+  const realized = useMemo(() => applyOverrides(auto, goal), [auto, goal]);
+
+  // Performances du mois (lib/goals — purs).
+  const caSigne = sumSignedRevenue(state.leads, commercialId, year, month);
+  const tauxTransfo = conversionRate(state.leads, commercialId, year, month);
 
   const goPrevMonth = () => {
     if (month === 1) {
@@ -123,13 +159,47 @@ export default function EspaceCommercialPage() {
             </span>
           </div>
 
-          {/* Blocs de synthèse (remplis aux étapes 2-3) */}
+          {/* Bloc OBJECTIFS — 6 indicateurs condensés, lecture seule */}
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Objectifs</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {METRICS.map((m) => (
+                <MetricCard
+                  key={m.key}
+                  compact
+                  label={m.label}
+                  hint={m.hint}
+                  unit={m.unit}
+                  realizedVal={realized[m.key]}
+                  target={goal?.[m.key]?.target ?? null}
+                  autoVal={auto[m.key]}
+                  overridden={goal?.[m.key]?.override != null}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Bloc PERFORMANCES — CA signé + taux de transfo du mois */}
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Performances — {MONTHS[month - 1]} {year}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Kpi
+                label="CA signé"
+                value={formatCurrency(caSigne)}
+                icon={<DollarSign className="w-5 h-5" />}
+              />
+              <Kpi
+                label="Taux de transformation"
+                value={tauxTransfo !== null ? `${tauxTransfo} %` : '—'}
+                icon={<Percent className="w-5 h-5" />}
+              />
+            </div>
+          </div>
+
+          {/* Blocs PIPELINE + AGENDA — étape 3 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <BlockPlaceholder title="Objectifs" note="6 indicateurs du mois — à venir (étape 2)." />
-            <BlockPlaceholder
-              title="Performances"
-              note="CA signé & taux de transformation du mois — à venir (étape 2)."
-            />
             <BlockPlaceholder
               title="Pipeline"
               note="Leads par étape + chauds, état courant — à venir (étape 3)."

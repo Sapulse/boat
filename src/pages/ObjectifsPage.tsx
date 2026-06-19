@@ -1,57 +1,20 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Save, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
-import { getCommercialColor } from '../lib/agenda';
-import {
-  computeAutoRealized,
-  applyOverrides,
-  progressPct,
-  progressLevel,
-  type ProgressLevel,
-} from '../lib/goals';
+import { generateId, buildYearRange } from '../lib/utils';
+import CommercialHeader from '../components/commercial/CommercialHeader';
+import MetricCard from '../components/objectifs/MetricCard';
+import { METRICS, FAMILIES, formatValue, type MetricKey } from '../components/objectifs/metricsConfig';
+import { computeAutoRealized, applyOverrides } from '../lib/goals';
 import { MONTHS } from '../data/constants';
 import type { CommercialGoal, GoalMetric } from '../data/types';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = buildYearRange();
 
-type MetricKey = 'prospectsCreated' | 'coldCalls' | 'followups' | 'meetings' | 'revenue' | 'conversionRate';
-type Unit = '' | '€' | '%';
-type Family = 'prospection' | 'suivi' | 'resultat';
-
-// 6 indicateurs en 3 familles. `manual` = réalisé PUREMENT saisi (cold-calls :
-// aucune source auto) -> carte avec champ de saisie + pas de rappel « auto ».
-const METRICS: { key: MetricKey; label: string; unit: Unit; hint: string; family: Family; manual?: boolean }[] = [
-  { key: 'prospectsCreated', family: 'prospection', label: 'Leads rentrés', unit: '', hint: 'leads de prospection créés ce mois' },
-  { key: 'coldCalls', family: 'prospection', manual: true, label: 'Appels à froid', unit: '', hint: 'réalisé saisi à la main' },
-  { key: 'followups', family: 'suivi', label: 'Relances', unit: '', hint: 'appel + relance + email + sms + whatsapp' },
-  { key: 'meetings', family: 'suivi', label: 'RDV / visites', unit: '', hint: 'rdv + visite' },
-  { key: 'revenue', family: 'resultat', label: 'CA signé', unit: '€', hint: 'leads signés ce mois' },
-  { key: 'conversionRate', family: 'resultat', label: 'Taux de transformation', unit: '%', hint: 'signés / (signés + perdus)' },
-];
-
-const FAMILIES: { id: Family; label: string }[] = [
-  { id: 'prospection', label: 'Prospection' },
-  { id: 'suivi', label: 'Suivi' },
-  { id: 'resultat', label: 'Résultat' },
-];
-
 const INPUT_CLS =
   'w-full text-right border border-gray-200 rounded px-2 py-1.5 text-sm ' +
   'focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none';
-
-// Code couleur de la progression (vert >= 100 / orange >= 70 / rouge < 70).
-const LEVEL_BAR: Record<ProgressLevel, string> = {
-  vert: 'bg-success-500',
-  orange: 'bg-warning-500',
-  rouge: 'bg-danger-500',
-};
-const LEVEL_TEXT: Record<ProgressLevel, string> = {
-  vert: 'text-success-700',
-  orange: 'text-warning-600',
-  rouge: 'text-danger-700',
-};
 
 function emptyMetric(): GoalMetric {
   return { target: null, override: null };
@@ -69,105 +32,6 @@ function emptyGoal(commercialId: string, year: number, month: number): Commercia
     revenue: emptyMetric(),
     conversionRate: emptyMetric(),
   };
-}
-
-// Affichage d'une valeur selon l'unite de l'indicateur.
-function formatValue(value: number | null, unit: Unit): string {
-  if (value === null || value === undefined) return '—';
-  if (unit === '€') return formatCurrency(value);
-  if (unit === '%') return `${value} %`;
-  return String(value);
-}
-
-// Initiales pour la pastille du commercial ("Fred" -> "FR", "Jean Dupont" -> "JD").
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-// Carte d'un indicateur (zone suivi) : realise en heros, cible, barre, %.
-// Rendu PUR : pct/niveau via progressPct/progressLevel (lib/goals), inchanges.
-function MetricCard({
-  label,
-  hint,
-  unit,
-  realizedVal,
-  target,
-  autoVal,
-  overridden,
-  manual = false,
-  realizedInput = '',
-  onRealizedChange,
-}: {
-  label: string;
-  hint: string;
-  unit: Unit;
-  realizedVal: number | null;
-  target: number | null;
-  autoVal: number | null;
-  overridden: boolean;
-  manual?: boolean;
-  realizedInput?: string;
-  onRealizedChange?: (value: string) => void;
-}) {
-  const pct = progressPct(realizedVal, target);
-  const level = progressLevel(pct);
-  const heroColor = level ? LEVEL_TEXT[level] : 'text-gray-400';
-  return (
-    <div className={`card p-5 flex flex-col gap-3 ${level ? '' : 'bg-gray-50/60'}`}>
-      <div>
-        <div className="text-sm font-medium text-gray-600">{label}</div>
-        <div className="text-[11px] text-gray-400">{hint}</div>
-      </div>
-      <div>
-        {manual ? (
-          // Indicateur MANUEL (cold-calls) : le réalisé est SAISI dans la carte.
-          <div className="flex items-baseline gap-1">
-            <input
-              type="number"
-              min="0"
-              inputMode="numeric"
-              className={`w-28 text-3xl font-bold leading-tight border-b-2 border-gray-200 focus:border-primary-400 outline-none ${heroColor}`}
-              value={realizedInput}
-              onChange={(e) => onRealizedChange?.(e.target.value)}
-              placeholder="0"
-              aria-label={`Réalisé — ${label}`}
-            />
-            {unit && <span className="text-lg font-semibold text-gray-400">{unit}</span>}
-          </div>
-        ) : (
-          <div className={`text-3xl font-bold leading-tight ${heroColor}`}>
-            {formatValue(realizedVal, unit)}
-          </div>
-        )}
-        <div className="text-xs text-gray-400 mt-0.5">
-          {target !== null ? `sur ${formatValue(target, unit)}` : "pas d'objectif"}
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 h-3 rounded-full bg-gray-100 overflow-hidden">
-          {pct !== null && level && (
-            <div
-              className={`h-full rounded-full ${LEVEL_BAR[level]}`}
-              style={{ width: `${Math.min(100, pct)}%` }}
-            />
-          )}
-        </div>
-        <span className={`text-sm font-bold w-14 text-right ${level ? LEVEL_TEXT[level] : 'text-gray-300'}`}>
-          {pct !== null ? `${pct} %` : '—'}
-        </span>
-      </div>
-      {/* Rappel « auto X » seulement pour les indicateurs AUTO corrigés (jamais
-          pour un manuel : « auto 0 » serait trompeur). */}
-      {manual ? (
-        <div className="text-[11px] text-gray-400">réalisé saisi manuellement</div>
-      ) : (
-        overridden && <div className="text-[11px] text-gray-400">auto {formatValue(autoVal, unit)}</div>
-      )}
-    </div>
-  );
 }
 
 export default function ObjectifsPage() {
@@ -271,9 +135,6 @@ export default function ObjectifsPage() {
     setDirty(false);
   };
 
-  const commercialName = activeCommercials.find((c) => c.id === commercialId)?.name ?? '';
-  const color = getCommercialColor(commercialId, state.commercials);
-
   return (
     <div className="space-y-6">
       {/* Titre de page */}
@@ -297,21 +158,13 @@ export default function ObjectifsPage() {
         </div>
       ) : (
         <>
-          {/* En-tête commercial : "sur qui" + période, sélecteur mis en valeur */}
-          <div className="card p-5 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4">
-              <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${color.bg} ${color.text}`}
-              >
-                {initials(commercialName)}
-              </div>
-              <div>
-                <div className="text-xl font-bold text-gray-900">{commercialName}</div>
-                <div className="text-sm text-gray-500">
-                  {MONTHS[month - 1]} {year}
-                </div>
-              </div>
-            </div>
+          {/* En-tête commercial (composant partagé) : "sur qui" + période + sélecteur */}
+          <CommercialHeader
+            commercialId={commercialId}
+            commercials={state.commercials}
+            month={month}
+            year={year}
+          >
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
                 Commercial
@@ -332,7 +185,7 @@ export default function ObjectifsPage() {
                 ))}
               </select>
             </div>
-          </div>
+          </CommercialHeader>
 
           {/* Période (groupe distinct du commercial) */}
           <div className="flex items-center gap-2">
