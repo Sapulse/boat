@@ -7,6 +7,38 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.16.0] — 2026-06-19 — Objectifs : prospection & auto-log
+
+### Modifié
+- **Objectifs refondus en 6 indicateurs / 3 familles** : **Prospection**
+  (Leads rentrés, Appels à froid) · **Suivi** (Relances, RDV/visites) · **Résultat**
+  (CA signé, Taux de transformation). L'ancien indicateur « Appels » seul disparaît
+  (fondu dans Relances). Page réorganisée par sections, carte « Appels à froid »
+  avec **saisie manuelle du réalisé**.
+- **« Leads rentrés » = prospection active uniquement** : ne comptent que les leads
+  créés dans le mois dont la source ∈ `PROSPECTION_SOURCES` (Passage, Salons,
+  Démarchage terrain, Recommandation). Le flux entrant et les leads sans source
+  ne comptent pas.
+
+### Ajouté
+- **2 sources** : `Démarchage terrain`, `Recommandation`. **Source obligatoire** à la
+  création d'un lead (validation `LeadForm`, 2 rendus).
+- **Auto-log de l'appel** : cliquer « Appeler » crée une action `appel` (comme
+  email/SMS/WhatsApp le font déjà) → alimente l'indicateur **Relances** sans saisie
+  manuelle. Tentative supprimable, sans confirmation.
+
+### Technique
+- `CommercialGoal` : `calls` retiré, `prospectsCreated`/`coldCalls` ajoutés ;
+  migration `hydrateGoals` (anciennes cibles `calls` abandonnées proprement, défauts,
+  `STORAGE_KEY` intouchée). `FOLLOWUP_TYPES += 'appel'` (un seul compteur recontact).
+  Helper **pur** `buildCommunicationAction` (`lib/communication`) factorise les 3
+  handlers de communication (comportement identique — harnais reducer inchangé).
+  Logique de calcul **pure** (`lib/goals`) — cœur réutilisable au backend. Harnais :
+  **goals 43**, **communication 14** (nouveau). ⚠️ *Classement de « Recommandation »
+  en prospection active à confirmer (rebasculable en flux entrant sans migration).*
+
+---
+
 ## [3.15.0] — 2026-06-19 — Objectifs commerciaux
 
 ### Ajouté
