@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Save, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { Save, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
+import { getCommercialColor } from '../lib/agenda';
 import {
   computeAutoRealized,
   applyOverrides,
@@ -59,12 +60,76 @@ function emptyGoal(commercialId: string, year: number, month: number): Commercia
   };
 }
 
-// Affichage d'une valeur "realise" selon l'unite de l'indicateur.
+// Affichage d'une valeur selon l'unite de l'indicateur.
 function formatValue(value: number | null, unit: Unit): string {
   if (value === null || value === undefined) return '—';
   if (unit === '€') return formatCurrency(value);
   if (unit === '%') return `${value} %`;
   return String(value);
+}
+
+// Initiales pour la pastille du commercial ("Fred" -> "FR", "Jean Dupont" -> "JD").
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Carte d'un indicateur (zone suivi) : realise en heros, cible, barre, %.
+// Rendu PUR : pct/niveau via progressPct/progressLevel (lib/goals), inchanges.
+function MetricCard({
+  label,
+  hint,
+  unit,
+  realizedVal,
+  target,
+  autoVal,
+  overridden,
+}: {
+  label: string;
+  hint: string;
+  unit: Unit;
+  realizedVal: number | null;
+  target: number | null;
+  autoVal: number | null;
+  overridden: boolean;
+}) {
+  const pct = progressPct(realizedVal, target);
+  const level = progressLevel(pct);
+  const heroColor = level ? LEVEL_TEXT[level] : 'text-gray-400';
+  return (
+    <div className={`card p-5 flex flex-col gap-3 ${level ? '' : 'bg-gray-50/60'}`}>
+      <div>
+        <div className="text-sm font-medium text-gray-600">{label}</div>
+        <div className="text-[11px] text-gray-400">{hint}</div>
+      </div>
+      <div>
+        <div className={`text-3xl font-bold leading-tight ${heroColor}`}>
+          {formatValue(realizedVal, unit)}
+        </div>
+        <div className="text-xs text-gray-400 mt-0.5">
+          {target !== null ? `sur ${formatValue(target, unit)}` : "pas d'objectif"}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-3 rounded-full bg-gray-100 overflow-hidden">
+          {pct !== null && level && (
+            <div
+              className={`h-full rounded-full ${LEVEL_BAR[level]}`}
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+          )}
+        </div>
+        <span className={`text-sm font-bold w-14 text-right ${level ? LEVEL_TEXT[level] : 'text-gray-300'}`}>
+          {pct !== null ? `${pct} %` : '—'}
+        </span>
+      </div>
+      {overridden && (
+        <div className="text-[11px] text-gray-400">auto {formatValue(autoVal, unit)}</div>
+      )}
+    </div>
+  );
 }
 
 export default function ObjectifsPage() {
@@ -77,6 +142,7 @@ export default function ObjectifsPage() {
   const [commercialId, setCommercialId] = useState(activeCommercials[0]?.id ?? '');
   const [goals, setGoals] = useState<CommercialGoal[]>(state.goals);
   const [dirty, setDirty] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   // Garde anti-perte (comme Acquisition) : avertissement natif avant fermeture /
   // rechargement tant que des modifications sont en attente.
@@ -167,24 +233,18 @@ export default function ObjectifsPage() {
     setDirty(false);
   };
 
+  const commercialName = activeCommercials.find((c) => c.id === commercialId)?.name ?? '';
+  const color = getCommercialColor(commercialId, state.commercials);
+
   return (
     <div className="space-y-6">
-      {/* Titre */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Objectifs</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Cibles par commercial et par mois ; le réalisé est calculé automatiquement,
-            corrigeable à la main.
-          </p>
-        </div>
-        <button
-          onClick={handleSave}
-          className={`btn-primary btn-sm ${dirty ? 'animate-pulse' : ''}`}
-          disabled={!dirty}
-        >
-          <Save className="w-4 h-4" /> Enregistrer
-        </button>
+      {/* Titre de page */}
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Objectifs</h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Cibles par commercial et par mois ; le réalisé est calculé automatiquement,
+          corrigeable à la main.
+        </p>
       </div>
 
       {/* Bandeau mono-poste (démonstration) */}
@@ -193,148 +253,173 @@ export default function ObjectifsPage() {
         <span>Démonstration — données du poste ; vue équipe consolidée au backend.</span>
       </div>
 
-      {/* Sélecteurs : mois + année + commercial */}
-      <div className="flex items-center flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <button onClick={goPrevMonth} className="btn-ghost btn-sm" aria-label="Mois précédent">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <div className="text-base font-semibold text-gray-900 min-w-[150px] text-center">
-            {MONTHS[month - 1]} {year}
-          </div>
-          <button onClick={goNextMonth} className="btn-ghost btn-sm" aria-label="Mois suivant">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-          <select
-            className="select w-auto ml-2"
-            value={year}
-            onChange={(e) => {
-              if (!confirmDiscardIfDirty()) return;
-              setYear(Number(e.target.value));
-            }}
-            aria-label="Année"
-          >
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
-        <select
-          className="select w-auto"
-          value={commercialId}
-          onChange={(e) => {
-            if (!confirmDiscardIfDirty()) return;
-            setCommercialId(e.target.value);
-          }}
-          aria-label="Commercial"
-        >
-          {activeCommercials.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {activeCommercials.length === 0 ? (
         <div className="card p-6 text-sm text-gray-500">
           Aucun commercial actif. Ajoutez-en dans « Équipe » pour définir des objectifs.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">
-              Objectifs &amp; réalisation — {MONTHS[month - 1]} {year}
-            </h3>
-            <p className="text-xs text-gray-400 mt-1">
-              Saisissez l&apos;objectif (cible). Le réalisé auto vient des actions/leads du
-              poste ; laissez la correction vide pour le garder automatique.
-            </p>
+        <>
+          {/* En-tête commercial : "sur qui" + période, sélecteur mis en valeur */}
+          <div className="card p-5 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${color.bg} ${color.text}`}
+              >
+                {initials(commercialName)}
+              </div>
+              <div>
+                <div className="text-xl font-bold text-gray-900">{commercialName}</div>
+                <div className="text-sm text-gray-500">
+                  {MONTHS[month - 1]} {year}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
+                Commercial
+              </label>
+              <select
+                className="select w-auto min-w-[160px]"
+                value={commercialId}
+                onChange={(e) => {
+                  if (!confirmDiscardIfDirty()) return;
+                  setCommercialId(e.target.value);
+                }}
+                aria-label="Commercial"
+              >
+                {activeCommercials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Indicateur</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-36">Objectif</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-32">Réalisé</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-40">Correction</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600 w-64">Progression</th>
-              </tr>
-            </thead>
-            <tbody>
-              {METRICS.map((m) => {
-                const target = currentGoal?.[m.key]?.target ?? null;
-                const overridden = currentGoal?.[m.key]?.override != null;
-                const realizedVal = realized[m.key];
-                const pct = progressPct(realizedVal, target);
-                const level = progressLevel(pct);
-                return (
-                  <tr key={m.key} className="border-b border-gray-100 hover:bg-gray-50/50">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-gray-700">{m.label}</div>
-                      <div className="text-[11px] text-gray-400">{m.hint}</div>
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-1 justify-end">
-                        <input
-                          className={INPUT_CLS}
-                          type="number"
-                          min="0"
-                          inputMode="numeric"
-                          value={metricValue(m.key, 'target')}
-                          onChange={(e) => updateMetric(m.key, 'target', e.target.value)}
-                          placeholder="—"
-                        />
-                        {m.unit && <span className="text-gray-400 text-xs w-3">{m.unit}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <div className="font-medium text-gray-900">{formatValue(realizedVal, m.unit)}</div>
-                      {overridden && (
-                        <div className="text-[11px] text-gray-400">auto {formatValue(auto[m.key], m.unit)}</div>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-1 justify-end">
-                        <input
-                          className={INPUT_CLS}
-                          type="number"
-                          min="0"
-                          inputMode="numeric"
-                          value={metricValue(m.key, 'override')}
-                          onChange={(e) => updateMetric(m.key, 'override', e.target.value)}
-                          placeholder={formatValue(auto[m.key], m.unit)}
-                        />
-                        {m.unit && <span className="text-gray-400 text-xs w-3">{m.unit}</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-                          {pct !== null && level && (
-                            <div
-                              className={`h-full rounded-full ${LEVEL_BAR[level]}`}
-                              style={{ width: `${Math.min(100, pct)}%` }}
-                            />
-                          )}
-                        </div>
-                        <span
-                          className={`text-xs font-semibold w-14 text-right ${
-                            level ? LEVEL_TEXT[level] : 'text-gray-300'
-                          }`}
-                        >
-                          {pct !== null ? `${pct} %` : '—'}
-                        </span>
-                      </div>
-                    </td>
+
+          {/* Période (groupe distinct du commercial) */}
+          <div className="flex items-center gap-2">
+            <button onClick={goPrevMonth} className="btn-ghost btn-sm" aria-label="Mois précédent">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="text-base font-semibold text-gray-900 min-w-[150px] text-center">
+              {MONTHS[month - 1]} {year}
+            </div>
+            <button onClick={goNextMonth} className="btn-ghost btn-sm" aria-label="Mois suivant">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <select
+              className="select w-auto ml-2"
+              value={year}
+              onChange={(e) => {
+                if (!confirmDiscardIfDirty()) return;
+                setYear(Number(e.target.value));
+              }}
+              aria-label="Année"
+            >
+              {YEAR_OPTIONS.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ZONE SUIVI — grille de cartes (l'essentiel, en consultation) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {METRICS.map((m) => (
+              <MetricCard
+                key={m.key}
+                label={m.label}
+                hint={m.hint}
+                unit={m.unit}
+                realizedVal={realized[m.key]}
+                target={currentGoal?.[m.key]?.target ?? null}
+                autoVal={auto[m.key]}
+                overridden={currentGoal?.[m.key]?.override != null}
+              />
+            ))}
+          </div>
+
+          {/* ZONE SAISIE — repliable (édition en dessous de la consultation) */}
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-200">
+              <button
+                onClick={() => setEditOpen((o) => !o)}
+                className="flex items-center gap-2 text-left"
+                aria-expanded={editOpen}
+              >
+                {editOpen ? (
+                  <ChevronUp className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                )}
+                <span className="text-sm font-semibold text-gray-900">Définir les objectifs</span>
+                <span className="text-xs text-gray-400">
+                  — {MONTHS[month - 1]} {year}
+                </span>
+              </button>
+              <button
+                onClick={handleSave}
+                className={`btn-primary btn-sm ${dirty ? 'animate-pulse' : ''}`}
+                disabled={!dirty}
+              >
+                <Save className="w-4 h-4" /> Enregistrer
+              </button>
+            </div>
+
+            {editOpen && (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-2.5 text-left font-medium text-gray-600">Indicateur</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-48">Objectif</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-48">
+                      Correction manuelle
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {METRICS.map((m) => (
+                    <tr key={m.key} className="border-b border-gray-100 hover:bg-gray-50/50">
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-700">{m.label}</div>
+                        <div className="text-[11px] text-gray-400">{m.hint}</div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1 justify-end">
+                          <input
+                            className={INPUT_CLS}
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            value={metricValue(m.key, 'target')}
+                            onChange={(e) => updateMetric(m.key, 'target', e.target.value)}
+                            placeholder="—"
+                          />
+                          {m.unit && <span className="text-gray-400 text-xs w-3">{m.unit}</span>}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1 justify-end">
+                          <input
+                            className={INPUT_CLS}
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            value={metricValue(m.key, 'override')}
+                            onChange={(e) => updateMetric(m.key, 'override', e.target.value)}
+                            placeholder={formatValue(auto[m.key], m.unit)}
+                          />
+                          {m.unit && <span className="text-gray-400 text-xs w-3">{m.unit}</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
