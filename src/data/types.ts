@@ -144,6 +144,31 @@ export interface CalendarEvent {
   note?: string;
 }
 
+/**
+ * Objectif d'un commercial pour un mois (lot page-objectifs-commerciaux).
+ * Chaque indicateur porte une CIBLE (`target`) et un OVERRIDE manuel facultatif
+ * du realise (`override`) : quand `override` est renseigne il PRIME sur le calcul
+ * automatique ; a null, le realise est compte automatiquement (lib/goals) et
+ * n'est jamais persiste -> toujours a jour. Entite isolee, pensee pour un
+ * rebranchement backend (seule la SOURCE des donnees changera).
+ */
+export interface GoalMetric {
+  target: number | null;     // objectif (cible) ; null = pas d'objectif fixe
+  override: number | null;   // realise saisi a la main ; null = realise automatique
+}
+
+export interface CommercialGoal {
+  id: string;
+  commercialId: string;
+  year: number;
+  month: number;             // 1..12 (objectifs mensuels)
+  calls: GoalMetric;         // appels (ActionType 'appel')
+  followups: GoalMetric;     // relances ('relance' + 'email' + 'sms' + 'whatsapp')
+  meetings: GoalMetric;      // RDV/visites ('rdv' + 'visite')
+  revenue: GoalMetric;       // CA signe (somme quoteAmount ?? budget), en EUR
+  conversionRate: GoalMetric; // taux de transformation, en %
+}
+
 export interface AppState {
   leads: Lead[];
   actions: LeadAction[];
@@ -155,4 +180,7 @@ export interface AppState {
   // Evenements d'agenda non lies aux leads (v3.13). Absent des anciens states
   // -> hydrate en [] (migration nulle, voir getInitialState).
   calendarEvents: CalendarEvent[];
+  // Objectifs commerciaux mensuels (lot objectifs). Absent des anciens states
+  // -> hydrate en [] (migration nulle, voir getInitialState).
+  goals: CommercialGoal[];
 }

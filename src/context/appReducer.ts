@@ -1,4 +1,4 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal } from '../data/types';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -27,7 +27,8 @@ export type Action =
   | { type: 'DELETE_TEMPLATE'; payload: string }
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
-  | { type: 'DELETE_CALENDAR_EVENT'; payload: string };
+  | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
+  | { type: 'SAVE_GOALS'; payload: CommercialGoal[] };
 
 /**
  * Migration templates : double lecture (champ `templates` actuel, OU champ
@@ -74,6 +75,8 @@ export function getInitialState(): AppState {
       templates: hydrateTemplates(stored),
       // Migration v3.13 : tableau absent des anciens states -> [] (aucune perte).
       calendarEvents: stored.calendarEvents ?? [],
+      // Migration objectifs : tableau absent des anciens states -> [] (nulle).
+      goals: stored.goals ?? [],
     };
   }
 
@@ -88,6 +91,7 @@ export function getInitialState(): AppState {
     monthlyStats: [],
     templates: DEFAULT_TEMPLATES,
     calendarEvents: [],
+    goals: [],
   };
 }
 
@@ -210,6 +214,9 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SAVE_MONTHLY_STATS':
       return { ...state, monthlyStats: action.payload };
+
+    case 'SAVE_GOALS':
+      return { ...state, goals: action.payload };
 
     case 'ADD_COMMERCIAL':
       return { ...state, commercials: [...state.commercials, action.payload] };
