@@ -39,12 +39,20 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
     lossReason: lead?.lossReason ?? '',
   });
 
+  // Source desormais OBLIGATOIRE a la creation (au moins en saisie manuelle).
+  // Validation unique dans handleSubmit -> couvre les 2 rendus (rapide/complet).
+  const [sourceError, setSourceError] = useState(false);
+
   const update = (field: string, value: string | number | null) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.source) {
+      setSourceError(true);
+      return;
+    }
     onSave({
       ...form,
       createdAt: lead?.createdAt ?? toISODate(new Date()),
@@ -82,11 +90,16 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="label">Source</label>
-            <select className="select" value={form.source} onChange={e => update('source', e.target.value)}>
+            <label className="label">Source *</label>
+            <select
+              className={`select ${sourceError ? 'border-danger-500' : ''}`}
+              value={form.source}
+              onChange={e => { update('source', e.target.value); if (e.target.value) setSourceError(false); }}
+            >
               <option value="">--</option>
               {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}
           </div>
           <div>
             <label className="label">Commercial *</label>
@@ -177,11 +190,16 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label className="label">Source</label>
-          <select className="select" value={form.source} onChange={e => update('source', e.target.value)}>
+          <label className="label">Source *</label>
+          <select
+            className={`select ${sourceError ? 'border-danger-500' : ''}`}
+            value={form.source}
+            onChange={e => { update('source', e.target.value); if (e.target.value) setSourceError(false); }}
+          >
             <option value="">--</option>
             {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}
         </div>
         <div>
           <label className="label">Commercial *</label>

@@ -83,6 +83,21 @@ export const SOURCES = [
   'Salon PRS',
   'Band of Boats',
   'Beneteau',
+  'Démarchage terrain',
+  'Recommandation',
+];
+
+// Sources de PROSPECTION ACTIVE (le commercial va chercher le lead) — par
+// opposition au flux entrant. Source de verite unique du classement, sur
+// laquelle `countLeadsCreated` (lib/goals) filtre l'objectif « leads rentres ».
+// INVARIANT : sous-ensemble de SOURCES (verifie au harnais goals).
+export const PROSPECTION_SOURCES = [
+  'Passage',
+  'Salon GP',
+  'Salon CAN',
+  'Salon PRS',
+  'Démarchage terrain',
+  'Recommandation',
 ];
 
 export const MONTHLY_STAT_SOURCES = [
