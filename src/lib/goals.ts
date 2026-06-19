@@ -1,4 +1,5 @@
 import type { Lead, LeadAction, ActionType, CommercialGoal } from '../data/types';
+import { PROSPECTION_SOURCES } from '../data/constants';
 
 /**
  * Logique PURE des objectifs commerciaux (lot page-objectifs-commerciaux).
@@ -13,10 +14,10 @@ import type { Lead, LeadAction, ActionType, CommercialGoal } from '../data/types
  */
 
 // Mapping ActionType -> indicateur (tranche avec Nicolas).
-export const CALL_TYPES: ActionType[] = ['appel'];
-// Toute relance compte, y compris par message (chez Ocean Boat la relance passe
-// beaucoup par email/sms/whatsapp ; le strict laisserait l'indicateur vide).
-export const FOLLOWUP_TYPES: ActionType[] = ['relance', 'email', 'sms', 'whatsapp'];
+// RELANCES = TOUT recontact d'un lead existant : appel + relance + message
+// (email/sms/whatsapp). UN SEUL compteur -> pas de ligne « appels » separee, pas
+// de double comptage. L'appel rejoint donc les relances.
+export const FOLLOWUP_TYPES: ActionType[] = ['appel', 'relance', 'email', 'sms', 'whatsapp'];
 export const MEETING_TYPES: ActionType[] = ['rdv', 'visite'];
 
 function monthPrefix(year: number, month: number): string {
@@ -82,11 +83,35 @@ export function conversionRate(
   return Math.round((signed / denom) * 1000) / 10;
 }
 
+// Sources de prospection active (Set pour un test d'appartenance O(1)).
+const PROSPECTION_SOURCE_SET = new Set<string>(PROSPECTION_SOURCES);
+
+/**
+ * Leads RENTRES dans le mois par PROSPECTION ACTIVE : crees par ce commercial
+ * (createdAt du mois) ET dont la source est une source de prospection
+ * (PROSPECTION_SOURCES). Le flux entrant (site, annonces, apporteurs…) et les
+ * leads sans source ne comptent pas.
+ */
+export function countLeadsCreated(
+  leads: Lead[],
+  commercialId: string,
+  year: number,
+  month: number,
+): number {
+  return leads.filter(
+    (l) =>
+      l.commercialId === commercialId &&
+      PROSPECTION_SOURCE_SET.has(l.source) &&
+      isInMonth(l.createdAt, year, month),
+  ).length;
+}
+
 export interface GoalRealized {
-  calls: number;
-  followups: number;
-  meetings: number;
-  revenue: number;
+  prospectsCreated: number;   // leads rentres (auto)
+  coldCalls: number;          // appels a froid (manuel : aucune source auto -> 0)
+  followups: number;          // relances (appel + relance + email + sms + whatsapp)
+  meetings: number;           // rdv + visite
+  revenue: number;            // CA signe
   conversionRate: number | null;
 }
 
@@ -99,7 +124,8 @@ export function computeAutoRealized(
   month: number,
 ): GoalRealized {
   return {
-    calls: countActions(actions, commercialId, year, month, CALL_TYPES),
+    prospectsCreated: countLeadsCreated(leads, commercialId, year, month),
+    coldCalls: 0, // pas de source auto (le prospect demarche n'est pas en base) -> saisi via override
     followups: countActions(actions, commercialId, year, month, FOLLOWUP_TYPES),
     meetings: countActions(actions, commercialId, year, month, MEETING_TYPES),
     revenue: sumSignedRevenue(leads, commercialId, year, month),
@@ -118,7 +144,9 @@ function pickOverride(auto: number | null, metric: { override: number | null } |
  */
 export function applyOverrides(auto: GoalRealized, goal: CommercialGoal | undefined): GoalRealized {
   return {
-    calls: pickOverride(auto.calls, goal?.calls) ?? 0,
+    prospectsCreated: pickOverride(auto.prospectsCreated, goal?.prospectsCreated) ?? 0,
+    // coldCalls : realise PUREMENT manuel -> override ; a defaut 0 (auto = 0).
+    coldCalls: pickOverride(auto.coldCalls, goal?.coldCalls) ?? 0,
     followups: pickOverride(auto.followups, goal?.followups) ?? 0,
     meetings: pickOverride(auto.meetings, goal?.meetings) ?? 0,
     revenue: pickOverride(auto.revenue, goal?.revenue) ?? 0,

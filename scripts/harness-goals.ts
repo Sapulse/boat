@@ -17,17 +17,18 @@
 import {
   isInMonth,
   countActions,
+  countLeadsCreated,
   sumSignedRevenue,
   conversionRate,
   computeAutoRealized,
   applyOverrides,
   progressPct,
   progressLevel,
-  CALL_TYPES,
   FOLLOWUP_TYPES,
   MEETING_TYPES,
 } from '../src/lib/goals';
 import type { Lead, LeadAction, CommercialGoal, GoalMetric, GoalRealized } from '../src/data/types';
+import { SOURCES, PROSPECTION_SOURCES } from '../src/data/constants';
 
 let passed = 0;
 let failed = 0;
@@ -66,7 +67,8 @@ function metric(target: number | null = null, override: number | null = null): G
 function makeGoal(over: Partial<CommercialGoal> = {}): CommercialGoal {
   return {
     id: 'g', commercialId: 'fred', year: 2026, month: 6,
-    calls: metric(), followups: metric(), meetings: metric(), revenue: metric(), conversionRate: metric(),
+    prospectsCreated: metric(), coldCalls: metric(),
+    followups: metric(), meetings: metric(), revenue: metric(), conversionRate: metric(),
     ...over,
   };
 }
@@ -79,9 +81,13 @@ section('isInMonth — comparaison chaine "YYYY-MM"');
   check('autre mois -> false', isInMonth('2026-07-01', 2026, 6) === false);
   check('autre annee -> false', isInMonth('2025-06-10', 2026, 6) === false);
   check('vide / null -> false', isInMonth('', 2026, 6) === false && isInMonth(null, 2026, 6) === false);
-  check('mapping types figes', CALL_TYPES.join() === 'appel'
-    && FOLLOWUP_TYPES.join() === 'relance,email,sms,whatsapp'
+  check('mapping types figes (appel fondu dans relances)',
+    FOLLOWUP_TYPES.join() === 'appel,relance,email,sms,whatsapp'
     && MEETING_TYPES.join() === 'rdv,visite');
+  // Invariant : toute source de prospection doit exister dans SOURCES (anti-typo).
+  check('PROSPECTION_SOURCES ⊆ SOURCES',
+    PROSPECTION_SOURCES.every((s) => SOURCES.includes(s)),
+    PROSPECTION_SOURCES.filter((s) => !SOURCES.includes(s)).join() || 'ok');
 }
 
 // ---------------------------------------------------------------------------
@@ -101,13 +107,34 @@ section('countActions — par type / commercial / mois');
     act({ type: 'devis' }),                      // ne compte nulle part
     act({ type: 'note' }),                        // ne compte nulle part
   ];
-  check('appels = 2 (fred, juin, type appel)', countActions(actions, 'fred', 2026, 6, CALL_TYPES) === 2,
-    `${countActions(actions, 'fred', 2026, 6, CALL_TYPES)}`);
-  check('relances = 4 (relance+email+sms+whatsapp)', countActions(actions, 'fred', 2026, 6, FOLLOWUP_TYPES) === 4,
+  check('relances = 6 (appel + relance + email + sms + whatsapp, appel INCLUS)',
+    countActions(actions, 'fred', 2026, 6, FOLLOWUP_TYPES) === 6,
     `${countActions(actions, 'fred', 2026, 6, FOLLOWUP_TYPES)}`);
   check('RDV/visites = 2', countActions(actions, 'fred', 2026, 6, MEETING_TYPES) === 2);
   check('devis/note exclus des indicateurs', countActions(actions, 'fred', 2026, 6, ['appel', 'relance', 'email', 'sms', 'whatsapp', 'rdv', 'visite']) === 8);
-  check('autre commercial isole', countActions(actions, 'tom', 2026, 6, CALL_TYPES) === 1);
+  check('autre commercial isole (1 appel tom -> 1 relance)', countActions(actions, 'tom', 2026, 6, FOLLOWUP_TYPES) === 1);
+}
+
+// ---------------------------------------------------------------------------
+section('countLeadsCreated — leads rentrés par PROSPECTION ACTIVE (source filtrée)');
+{
+  const leads: Lead[] = [
+    makeLead({ createdAt: '2026-06-03', source: 'Passage' }),            // prospection ✓
+    makeLead({ createdAt: '2026-06-28', source: 'Démarchage terrain' }), // prospection ✓
+    makeLead({ createdAt: '2026-06-15', source: 'LBC' }),                // flux entrant -> exclu
+    makeLead({ createdAt: '2026-06-12', source: '' }),                   // sans source -> exclu
+    makeLead({ createdAt: '2026-05-31', source: 'Salon GP' }),           // prospection mais autre mois
+    makeLead({ createdAt: '2026-06-10', source: 'Recommandation', commercialId: 'tom' }), // autre commercial
+  ];
+  check('fred : 2 leads de prospection en juin (Passage + Démarchage)',
+    countLeadsCreated(leads, 'fred', 2026, 6) === 2, `${countLeadsCreated(leads, 'fred', 2026, 6)}`);
+  check('flux entrant (LBC) exclu',
+    countLeadsCreated([makeLead({ createdAt: '2026-06-01', source: 'LBC' })], 'fred', 2026, 6) === 0);
+  check('sans source exclu',
+    countLeadsCreated([makeLead({ createdAt: '2026-06-01', source: '' })], 'fred', 2026, 6) === 0);
+  check('tom isolé (1 lead Recommandation)', countLeadsCreated(leads, 'tom', 2026, 6) === 1);
+  check('Salon GP de mai ne compte pas en juin (mais bien en mai)',
+    countLeadsCreated(leads, 'fred', 2026, 5) === 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,23 +172,27 @@ section('conversionRate — signes/(signes+perdus) sur dates terminales du mois'
 // ---------------------------------------------------------------------------
 section('computeAutoRealized + applyOverrides (override prime)');
 {
+  // 1 lead signé (créé en juin par prospection) + 2 recontacts (appel + relance).
   const actions: LeadAction[] = [act({ type: 'appel' }), act({ type: 'relance' })];
-  const leads: Lead[] = [makeLead({ status: 'signe', signedAt: '2026-06-10', quoteAmount: 12000 })];
+  const leads: Lead[] = [makeLead({ status: 'signe', signedAt: '2026-06-10', quoteAmount: 12000, source: 'Passage' })];
   const auto = computeAutoRealized(actions, leads, 'fred', 2026, 6);
-  check('auto.calls = 1', auto.calls === 1);
-  check('auto.followups = 1', auto.followups === 1);
+  check('auto.prospectsCreated = 1 (lead de prospection créé en juin)', auto.prospectsCreated === 1);
+  check('auto.coldCalls = 0 (manuel : aucune source auto)', auto.coldCalls === 0);
+  check('auto.followups = 2 (appel + relance)', auto.followups === 2);
   check('auto.revenue = 12000', auto.revenue === 12000);
   check('auto.conversionRate = 100', auto.conversionRate === 100);
 
-  // override sur calls : prime sur l'auto ; les autres restent auto.
-  const g = makeGoal({ calls: metric(40, 35) });
+  // coldCalls = réalisé PUREMENT manuel via override ; followups override prime.
+  const g = makeGoal({ coldCalls: metric(50, 35), followups: metric(40, 28) });
   const eff = applyOverrides(auto, g);
-  check('override calls prime (35 au lieu de 1)', eff.calls === 35);
-  check('followups reste auto (1)', eff.followups === 1);
+  check('coldCalls = override (35, réalisé manuel)', eff.coldCalls === 35);
+  check('followups override prime (28 au lieu de 2)', eff.followups === 28);
+  check('prospectsCreated reste auto (1)', eff.prospectsCreated === 1);
 
-  // override null -> auto ; goal absent -> auto.
-  check('override null -> auto', applyOverrides(auto, makeGoal({ calls: metric(40, null) })).calls === 1);
-  check('goal absent -> auto', applyOverrides(auto, undefined).calls === 1);
+  // override null -> auto ; goal absent -> auto ; coldCalls sans saisie -> 0.
+  check('override null -> auto', applyOverrides(auto, makeGoal({ followups: metric(40, null) })).followups === 2);
+  check('goal absent -> auto', applyOverrides(auto, undefined).followups === 2);
+  check('coldCalls sans override -> 0', applyOverrides(auto, undefined).coldCalls === 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,9 +210,9 @@ section('progressPct + progressLevel (vert>=100 / orange>=70 / rouge<70)');
   check('pas d\'objectif -> null', progressLevel(null) === null);
 
   // chaine de bout en bout sur un realise type GoalRealized
-  const r: GoalRealized = { calls: 30, followups: 10, meetings: 4, revenue: 50000, conversionRate: 40 };
-  check('bout-en-bout : 30 appels / cible 40 -> 75% orange',
-    progressLevel(progressPct(r.calls, 40)) === 'orange');
+  const r: GoalRealized = { prospectsCreated: 5, coldCalls: 12, followups: 30, meetings: 4, revenue: 50000, conversionRate: 40 };
+  check('bout-en-bout : 30 relances / cible 40 -> 75% orange',
+    progressLevel(progressPct(r.followups, 40)) === 'orange');
 }
 
 // ---------------------------------------------------------------------------

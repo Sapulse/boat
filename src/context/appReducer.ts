@@ -1,4 +1,4 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric } from '../data/types';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -49,6 +49,46 @@ function hydrateTemplates(stored: AppState): MessageTemplate[] {
   return raw.map(t => ({ ...t, type: t.type === 'sms' ? 'sms' : t.type === 'whatsapp' ? 'whatsapp' : 'email' }));
 }
 
+// Forme historique d'un goal (avant le lot objectifs-prospection) : pouvait
+// porter `calls` et NE PAS porter `prospectsCreated` / `coldCalls`.
+type StoredGoal = {
+  id: string;
+  commercialId: string;
+  year: number;
+  month: number;
+  prospectsCreated?: GoalMetric;
+  coldCalls?: GoalMetric;
+  followups?: GoalMetric;
+  meetings?: GoalMetric;
+  revenue?: GoalMetric;
+  conversionRate?: GoalMetric;
+  calls?: GoalMetric; // legacy (objectif d'appels seuls) -> abandonne proprement
+};
+
+/**
+ * Migration objectifs-prospection : on retire l'ancien metric `calls` (les appels
+ * rejoignent `followups`) et on garantit les nouveaux metrics `prospectsCreated`
+ * et `coldCalls`. Les anciennes cibles `calls` ne sont PAS reportees (les sommer
+ * dans followups serait faux) ; les autres metrics restent intacts. Sans perte
+ * sur ce qui est conserve, STORAGE_KEY intouchee.
+ */
+function hydrateGoals(stored: AppState): CommercialGoal[] {
+  const empty = (): GoalMetric => ({ target: null, override: null });
+  const raw = (stored.goals ?? []) as unknown as StoredGoal[];
+  return raw.map((g) => ({
+    id: g.id,
+    commercialId: g.commercialId,
+    year: g.year,
+    month: g.month,
+    prospectsCreated: g.prospectsCreated ?? empty(),
+    coldCalls: g.coldCalls ?? empty(),
+    followups: g.followups ?? empty(),
+    meetings: g.meetings ?? empty(),
+    revenue: g.revenue ?? empty(),
+    conversionRate: g.conversionRate ?? empty(),
+  }));
+}
+
 export function getInitialState(): AppState {
   const stored = loadState();
   // Restauration des qu'un state existe (meme avec 0 lead) : la base ne demarre
@@ -75,8 +115,9 @@ export function getInitialState(): AppState {
       templates: hydrateTemplates(stored),
       // Migration v3.13 : tableau absent des anciens states -> [] (aucune perte).
       calendarEvents: stored.calendarEvents ?? [],
-      // Migration objectifs : tableau absent des anciens states -> [] (nulle).
-      goals: stored.goals ?? [],
+      // Migration objectifs : tableau absent -> [] ; sinon normalise (retrait
+      // `calls`, ajout prospectsCreated/coldCalls) via hydrateGoals.
+      goals: hydrateGoals(stored),
     };
   }
 

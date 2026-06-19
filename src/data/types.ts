@@ -162,9 +162,13 @@ export interface CommercialGoal {
   commercialId: string;
   year: number;
   month: number;             // 1..12 (objectifs mensuels)
-  calls: GoalMetric;         // appels (ActionType 'appel')
-  followups: GoalMetric;     // relances ('relance' + 'email' + 'sms' + 'whatsapp')
+  // Prospection
+  prospectsCreated: GoalMetric; // leads rentres (auto : createdAt du mois)
+  coldCalls: GoalMetric;        // appels a froid (manuel : realise saisi via override)
+  // Suivi
+  followups: GoalMetric;     // relances (appel + relance + email + sms + whatsapp)
   meetings: GoalMetric;      // RDV/visites ('rdv' + 'visite')
+  // Resultat
   revenue: GoalMetric;       // CA signe (somme quoteAmount ?? budget), en EUR
   conversionRate: GoalMetric; // taux de transformation, en %
 }
