@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,30 +15,52 @@ import {
   Mail,
   Download,
   X,
+  ChevronDown,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import logo from '../../assets/logo.png';
 
 type NavItem = { name: string; href: string; icon: LucideIcon };
+type NavSection = { id: string; label: string; defaultOpen: boolean; items: NavItem[] };
 
-const mainNav: NavItem[] = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Leads / Prospects', href: '/leads', icon: Users },
-  { name: 'Clients', href: '/clients', icon: UserCheck },
-  { name: 'Pipeline', href: '/pipeline', icon: Kanban },
-  { name: 'À relancer', href: '/relances', icon: CalendarClock },
-  { name: 'Agenda', href: '/agenda', icon: CalendarDays },
-  { name: 'Performance', href: '/performance', icon: BarChart3 },
-  { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
-  { name: 'Objectifs', href: '/objectifs', icon: Target },
-  { name: 'Espace commercial', href: '/espace-commercial', icon: CircleUser },
-];
-
-const settingsNav: NavItem[] = [
-  { name: 'Équipe', href: '/equipe', icon: UsersRound },
-  { name: 'Modèles', href: '/templates', icon: Mail },
-  { name: 'Exports', href: '/exports', icon: Download },
+// Menu organisé en sections repliables. L'ordre des items reflète l'usage par rôle.
+const sections: NavSection[] = [
+  {
+    id: 'pilotage',
+    label: 'Pilotage',
+    defaultOpen: true,
+    items: [
+      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+      { name: 'Performance', href: '/performance', icon: BarChart3 },
+      { name: 'Objectifs', href: '/objectifs', icon: Target },
+      { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
+    ],
+  },
+  {
+    id: 'commercial',
+    label: 'Commercial',
+    defaultOpen: true,
+    items: [
+      { name: 'Espace commercial', href: '/espace-commercial', icon: CircleUser },
+      { name: 'Leads / Prospects', href: '/leads', icon: Users },
+      { name: 'Clients', href: '/clients', icon: UserCheck },
+      { name: 'Pipeline', href: '/pipeline', icon: Kanban },
+      { name: 'À relancer', href: '/relances', icon: CalendarClock },
+      { name: 'Agenda', href: '/agenda', icon: CalendarDays },
+    ],
+  },
+  {
+    id: 'parametres',
+    label: 'Paramètres',
+    defaultOpen: false,
+    items: [
+      { name: 'Équipe', href: '/equipe', icon: UsersRound },
+      { name: 'Modèles', href: '/templates', icon: Mail },
+      { name: 'Exports', href: '/exports', icon: Download },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -46,6 +69,13 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
+  // Repli/déplié par SESSION (pas de persistance) : repart du défaut au chargement.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(sections.map((s) => [s.id, s.defaultOpen]))
+  );
+  const toggleSection = (id: string) =>
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+
   const renderItem = (item: NavItem) => (
     <NavLink
       key={item.href}
@@ -89,17 +119,27 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {mainNav.map(renderItem)}
-
-          <div className="pt-4 mt-2 border-t border-white/10">
-            <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Paramètres
-            </p>
-            <div className="space-y-1">
-              {settingsNav.map(renderItem)}
-            </div>
-          </div>
+        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
+          {sections.map((section) => {
+            const isOpen = openSections[section.id];
+            return (
+              <div key={section.id}>
+                <button
+                  onClick={() => toggleSection(section.id)}
+                  aria-expanded={isOpen}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  {section.label}
+                  {isOpen ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </button>
+                {isOpen && <div className="space-y-1 mt-1">{section.items.map(renderItem)}</div>}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="px-4 py-4 border-t border-white/10">
