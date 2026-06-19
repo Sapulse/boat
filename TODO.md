@@ -9,29 +9,25 @@ déploiement auto) → tag annoté. Commits sémantiques.
 
 ---
 
-## 🚧 EN COURS — lot `objectifs-prospection` (cible `v3.16.0`)
+## 🚧 EN COURS — lot `espace-commercial` (cible `v3.17.0`)
 
-Faire évoluer les Objectifs vers **6 indicateurs en 3 familles** + **auto-log de l'appel**.
-Branche `objectifs-prospection`. **Tenu à jour à chaque étape.**
+Page de **synthèse par commercial** (Objectifs + Performances + Pipeline + Agenda) :
+agrège et filtre l'existant, **aucune logique métier nouvelle**. Branche `espace-commercial`.
 
-- [x] **Étape 1** — modèle : `CommercialGoal` (−`calls`, +`prospectsCreated`, +`coldCalls`),
-  `FOLLOWUP_TYPES += 'appel'` (un seul compteur recontact), `countLeadsCreated`, `hydrateGoals`
-  (migration nulle ; anciennes cibles `calls` abandonnées proprement). Harnais goals.
-- [x] **Étape 1bis** — sources : `SOURCES += 'Démarchage terrain' / 'Recommandation'`,
-  `PROSPECTION_SOURCES` (source de vérité du classement prospection vs flux entrant),
-  `countLeadsCreated` **filtré** dessus, **source OBLIGATOIRE** à la création (LeadForm, 2 rendus).
-  Assertion harnais `PROSPECTION_SOURCES ⊆ SOURCES`.
-- [x] **Étape 2** — auto-log appel : helper pur `buildCommunicationAction` (`lib/communication`)
-  + **factorisation** des 3 handlers email/SMS/WhatsApp (comportement identique — reducer
-  197 inchangé) + clic « Appeler » loggué (LeadDetailPage + LeadsPage, `addAction` câblé).
-  Harnais dédié `harness-communication` (14).
-- [x] **Étape 3** — UI : 6 cartes regroupées par 3 familles (Prospection / Suivi / Résultat,
-  sous-titres de section) + carte « Appels à froid » avec **saisie du réalisé** dans la carte
-  (manuel via override ; rappel « auto » masqué). Rendu uniquement, harnais inchangés (389).
-- [x] **Merge `v3.16.0`** : ff-only → main, CHANGELOG, tag annoté.
+- [x] **Étape 1** — coquille : page + sélecteurs commercial/mois-année + en-tête + bandeau
+  démo + route `/espace-commercial` + entrée menu. Extraction de `CommercialHeader` (partagé).
+- [x] **Étape 2** — extraction `MetricCard` (+ mode `compact`) & `metricsConfig` partagés ;
+  bloc **Objectifs** (6 indicateurs condensés, lecture seule) + bloc **Performances** (CA signé
+  + taux de transfo du mois via `lib/goals`). `ObjectifsPage` refactorisée (iso-comportement).
+- [x] **Étape 3** — bloc **Pipeline** (compteurs par statut + leads chauds, état courant) +
+  bloc **Agenda** (prochaines actions via `buildAgendaEvents` + `calendarEvents` du commercial).
+- [x] **Merge `v3.17.0`** : ff-only → main, CHANGELOG, tag annoté.
 
-⚠️ **Point de vigilance — « Recommandation »** : classée en source de **prospection active**
-aujourd'hui, mais **discutable** (une recommandation est souvent un flux entrant non sollicité).
+✅ Lot précédent `objectifs-prospection` livré en **v3.16.0** (6 indicateurs / 3 familles,
+filtre prospection par source, source obligatoire, auto-log appel).
+
+⚠️ **Point de vigilance — « Recommandation »** (issu de v3.16.0) : classée en source de
+**prospection active** aujourd'hui, mais **discutable** (souvent un flux entrant non sollicité).
 **Rebasculable en flux entrant** en retirant la valeur de `PROSPECTION_SOURCES` (un seul endroit,
 sans migration). À confirmer avec Nicolas/Mickaël.
 
