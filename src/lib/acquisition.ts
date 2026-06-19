@@ -21,6 +21,34 @@ export function computeCpl(budget: number | null, leads: number | null): number 
   return Math.round(budget / leads);
 }
 
+export interface AcquisitionTotals {
+  totalBudget: number;
+  totalLeads: number;   // toutes sources confondues (volume)
+  paidLeads: number;    // leads des regies seulement (denominateur du CPL)
+  cpl: number | null;   // budget total / leads payants (DERIVE)
+}
+
+/**
+ * Totaux d'un ensemble de lignes (un mois affiche). Logique PURE.
+ *
+ * CPL moyen = budget total / leads PAYANTS (regies). Les leads des plateformes
+ * d'annonces gonflent le volume (totalLeads) mais ne doivent PAS diluer le CPL
+ * (pas de budget en face) -> on les exclut du denominateur via `paid`.
+ */
+export function acquisitionTotals(
+  rows: { budget: number | null; leads: number | null; paid?: boolean }[],
+): AcquisitionTotals {
+  let totalBudget = 0;
+  let totalLeads = 0;
+  let paidLeads = 0;
+  for (const r of rows) {
+    totalBudget += r.budget ?? 0;
+    totalLeads += r.leads ?? 0;
+    if (r.paid) paidLeads += r.leads ?? 0;
+  }
+  return { totalBudget, totalLeads, paidLeads, cpl: computeCpl(totalBudget, paidLeads) };
+}
+
 /**
  * Fusionne `acquisitionVolumes` dans `monthlyStats`.
  *

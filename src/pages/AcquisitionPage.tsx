@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Save, DollarSign, Users, TrendingDown } from 'lucide-react';
+import { useState, useMemo, type ReactNode } from 'react';
+import { Save, DollarSign, Users, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -14,8 +14,9 @@ import {
 import { useApp } from '../context/useApp';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, MONTHS } from '../data/constants';
+import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, ACQUISITION_SOURCES_ALL, MONTHS } from '../data/constants';
 import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
+import { computeCpl, acquisitionTotals } from '../lib/acquisition';
 import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 import type { MonthlyStat, AcquisitionVolume } from '../data/types';
 
@@ -537,62 +538,99 @@ function VolumesTab() {
 // Tab 3 — Saisie mensuelle
 // ---------------------------------------------------------------------------
 
+// Champ de saisie numerique (budget / leads) — confortable, aligne a droite.
+const ACQ_INPUT_CLS =
+  'w-full text-right border border-gray-200 rounded px-2 py-1.5 text-sm ' +
+  'focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none';
+
+// Petite carte de total (budget / leads / CPL du mois affiche).
+function TotalCard({
+  label,
+  value,
+  icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  tone: 'primary' | 'success' | 'warning';
+}) {
+  const toneCls =
+    tone === 'primary'
+      ? 'text-primary-600'
+      : tone === 'success'
+        ? 'text-success-600'
+        : 'text-warning-600';
+  return (
+    <div className="card p-5">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-500">{label}</p>
+          <p className={`text-2xl font-bold mt-1 ${toneCls}`}>{value}</p>
+        </div>
+        <div className={`p-2.5 rounded-lg bg-gray-50 ${toneCls}`}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+
 function SaisieTab() {
   const { state, saveMonthlyStats } = useApp();
+  const now = new Date();
   const [year, setYear] = useState(CURRENT_YEAR);
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [stats, setStats] = useState<MonthlyStat[]>(state.monthlyStats);
   const [dirty, setDirty] = useState(false);
 
-  const getStatValue = useCallback(
-    (source: string, month: number, field: 'budget' | 'leads'): string => {
-      const stat = stats.find(
-        (s) => s.year === year && s.month === month && s.source === source
-      );
-      if (!stat) return '';
-      const val = stat[field];
-      return val !== null && val !== undefined ? String(val) : '';
-    },
-    [stats, year]
-  );
+  // Saisie centree sur le (mois, annee) selectionne -> plus de grille 12 mois.
+  const findStat = (source: string) =>
+    stats.find((s) => s.year === year && s.month === month && s.source === source);
 
-  const getCpl = useCallback(
-    (source: string, month: number): number | null => {
-      const stat = stats.find(
-        (s) => s.year === year && s.month === month && s.source === source
-      );
-      return stat?.cpl ?? null;
-    },
-    [stats, year]
-  );
+  const fieldValue = (source: string, field: 'budget' | 'leads'): string => {
+    const v = findStat(source)?.[field];
+    return v !== null && v !== undefined ? String(v) : '';
+  };
 
-  const updateStat = (
-    source: string,
-    month: number,
-    field: 'budget' | 'leads',
-    value: string
-  ) => {
+  const updateField = (source: string, field: 'budget' | 'leads', value: string) => {
     setDirty(true);
     const numVal = value === '' ? null : Number(value);
-    const idx = stats.findIndex(
-      (s) => s.year === year && s.month === month && s.source === source
-    );
-    if (idx >= 0) {
-      const updated = [...stats];
-      const stat = { ...updated[idx], [field]: numVal };
-      stat.cpl =
-        stat.leads && stat.leads > 0 && stat.budget
-          ? Math.round(stat.budget / stat.leads)
-          : null;
-      updated[idx] = stat;
-      setStats(updated);
-    } else {
+    setStats((prev) => {
+      const idx = prev.findIndex(
+        (s) => s.year === year && s.month === month && s.source === source
+      );
+      if (idx >= 0) {
+        const updated = [...prev];
+        const stat = { ...updated[idx], [field]: numVal };
+        // CPL DERIVE (computeCpl). Le champ legacy `cpl` est garde EN PHASE le
+        // temps que les lecteurs restants (dashboard/exports) migrent -> retire
+        // en etape 3. Plus aucun calcul de CPL en dur ici.
+        stat.cpl = computeCpl(stat.budget, stat.leads);
+        updated[idx] = stat;
+        return updated;
+      }
       const budget = field === 'budget' ? numVal : null;
       const leads = field === 'leads' ? numVal : null;
-      const cpl = leads && leads > 0 && budget ? Math.round(budget / leads) : null;
-      setStats((prev) => [
+      return [
         ...prev,
-        { id: generateId(), year, month, source, budget, leads, cpl },
-      ]);
+        { id: generateId(), year, month, source, budget, leads, cpl: computeCpl(budget, leads) },
+      ];
+    });
+  };
+
+  const goPrevMonth = () => {
+    if (month === 1) {
+      setMonth(12);
+      setYear((y) => y - 1);
+    } else {
+      setMonth((m) => m - 1);
+    }
+  };
+  const goNextMonth = () => {
+    if (month === 12) {
+      setMonth(1);
+      setYear((y) => y + 1);
+    } else {
+      setMonth((m) => m + 1);
     }
   };
 
@@ -601,21 +639,51 @@ function SaisieTab() {
     setDirty(false);
   };
 
+  // Totaux du mois affiche (logique PURE, cf. lib/acquisition + harnais).
+  const totals = useMemo(() => {
+    const rows = ACQUISITION_SOURCES_ALL.map((src) => {
+      const st = stats.find(
+        (s) => s.year === year && s.month === month && s.source === src.name
+      );
+      return {
+        budget: st?.budget ?? null,
+        leads: st?.leads ?? null,
+        paid: src.category === 'regie',
+      };
+    });
+    return acquisitionTotals(rows);
+  }, [stats, year, month]);
+
+  const regies = ACQUISITION_SOURCES_ALL.filter((s) => s.category === 'regie');
+  const plateformes = ACQUISITION_SOURCES_ALL.filter((s) => s.category === 'plateforme');
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Navigation mois + annee + enregistrer */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <select
-          className="select w-auto"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-        >
-          {YEAR_OPTIONS.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <button onClick={goPrevMonth} className="btn-ghost btn-sm" aria-label="Mois précédent">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="text-base font-semibold text-gray-900 min-w-[150px] text-center">
+            {MONTHS[month - 1]} {year}
+          </div>
+          <button onClick={goNextMonth} className="btn-ghost btn-sm" aria-label="Mois suivant">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <select
+            className="select w-auto ml-2"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            aria-label="Année"
+          >
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={handleSave}
           className={`btn-primary btn-sm ${dirty ? 'animate-pulse' : ''}`}
@@ -625,107 +693,129 @@ function SaisieTab() {
         </button>
       </div>
 
-      {/* Monthly input table */}
+      {/* Totaux du mois */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <TotalCard
+          label="Budget du mois"
+          value={formatCurrency(totals.totalBudget)}
+          icon={<DollarSign className="w-5 h-5" />}
+          tone="primary"
+        />
+        <TotalCard
+          label="Leads du mois"
+          value={String(totals.totalLeads)}
+          icon={<Users className="w-5 h-5" />}
+          tone="success"
+        />
+        <TotalCard
+          label="CPL moyen"
+          value={totals.cpl !== null ? formatCurrency(totals.cpl) : '-'}
+          icon={<TrendingDown className="w-5 h-5" />}
+          tone="warning"
+        />
+      </div>
+
+      {/* Grille de saisie : UNE ligne par source */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-200">
           <h3 className="text-sm font-semibold text-gray-900">
-            Saisie mensuelle — {year}
+            Saisie — {MONTHS[month - 1]} {year}
           </h3>
           <p className="text-xs text-gray-400 mt-1">
-            Saisissez le budget et le nombre de leads par source et par mois. Le CPL est
-            calculé automatiquement.
+            Budget &amp; leads pour les régies (CPL calculé automatiquement), volume de leads
+            pour les plateformes d&apos;annonces.
           </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[120px]">
-                  Source
-                </th>
-                {MONTHS.map((m, idx) => (
-                  <th
-                    key={idx}
-                    className="px-2 py-2 text-center font-medium text-gray-600 min-w-[110px]"
-                    colSpan={3}
-                  >
-                    {m.slice(0, 4)}
-                  </th>
-                ))}
-              </tr>
-              <tr className="bg-gray-50/50 border-b border-gray-200">
-                <th className="px-3 py-1 sticky left-0 bg-gray-50" />
-                {MONTHS.map((_, idx) => [
-                  <th
-                    key={`b-${idx}`}
-                    className="px-1 py-1 text-center text-gray-400 font-normal text-[10px]"
-                  >
-                    Budget
-                  </th>,
-                  <th
-                    key={`l-${idx}`}
-                    className="px-1 py-1 text-center text-gray-400 font-normal text-[10px]"
-                  >
-                    Leads
-                  </th>,
-                  <th
-                    key={`c-${idx}`}
-                    className="px-1 py-1 text-center text-gray-400 font-normal text-[10px]"
-                  >
-                    CPL
-                  </th>,
-                ])}
-              </tr>
-            </thead>
-            <tbody>
-              {MONTHLY_STAT_SOURCES.map((source) => (
-                <tr key={source} className="border-b border-gray-100 hover:bg-gray-50/50">
-                  <td className="px-3 py-1.5 font-medium text-gray-700 sticky left-0 bg-white">
-                    {source}
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-4 py-2.5 text-left font-medium text-gray-600">Source</th>
+              <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-44">Budget (€)</th>
+              <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-32">Leads</th>
+              <th className="px-4 py-2.5 text-right font-medium text-gray-600 w-28">CPL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Régies payantes : budget + leads -> CPL */}
+            <tr className="bg-gray-50/60">
+              <td colSpan={4} className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Régies payantes
+              </td>
+            </tr>
+            {regies.map((src) => {
+              const st = findStat(src.name);
+              const cpl = computeCpl(st?.budget ?? null, st?.leads ?? null);
+              return (
+                <tr key={src.name} className="border-b border-gray-100 hover:bg-gray-50/50">
+                  <td className="px-4 py-1.5 font-medium text-gray-700">{src.name}</td>
+                  <td className="px-2 py-1">
+                    <input
+                      className={ACQ_INPUT_CLS}
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={fieldValue(src.name, 'budget')}
+                      onChange={(e) => updateField(src.name, 'budget', e.target.value)}
+                      placeholder="—"
+                    />
                   </td>
-                  {MONTHS.map((_, idx) => {
-                    const month = idx + 1;
-                    const cpl = getCpl(source, month);
-                    return [
-                      <td key={`b-${idx}`} className="px-1 py-1">
-                        <input
-                          className="w-full text-center border border-gray-200 rounded px-1 py-1 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
-                          type="number"
-                          value={getStatValue(source, month, 'budget')}
-                          onChange={(e) =>
-                            updateStat(source, month, 'budget', e.target.value)
-                          }
-                          placeholder="-"
-                        />
-                      </td>,
-                      <td key={`l-${idx}`} className="px-1 py-1">
-                        <input
-                          className="w-full text-center border border-gray-200 rounded px-1 py-1 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
-                          type="number"
-                          value={getStatValue(source, month, 'leads')}
-                          onChange={(e) =>
-                            updateStat(source, month, 'leads', e.target.value)
-                          }
-                          placeholder="-"
-                        />
-                      </td>,
-                      <td
-                        key={`c-${idx}`}
-                        className="px-1 py-1.5 text-center font-medium"
-                      >
-                        {cpl !== null ? (
-                          <span className="text-warning-600">{cpl}€</span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>,
-                    ];
-                  })}
+                  <td className="px-2 py-1">
+                    <input
+                      className={ACQ_INPUT_CLS}
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={fieldValue(src.name, 'leads')}
+                      onChange={(e) => updateField(src.name, 'leads', e.target.value)}
+                      placeholder="—"
+                    />
+                  </td>
+                  <td className="px-4 py-1.5 text-right font-medium">
+                    {cpl !== null ? (
+                      <span className="text-warning-600">{formatCurrency(cpl)}</span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+            {/* Plateformes d'annonces : volume de leads seul */}
+            <tr className="bg-gray-50/60">
+              <td colSpan={4} className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Plateformes d&apos;annonces
+              </td>
+            </tr>
+            {plateformes.map((src) => (
+              <tr key={src.name} className="border-b border-gray-100 hover:bg-gray-50/50">
+                <td className="px-4 py-1.5 font-medium text-gray-700">{src.name}</td>
+                <td className="px-4 py-1.5 text-right text-gray-300">—</td>
+                <td className="px-2 py-1">
+                  <input
+                    className={ACQ_INPUT_CLS}
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={fieldValue(src.name, 'leads')}
+                    onChange={(e) => updateField(src.name, 'leads', e.target.value)}
+                    placeholder="—"
+                  />
+                </td>
+                <td className="px-4 py-1.5 text-right text-gray-300">—</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold text-gray-900">
+              <td className="px-4 py-2">Total</td>
+              <td className="px-4 py-2 text-right">{formatCurrency(totals.totalBudget)}</td>
+              <td className="px-4 py-2 text-right">{totals.totalLeads}</td>
+              <td className="px-4 py-2 text-right text-warning-700">
+                {totals.cpl !== null ? formatCurrency(totals.cpl) : '—'}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );

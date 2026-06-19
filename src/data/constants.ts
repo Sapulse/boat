@@ -109,6 +109,25 @@ export const ACQUISITION_SOURCES = [
   'Youboat',
 ];
 
+// Categorie d'une source d'acquisition :
+//  - 'regie'      : canal PAYANT (budget + leads -> CPL derive) ;
+//  - 'plateforme' : plateforme d'annonces (volume de leads, pas de budget).
+export type AcquisitionSourceCategory = 'regie' | 'plateforme';
+
+export interface AcquisitionSourceDef {
+  name: string;
+  category: AcquisitionSourceCategory;
+}
+
+// Liste UNIFIEE des sources d'acquisition (refonte-acquisition) : une seule
+// source de verite pour la saisie. Regies payantes d'abord, puis plateformes
+// d'annonces. Noms repris A L'IDENTIQUE de MONTHLY_STAT_SOURCES / ACQUISITION_
+// SOURCES pour rester aligne avec les donnees deja stockees (mergeAcquisition).
+export const ACQUISITION_SOURCES_ALL: AcquisitionSourceDef[] = [
+  ...MONTHLY_STAT_SOURCES.map((name) => ({ name, category: 'regie' as const })),
+  ...ACQUISITION_SOURCES.map((name) => ({ name, category: 'plateforme' as const })),
+];
+
 export const DEFAULT_COMMERCIALS: Commercial[] = [
   { id: 'fred', name: 'Fred', active: true },
   { id: 'tom', name: 'Tom', active: true },

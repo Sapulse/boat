@@ -12,7 +12,7 @@
  *    cas realiste 7 regies + 11 plateformes disjointes.
  */
 
-import { computeCpl, mergeAcquisition } from '../src/lib/acquisition';
+import { computeCpl, mergeAcquisition, acquisitionTotals } from '../src/lib/acquisition';
 import type { MonthlyStat, AcquisitionVolume } from '../src/data/types';
 
 let passed = 0;
@@ -119,6 +119,31 @@ section('Cas realiste — 7 regies + 11 plateformes (1 mois)');
   check('18 lignes apres fusion', out.length === 18, `got ${out.length}`);
   const totalLeads = out.reduce((s, r) => s + (r.leads ?? 0), 0);
   check('total leads = 7*10 + 11*3 = 103 (aucune perte)', totalLeads === 103, `got ${totalLeads}`);
+}
+
+// ---------------------------------------------------------------------------
+section('acquisitionTotals — totaux du mois (logique pure)');
+{
+  const empty = acquisitionTotals([]);
+  check('vide -> 0 / 0 / cpl null', empty.totalBudget === 0 && empty.totalLeads === 0 && empty.cpl === null);
+
+  const rows = [
+    { budget: 1000, leads: 10, paid: true },   // regie
+    { budget: 500, leads: 5, paid: true },     // regie
+    { budget: null, leads: 20, paid: false },  // plateforme (leads seuls)
+  ];
+  const t = acquisitionTotals(rows);
+  check('budget total = 1500', t.totalBudget === 1500, `got ${t.totalBudget}`);
+  check('leads total = 35 (toutes sources)', t.totalLeads === 35, `got ${t.totalLeads}`);
+  check('leads payants = 15 (regies seules)', t.paidLeads === 15, `got ${t.paidLeads}`);
+  check('CPL moyen = 1500/15 = 100 (plateformes exclues du denominateur)',
+    t.cpl === 100, `got ${t.cpl}`);
+
+  const noPaid = acquisitionTotals([{ budget: null, leads: 12, paid: false }]);
+  check('que des plateformes -> cpl null malgre des leads', noPaid.cpl === null && noPaid.totalLeads === 12);
+
+  const nullsafe = acquisitionTotals([{ budget: null, leads: null, paid: true }]);
+  check('budget/leads null -> 0 / 0, pas de NaN', nullsafe.totalBudget === 0 && nullsafe.totalLeads === 0);
 }
 
 // ---------------------------------------------------------------------------
