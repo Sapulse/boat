@@ -12,8 +12,14 @@
  *    cas realiste 7 regies + 11 plateformes disjointes.
  */
 
-import { computeCpl, mergeAcquisition, acquisitionTotals } from '../src/lib/acquisition';
-import type { MonthlyStat, AcquisitionVolume } from '../src/data/types';
+import {
+  computeCpl,
+  mergeAcquisition,
+  acquisitionTotals,
+  isPaidSource,
+  type LegacyAcquisitionVolume,
+} from '../src/lib/acquisition';
+import type { MonthlyStat } from '../src/data/types';
 
 let passed = 0;
 let failed = 0;
@@ -35,11 +41,11 @@ function section(title: string) {
 function stat(over: Partial<MonthlyStat> = {}): MonthlyStat {
   return {
     id: 's1', year: 2026, month: 1, source: 'Google Ads',
-    budget: 1000, leads: 10, cpl: 100, ...over,
+    budget: 1000, leads: 10, ...over,
   };
 }
 
-function vol(over: Partial<AcquisitionVolume> = {}): AcquisitionVolume {
+function vol(over: Partial<LegacyAcquisitionVolume> = {}): LegacyAcquisitionVolume {
   return { id: 'v1', year: 2026, month: 1, source: 'Youboat', leadCount: 5, ...over };
 }
 
@@ -63,7 +69,7 @@ section('mergeAcquisition — repli sans perte');
   const f = out[0];
   check('leadCount -> leads', f.leads === 5);
   check('budget = null (plateforme)', f.budget === null);
-  check('cpl derive = null (pas de budget)', f.cpl === null);
+  check('pas de champ cpl stocke (CPL derive)', !('cpl' in f));
   check('source / annee / mois preserves', f.source === 'Youboat' && f.year === 2026 && f.month === 1);
 }
 
@@ -97,7 +103,7 @@ section('mergeAcquisition — idempotence');
 // ---------------------------------------------------------------------------
 section('mergeAcquisition — collision (meme annee/mois/source)');
 {
-  const stats = [stat({ source: 'Le Bon Coin', budget: 800, leads: 8, cpl: 100 })];
+  const stats = [stat({ source: 'Le Bon Coin', budget: 800, leads: 8 })];
   const volumes = [vol({ source: 'Le Bon Coin', leadCount: 99 })]; // meme cle
   const out = mergeAcquisition(stats, volumes);
   check('collision -> pas de doublon', out.length === 1);
@@ -112,8 +118,8 @@ section('mergeAcquisition — collision (meme annee/mois/source)');
 section('Cas realiste — 7 regies + 11 plateformes (1 mois)');
 {
   const stats: MonthlyStat[] = Array.from({ length: 7 }, (_, i) =>
-    stat({ id: `s${i}`, source: `Regie${i}`, budget: 500, leads: 10, cpl: 50 }));
-  const volumes: AcquisitionVolume[] = Array.from({ length: 11 }, (_, i) =>
+    stat({ id: `s${i}`, source: `Regie${i}`, budget: 500, leads: 10 }));
+  const volumes: LegacyAcquisitionVolume[] = Array.from({ length: 11 }, (_, i) =>
     vol({ id: `v${i}`, source: `Plateforme${i}`, leadCount: 3 }));
   const out = mergeAcquisition(stats, volumes);
   check('18 lignes apres fusion', out.length === 18, `got ${out.length}`);
@@ -144,6 +150,16 @@ section('acquisitionTotals — totaux du mois (logique pure)');
 
   const nullsafe = acquisitionTotals([{ budget: null, leads: null, paid: true }]);
   check('budget/leads null -> 0 / 0, pas de NaN', nullsafe.totalBudget === 0 && nullsafe.totalLeads === 0);
+}
+
+// ---------------------------------------------------------------------------
+section('isPaidSource — regie vs plateforme');
+{
+  check("'Google Ads' (regie) -> payante", isPaidSource('Google Ads') === true);
+  check("'Le Bon Coin' (regie) -> payante", isPaidSource('Le Bon Coin') === true);
+  check("'Youboat' (plateforme) -> non payante", isPaidSource('Youboat') === false);
+  check("'Yachtworld' (plateforme) -> non payante", isPaidSource('Yachtworld') === false);
+  check('source inconnue -> non payante', isPaidSource('???') === false);
 }
 
 // ---------------------------------------------------------------------------

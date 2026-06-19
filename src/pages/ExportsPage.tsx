@@ -1,6 +1,7 @@
 import { Download, Check, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { formatDate, formatCurrency } from '../lib/utils';
+import { computeCpl } from '../lib/acquisition';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
@@ -125,14 +126,19 @@ export default function ExportsPage() {
 
   const exportAcquisition = () => {
     const headers = ['Source', 'Mois', 'Année', 'Leads', 'Budget (EUR)', 'CPL (EUR)'];
-    const rows = state.monthlyStats.map(s => [
-      s.source,
-      MONTHS[s.month - 1] ?? String(s.month),
-      String(s.year),
-      s.leads !== null ? String(s.leads) : '',
-      s.budget !== null ? String(s.budget) : '',
-      s.cpl !== null ? String(s.cpl) : '',
-    ]);
+    // Toutes les sources (regies + plateformes) : monthlyStats les contient toutes
+    // depuis la fusion. CPL DERIVE (computeCpl) -> null/vide pour les plateformes.
+    const rows = state.monthlyStats.map(s => {
+      const cpl = computeCpl(s.budget, s.leads);
+      return [
+        s.source,
+        MONTHS[s.month - 1] ?? String(s.month),
+        String(s.year),
+        s.leads !== null ? String(s.leads) : '',
+        s.budget !== null ? String(s.budget) : '',
+        cpl !== null ? String(cpl) : '',
+      ];
+    });
     exportCSV('acquisition.csv', headers, rows);
   };
 

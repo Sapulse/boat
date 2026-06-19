@@ -1,8 +1,8 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, AcquisitionVolume, Commercial, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent } from '../data/types';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
-import { mergeAcquisition } from '../lib/acquisition';
+import { mergeAcquisition, type LegacyAcquisitionVolume } from '../lib/acquisition';
 
 // Module PUR (sans composant ni JSX) : initialisation du state + reducer.
 // Separe de AppContext.tsx pour la regle react-refresh/only-export-components
@@ -19,7 +19,6 @@ export type Action =
   | { type: 'DELETE_ACTION'; payload: string }
   | { type: 'SET_NEXT_ACTION'; payload: { id: string; nextActionType: ActionType | ''; nextActionDate: string; nextActionTime?: string; nextActionEndTime?: string } }
   | { type: 'SAVE_MONTHLY_STATS'; payload: MonthlyStat[] }
-  | { type: 'SAVE_ACQUISITION_VOLUMES'; payload: AcquisitionVolume[] }
   | { type: 'ADD_COMMERCIAL'; payload: Commercial }
   | { type: 'UPDATE_COMMERCIAL'; payload: { id: string; data: Partial<Commercial> } }
   | { type: 'TOGGLE_COMMERCIAL'; payload: string }
@@ -64,12 +63,14 @@ export function getInitialState(): AppState {
       leads: stored.leads ?? [],
       actions: stored.actions ?? [],
       commercials: stored.commercials ?? DEFAULT_COMMERCIALS,
-      // Migration refonte-acquisition (etape 1) : UNE seule source de verite.
-      // Les anciens acquisitionVolumes sont replies dans monthlyStats (sans perte,
-      // idempotent : cf. mergeAcquisition) puis le tableau legacy est vide. Re-
-      // hydrater un state deja migre laisse monthlyStats inchange (volumes = []).
-      monthlyStats: mergeAcquisition(stored.monthlyStats ?? [], stored.acquisitionVolumes ?? []),
-      acquisitionVolumes: [],
+      // Migration refonte-acquisition : UNE seule source de verite. Les anciens
+      // `acquisitionVolumes` (champ retire du modele) sont lus en legacy puis
+      // replies dans monthlyStats (sans perte, idempotent : cf. mergeAcquisition).
+      // Re-hydrater un state deja migre laisse monthlyStats inchange (volumes = []).
+      monthlyStats: mergeAcquisition(
+        stored.monthlyStats ?? [],
+        (stored as AppState & { acquisitionVolumes?: LegacyAcquisitionVolume[] }).acquisitionVolumes ?? [],
+      ),
       templates: hydrateTemplates(stored),
       // Migration v3.13 : tableau absent des anciens states -> [] (aucune perte).
       calendarEvents: stored.calendarEvents ?? [],
@@ -85,7 +86,6 @@ export function getInitialState(): AppState {
     actions: [],
     commercials: DEFAULT_COMMERCIALS,
     monthlyStats: [],
-    acquisitionVolumes: [],
     templates: DEFAULT_TEMPLATES,
     calendarEvents: [],
   };
@@ -210,9 +210,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SAVE_MONTHLY_STATS':
       return { ...state, monthlyStats: action.payload };
-
-    case 'SAVE_ACQUISITION_VOLUMES':
-      return { ...state, acquisitionVolumes: action.payload };
 
     case 'ADD_COMMERCIAL':
       return { ...state, commercials: [...state.commercials, action.payload] };

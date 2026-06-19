@@ -8,542 +8,28 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  LineChart,
-  Line,
 } from 'recharts';
 import { useApp } from '../context/useApp';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, ACQUISITION_SOURCES_ALL, MONTHS } from '../data/constants';
+import { ACQUISITION_SOURCES_ALL, MONTHS } from '../data/constants';
 import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
-import { computeCpl, acquisitionTotals } from '../lib/acquisition';
-import { useIsCompact, shortLabel } from '../lib/useIsCompact';
-import type { MonthlyStat, AcquisitionVolume } from '../data/types';
+import { computeCpl, acquisitionTotals, isPaidSource } from '../lib/acquisition';
+import type { MonthlyStat } from '../data/types';
 
-type Tab = 'budget' | 'volumes' | 'saisie';
-
-const COLORS = [
-  '#3b82f6',
-  '#0ea5e9',
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#ef4444',
-  '#22c55e',
-  '#14b8a6',
-  '#f97316',
-  '#84cc16',
-];
+type Tab = 'saisie' | 'dashboard';
 
 const CURRENT_YEAR = new Date().getFullYear();
 // Plage DYNAMIQUE (annee courante +- amplitude, cf. buildYearRange / constants) :
 // horizon glissant, plus aucune annee en dur, jamais de plafond de saisie future.
 const YEAR_OPTIONS = buildYearRange();
 
-// ---------------------------------------------------------------------------
-// Tab 1 — Budget & CPL
-// ---------------------------------------------------------------------------
-
-function BudgetCplTab() {
-  const { state } = useApp();
-  const [year, setYear] = useState(CURRENT_YEAR);
-  const stats = state.monthlyStats;
-
-  const chartData = useMemo(() => {
-    return MONTHS.map((name, idx) => {
-      const month = idx + 1;
-      const monthStats = stats.filter((s) => s.year === year && s.month === month);
-      const totalBudget = monthStats.reduce((s, st) => s + (st.budget ?? 0), 0);
-      const totalLeads = monthStats.reduce((s, st) => s + (st.leads ?? 0), 0);
-      const cpl = totalLeads > 0 ? Math.round(totalBudget / totalLeads) : 0;
-      return { name: name.slice(0, 4), budget: totalBudget, leads: totalLeads, cpl };
-    });
-  }, [stats, year]);
-
-  const sourceSummary = useMemo(() => {
-    return MONTHLY_STAT_SOURCES.map((source) => {
-      const sourceStats = stats.filter((s) => s.year === year && s.source === source);
-      const totalBudget = sourceStats.reduce((s, st) => s + (st.budget ?? 0), 0);
-      const totalLeads = sourceStats.reduce((s, st) => s + (st.leads ?? 0), 0);
-      const cpl = totalLeads > 0 ? Math.round(totalBudget / totalLeads) : null;
-      return { source, budget: totalBudget, leads: totalLeads, cpl };
-    });
-  }, [stats, year]);
-
-  const kpis = useMemo(() => {
-    const yearStats = stats.filter((s) => s.year === year);
-    const totalBudget = yearStats.reduce((s, st) => s + (st.budget ?? 0), 0);
-    const totalLeads = yearStats.reduce((s, st) => s + (st.leads ?? 0), 0);
-    const avgCpl = totalLeads > 0 ? Math.round(totalBudget / totalLeads) : null;
-    return { totalBudget, totalLeads, avgCpl };
-  }, [stats, year]);
-
-  return (
-    <div className="space-y-6">
-      {/* Header controls */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <select
-          className="select w-auto"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-        >
-          {YEAR_OPTIONS.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Budget total</p>
-              <p className="text-2xl font-bold mt-1 text-primary-600">
-                {formatCurrency(kpis.totalBudget)}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-gray-50 text-primary-600">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-        <div className="card p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total leads</p>
-              <p className="text-2xl font-bold mt-1 text-success-600">
-                {kpis.totalLeads}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-gray-50 text-success-600">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-        <div className="card p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">CPL moyen</p>
-              <p className="text-2xl font-bold mt-1 text-warning-600">
-                {kpis.avgCpl !== null ? formatCurrency(kpis.avgCpl) : '-'}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-gray-50 text-warning-600">
-              <TrendingDown className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-            Budget &amp; Leads mensuels
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
-              <Bar
-                yAxisId="left"
-                dataKey="budget"
-                name="Budget (EUR)"
-                fill="#3b82f6"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                yAxisId="right"
-                dataKey="leads"
-                name="Leads"
-                fill="#22c55e"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">CPL mensuel</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => [`${v} EUR`, 'CPL']} />
-              <Bar dataKey="cpl" name="CPL (EUR)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Source summary table */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Récapitulatif par source — {year}
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Source</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">
-                  Budget total
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">
-                  Leads total
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">
-                  CPL moyen
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sourceSummary.map((s) => (
-                <tr key={s.source} className="border-b border-gray-100 hover:bg-gray-50/50">
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{s.source}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">
-                    {formatCurrency(s.budget)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">{s.leads}</td>
-                  <td className="px-4 py-2.5 text-right font-medium text-gray-900">
-                    {s.cpl !== null ? formatCurrency(s.cpl) : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Monthly input — read-only CPL display */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">
-              Aperçu CPL par source — {year}
-            </h3>
-            <p className="text-xs text-gray-400 mt-1">
-              CPL calculé automatiquement (budget ÷ leads)
-            </p>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[130px]">
-                  Source
-                </th>
-                {MONTHS.map((m, idx) => (
-                  <th
-                    key={idx}
-                    className="px-2 py-2 text-center font-medium text-gray-600 min-w-[55px]"
-                  >
-                    {m.slice(0, 4)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MONTHLY_STAT_SOURCES.map((source) => (
-                <tr key={source} className="border-b border-gray-100 hover:bg-gray-50/50">
-                  <td className="px-3 py-1.5 font-medium text-gray-700 sticky left-0 bg-white">
-                    {source}
-                  </td>
-                  {MONTHS.map((_, idx) => {
-                    const month = idx + 1;
-                    const stat = stats.find(
-                      (s) => s.year === year && s.month === month && s.source === source
-                    );
-                    const cpl = stat?.cpl ?? null;
-                    return (
-                      <td key={idx} className="px-2 py-1.5 text-center text-gray-600">
-                        {cpl !== null ? (
-                          <span className="font-medium text-warning-600">
-                            {cpl}€
-                          </span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tab 2 — Volumes par plateforme
-// ---------------------------------------------------------------------------
-
-function VolumesTab() {
-  const { state, saveAcquisitionVolumes } = useApp();
-  const [year, setYear] = useState(CURRENT_YEAR);
-  // Barres horizontales : YAxis reduit + libelles tronques sur ecran etroit.
-  const compact = useIsCompact();
-  const [volumes, setVolumes] = useState<AcquisitionVolume[]>(state.acquisitionVolumes);
-  const [dirty, setDirty] = useState(false);
-
-  const getValue = (source: string, month: number): string => {
-    const v = volumes.find(
-      (v) => v.year === year && v.month === month && v.source === source
-    );
-    return v ? String(v.leadCount) : '';
-  };
-
-  const updateValue = (source: string, month: number, value: string) => {
-    setDirty(true);
-    const count = value === '' ? 0 : Number(value);
-    const idx = volumes.findIndex(
-      (v) => v.year === year && v.month === month && v.source === source
-    );
-    if (idx >= 0) {
-      const updated = [...volumes];
-      updated[idx] = { ...updated[idx], leadCount: count };
-      setVolumes(updated);
-    } else {
-      setVolumes((prev) => [
-        ...prev,
-        { id: generateId(), source, month, year, leadCount: count },
-      ]);
-    }
-  };
-
-  const handleSave = () => {
-    saveAcquisitionVolumes(volumes);
-    setDirty(false);
-  };
-
-  const monthlyTotals = useMemo(() => {
-    return MONTHS.map((name, idx) => {
-      const month = idx + 1;
-      const total = volumes
-        .filter((v) => v.year === year && v.month === month)
-        .reduce((s, v) => s + v.leadCount, 0);
-      return { name: name.slice(0, 4), total };
-    });
-  }, [volumes, year]);
-
-  const sourceTotals = useMemo(() => {
-    return ACQUISITION_SOURCES.map((source) => {
-      const total = volumes
-        .filter((v) => v.year === year && v.source === source)
-        .reduce((s, v) => s + v.leadCount, 0);
-      return { source, total };
-    }).sort((a, b) => b.total - a.total);
-  }, [volumes, year]);
-
-  const sourceMonthly = useMemo(() => {
-    return MONTHS.map((name, idx) => {
-      const month = idx + 1;
-      const row: Record<string, string | number> = { name: name.slice(0, 4) };
-      ACQUISITION_SOURCES.forEach((source) => {
-        const v = volumes.find(
-          (v) => v.year === year && v.month === month && v.source === source
-        );
-        row[source] = v?.leadCount ?? 0;
-      });
-      return row;
-    });
-  }, [volumes, year]);
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <select
-          className="select w-auto"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-        >
-          {YEAR_OPTIONS.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={handleSave}
-          className={`btn-primary btn-sm ${dirty ? 'animate-pulse' : ''}`}
-          disabled={!dirty}
-        >
-          <Save className="w-4 h-4" /> Enregistrer
-        </button>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-            Total leads par mois
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={monthlyTotals}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="total" name="Leads" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-            Top sources — {year}
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={sourceTotals.slice(0, 8)} layout="vertical" barSize={16}>
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis
-                dataKey="source"
-                type="category"
-                width={compact ? 76 : 130}
-                tick={{ fontSize: compact ? 9 : 10 }}
-                tickFormatter={compact ? (v: string) => shortLabel(v) : undefined}
-              />
-              <Tooltip />
-              <Bar dataKey="total" name="Leads" fill="#6366f1" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Evolution line chart */}
-      <div className="card p-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-          Évolution mensuelle par source
-        </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={sourceMonthly}>
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {ACQUISITION_SOURCES.slice(0, 6).map((source, idx) => (
-              <Line
-                key={source}
-                type="monotone"
-                dataKey={source}
-                stroke={COLORS[idx % COLORS.length]}
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Data entry table */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Volumes mensuels par plateforme — {year}
-          </h3>
-          <p className="text-xs text-gray-400 mt-1">
-            Saisissez le nombre de leads par source et par mois
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-3 py-2.5 text-left font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[140px]">
-                  Source
-                </th>
-                {MONTHS.map((m, idx) => (
-                  <th
-                    key={idx}
-                    className="px-2 py-2.5 text-center font-medium text-gray-600 min-w-[65px]"
-                  >
-                    {m.slice(0, 4)}
-                  </th>
-                ))}
-                <th className="px-3 py-2.5 text-center font-semibold text-gray-700 bg-gray-100">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {ACQUISITION_SOURCES.map((source) => {
-                const rowTotal = volumes
-                  .filter((v) => v.year === year && v.source === source)
-                  .reduce((s, v) => s + v.leadCount, 0);
-                return (
-                  <tr key={source} className="border-b border-gray-100 hover:bg-gray-50/50">
-                    <td className="px-3 py-1.5 font-medium text-gray-700 sticky left-0 bg-white">
-                      {source}
-                    </td>
-                    {MONTHS.map((_, idx) => (
-                      <td key={idx} className="px-1 py-1">
-                        <input
-                          className="w-full text-center border border-gray-200 rounded px-1 py-1 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
-                          type="number"
-                          min="0"
-                          value={getValue(source, idx + 1)}
-                          onChange={(e) => updateValue(source, idx + 1, e.target.value)}
-                          placeholder="-"
-                        />
-                      </td>
-                    ))}
-                    <td className="px-3 py-1.5 text-center font-semibold text-gray-900 bg-gray-50">
-                      {rowTotal > 0 ? rowTotal : '-'}
-                    </td>
-                  </tr>
-                );
-              })}
-              {/* Total row */}
-              <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
-                <td className="px-3 py-2 text-gray-900 sticky left-0 bg-gray-100">
-                  Total
-                </td>
-                {MONTHS.map((_, idx) => {
-                  const month = idx + 1;
-                  const colTotal = volumes
-                    .filter((v) => v.year === year && v.month === month)
-                    .reduce((s, v) => s + v.leadCount, 0);
-                  return (
-                    <td key={idx} className="px-2 py-2 text-center text-gray-900">
-                      {colTotal > 0 ? colTotal : '-'}
-                    </td>
-                  );
-                })}
-                <td className="px-3 py-2 text-center text-primary-700 bg-primary-50">
-                  {volumes.filter((v) => v.year === year).reduce((s, v) => s + v.leadCount, 0) ||
-                    '-'}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tab 3 — Saisie mensuelle
-// ---------------------------------------------------------------------------
-
 // Champ de saisie numerique (budget / leads) — confortable, aligne a droite.
 const ACQ_INPUT_CLS =
   'w-full text-right border border-gray-200 rounded px-2 py-1.5 text-sm ' +
   'focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none';
 
-// Petite carte de total (budget / leads / CPL du mois affiche).
+// Petite carte de total / KPI (budget / leads / CPL).
 function TotalCard({
   label,
   value,
@@ -574,6 +60,10 @@ function TotalCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Onglet — Saisie (mois selectionne, une ligne par source)
+// ---------------------------------------------------------------------------
+
 function SaisieTab() {
   const { state, saveMonthlyStats } = useApp();
   const now = new Date();
@@ -600,20 +90,12 @@ function SaisieTab() {
       );
       if (idx >= 0) {
         const updated = [...prev];
-        const stat = { ...updated[idx], [field]: numVal };
-        // CPL DERIVE (computeCpl). Le champ legacy `cpl` est garde EN PHASE le
-        // temps que les lecteurs restants (dashboard/exports) migrent -> retire
-        // en etape 3. Plus aucun calcul de CPL en dur ici.
-        stat.cpl = computeCpl(stat.budget, stat.leads);
-        updated[idx] = stat;
+        updated[idx] = { ...updated[idx], [field]: numVal };
         return updated;
       }
       const budget = field === 'budget' ? numVal : null;
       const leads = field === 'leads' ? numVal : null;
-      return [
-        ...prev,
-        { id: generateId(), year, month, source, budget, leads, cpl: computeCpl(budget, leads) },
-      ];
+      return [...prev, { id: generateId(), year, month, source, budget, leads }];
     });
   };
 
@@ -822,19 +304,180 @@ function SaisieTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Main page with tab navigation
+// Onglet — Tableau de bord (toutes sources, CPL derive)
+// ---------------------------------------------------------------------------
+
+function DashboardTab() {
+  const { state } = useApp();
+  const [year, setYear] = useState(CURRENT_YEAR);
+  const stats = state.monthlyStats;
+
+  // Agrege mensuel (toutes sources) ; CPL derive sur leads PAYANTS.
+  const chartData = useMemo(() => {
+    return MONTHS.map((name, idx) => {
+      const month = idx + 1;
+      const rows = stats
+        .filter((s) => s.year === year && s.month === month)
+        .map((s) => ({ budget: s.budget, leads: s.leads, paid: isPaidSource(s.source) }));
+      const t = acquisitionTotals(rows);
+      return { name: name.slice(0, 4), budget: t.totalBudget, leads: t.totalLeads, cpl: t.cpl ?? 0 };
+    });
+  }, [stats, year]);
+
+  // Recapitulatif par source : TOUTES (regies + plateformes).
+  const sourceSummary = useMemo(() => {
+    return ACQUISITION_SOURCES_ALL.map((src) => {
+      const srcStats = stats.filter((s) => s.year === year && s.source === src.name);
+      const budget = srcStats.reduce((s, st) => s + (st.budget ?? 0), 0);
+      const leads = srcStats.reduce((s, st) => s + (st.leads ?? 0), 0);
+      const cpl = src.category === 'regie' ? computeCpl(budget, leads) : null;
+      return { source: src.name, category: src.category, budget, leads, cpl };
+    });
+  }, [stats, year]);
+
+  // KPIs de l'annee (CPL = budget total / leads payants).
+  const kpis = useMemo(() => {
+    const rows = stats
+      .filter((s) => s.year === year)
+      .map((s) => ({ budget: s.budget, leads: s.leads, paid: isPaidSource(s.source) }));
+    return acquisitionTotals(rows);
+  }, [stats, year]);
+
+  return (
+    <div className="space-y-6">
+      {/* Annee */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <select
+          className="select w-auto"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          aria-label="Année"
+        >
+          {YEAR_OPTIONS.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <TotalCard
+          label="Budget total"
+          value={formatCurrency(kpis.totalBudget)}
+          icon={<DollarSign className="w-5 h-5" />}
+          tone="primary"
+        />
+        <TotalCard
+          label="Total leads"
+          value={String(kpis.totalLeads)}
+          icon={<Users className="w-5 h-5" />}
+          tone="success"
+        />
+        <TotalCard
+          label="CPL moyen"
+          value={kpis.cpl !== null ? formatCurrency(kpis.cpl) : '-'}
+          icon={<TrendingDown className="w-5 h-5" />}
+          tone="warning"
+        />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Budget &amp; Leads mensuels</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={chartData}>
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Bar yAxisId="left" dataKey="budget" name="Budget (EUR)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="right" dataKey="leads" name="Leads" fill="#22c55e" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">CPL mensuel</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={chartData}>
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v) => [`${v} EUR`, 'CPL']} />
+              <Bar dataKey="cpl" name="CPL (EUR)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Recapitulatif par source (toutes sources) */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">Récapitulatif par source — {year}</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Source</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Type</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">Budget</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">Leads</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">CPL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sourceSummary.map((s) => (
+                <tr key={s.source} className="border-b border-gray-100 hover:bg-gray-50/50">
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{s.source}</td>
+                  <td className="px-4 py-2.5 text-gray-500">
+                    {s.category === 'regie' ? 'Régie' : 'Plateforme'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-600">
+                    {s.budget > 0 ? formatCurrency(s.budget) : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-600">
+                    {s.leads > 0 ? s.leads : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-medium text-gray-900">
+                    {s.cpl !== null ? formatCurrency(s.cpl) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold text-gray-900">
+                <td className="px-4 py-2.5">Total</td>
+                <td className="px-4 py-2.5" />
+                <td className="px-4 py-2.5 text-right">{formatCurrency(kpis.totalBudget)}</td>
+                <td className="px-4 py-2.5 text-right">{kpis.totalLeads}</td>
+                <td className="px-4 py-2.5 text-right text-warning-700">
+                  {kpis.cpl !== null ? formatCurrency(kpis.cpl) : '—'}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page — 2 onglets : Saisie / Tableau de bord
 // ---------------------------------------------------------------------------
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'budget', label: 'Budget & CPL' },
-  { id: 'volumes', label: 'Volumes par plateforme' },
-  { id: 'saisie', label: 'Saisie mensuelle' },
+  { id: 'saisie', label: 'Saisie' },
+  { id: 'dashboard', label: 'Tableau de bord' },
 ];
 
 export default function AcquisitionPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('budget');
+  const [activeTab, setActiveTab] = useState<Tab>('saisie');
 
-  const activeLabel = TABS.find(t => t.id === activeTab)?.label ?? '';
+  const activeLabel = TABS.find((t) => t.id === activeTab)?.label ?? '';
 
   return (
     <div className="space-y-6">
@@ -845,7 +488,7 @@ export default function AcquisitionPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Acquisition</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Suivi des budgets, CPL et volumes de leads par plateforme
+            Suivi des budgets, CPL et volumes de leads par source
           </p>
         </div>
         <PrintButton />
@@ -872,9 +515,8 @@ export default function AcquisitionPage() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'budget' && <BudgetCplTab />}
-      {activeTab === 'volumes' && <VolumesTab />}
       {activeTab === 'saisie' && <SaisieTab />}
+      {activeTab === 'dashboard' && <DashboardTab />}
     </div>
   );
 }

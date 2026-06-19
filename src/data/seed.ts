@@ -1,7 +1,7 @@
-import type { Lead, LeadAction, MonthlyStat, AcquisitionVolume } from './types';
-import { DEFAULT_COMMERCIALS, SOURCES, MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES } from './constants';
+import type { Lead, LeadAction, MonthlyStat } from './types';
+import { DEFAULT_COMMERCIALS, SOURCES, MONTHLY_STAT_SOURCES } from './constants';
 import { generateId, toISODate } from '../lib/utils';
-import { subDays, subMonths } from 'date-fns';
+import { subDays } from 'date-fns';
 
 const now = new Date();
 
@@ -121,28 +121,8 @@ export function generateSeedMonthlyStats(): MonthlyStat[] {
         source,
         budget,
         leads,
-        cpl: leads > 0 ? Math.round(budget / leads) : null,
       });
     }
   }
   return stats;
-}
-
-export function generateSeedAcquisitionVolumes(): AcquisitionVolume[] {
-  const volumes: AcquisitionVolume[] = [];
-  for (let i = 4; i >= 0; i--) {
-    const d = subMonths(now, i);
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    for (const source of ACQUISITION_SOURCES) {
-      volumes.push({
-        id: generateId(),
-        source,
-        month,
-        year,
-        leadCount: Math.floor(Math.random() * 30) + 1,
-      });
-    }
-  }
-  return volumes;
 }

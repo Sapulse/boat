@@ -144,8 +144,8 @@ section('N1 — state stocke avec leads:[] mais commerciaux/templates remplis ->
     && s.templates[0].subject === 'S' && s.templates[0].body === 'B',
     JSON.stringify(s.templates));
   check("migration : type 'email' pose par defaut", s.templates[0].type === 'email', `=${s.templates[0].type}`);
-  // Migration refonte-acquisition : les volumes sont replies dans monthlyStats
-  // (UNE source de verite) sans perte, et le tableau legacy est vide.
+  // Migration refonte-acquisition : les anciens acquisitionVolumes (champ retire
+  // du modele) sont lus en legacy et replies dans monthlyStats, sans perte.
   check('migration acquisition : m1 (regie) + v1 (volume) -> 2 stats',
     s.monthlyStats.length === 2, `monthlyStats.length=${s.monthlyStats.length}`);
   const m1 = s.monthlyStats.find(st => st.id === 'm1');
@@ -154,8 +154,6 @@ section('N1 — state stocke avec leads:[] mais commerciaux/templates remplis ->
   const youboat = s.monthlyStats.find(st => st.source === 'Youboat');
   check('volume Youboat replie en stat (leads=7, budget null)',
     !!youboat && youboat.leads === 7 && youboat.budget === null);
-  check('acquisitionVolumes vide apres migration (legacy consolide)',
-    s.acquisitionVolumes.length === 0, `acquisitionVolumes.length=${s.acquisitionVolumes.length}`);
 }
 
 section('Migration templates — state FUTUR (champ templates) lu tel quel, type sms preserve');
@@ -202,7 +200,6 @@ section('base-vierge — stored absent (vrai premier lancement) -> base VIERGE, 
   check('leads vides ([])', s.leads.length === 0, `leads.length=${s.leads.length}`);
   check('actions vides ([])', s.actions.length === 0, `actions.length=${s.actions.length}`);
   check('monthlyStats vides ([])', s.monthlyStats.length === 0, `monthlyStats.length=${s.monthlyStats.length}`);
-  check('acquisitionVolumes vides ([])', s.acquisitionVolumes.length === 0, `acquisitionVolumes.length=${s.acquisitionVolumes.length}`);
   check('commerciaux par defaut (equipe gardee)', s.commercials === DEFAULT_COMMERCIALS);
   check('templates par defaut (modeles gardes)', s.templates === DEFAULT_TEMPLATES);
 }
@@ -226,7 +223,6 @@ section('N1 — state partiel (hydratation champ par champ, pas de crash ni re-s
   check('actions manquantes -> []', Array.isArray(s.actions) && s.actions.length === 0);
   check('commercials manquants -> defauts', s.commercials === DEFAULT_COMMERCIALS);
   check('monthlyStats manquantes -> []', Array.isArray(s.monthlyStats) && s.monthlyStats.length === 0);
-  check('acquisitionVolumes manquants -> []', Array.isArray(s.acquisitionVolumes) && s.acquisitionVolumes.length === 0);
   check('templates manquants -> defauts', s.templates === DEFAULT_TEMPLATES);
 }
 

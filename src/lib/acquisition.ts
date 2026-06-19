@@ -1,19 +1,17 @@
-import type { MonthlyStat, AcquisitionVolume } from '../data/types';
+import type { MonthlyStat } from '../data/types';
+import { ACQUISITION_SOURCES_ALL } from '../data/constants';
 
 /**
- * Logique PURE de l'acquisition (lot refonte-acquisition, etape 1).
+ * Logique PURE de l'acquisition (lot refonte-acquisition).
  * Sans React, sans I/O -> testable au harnais (scripts/harness-acquisition.ts).
  *
- * Objectif : UNE seule source de verite par (annee, mois, source). On fusionne
- * les anciens `acquisitionVolumes` (volume de leads des plateformes d'annonces)
- * dans `monthlyStats` (leads + budget des regies). Le CPL n'est plus stocke : il
- * est DERIVE a la volee (computeCpl) -> plus aucune incoherence possible.
+ * UNE seule source de verite par (annee, mois, source) : `monthlyStats`. Le CPL
+ * n'est jamais stocke -> DERIVE a la volee (computeCpl) -> aucune incoherence.
  */
 
 /**
  * CPL (cout par lead) DERIVE = budget / leads, arrondi a l'euro.
  * null si non calculable : pas de budget, ou 0 lead (division impossible / vide).
- * Jamais stocke -> ne peut pas diverger de (budget, leads).
  */
 export function computeCpl(budget: number | null, leads: number | null): number | null {
   if (budget === null || budget === undefined) return null;
@@ -29,7 +27,7 @@ export interface AcquisitionTotals {
 }
 
 /**
- * Totaux d'un ensemble de lignes (un mois affiche). Logique PURE.
+ * Totaux d'un ensemble de lignes (un mois, ou une annee). Logique PURE.
  *
  * CPL moyen = budget total / leads PAYANTS (regies). Les leads des plateformes
  * d'annonces gonflent le volume (totalLeads) mais ne doivent PAS diluer le CPL
@@ -50,20 +48,33 @@ export function acquisitionTotals(
 }
 
 /**
- * Fusionne `acquisitionVolumes` dans `monthlyStats`.
+ * Forme HISTORIQUE d'un volume d'acquisition (avant fusion). Conservee
+ * UNIQUEMENT pour migrer les anciens states (lecture). Le modele applicatif ne
+ * l'expose plus (cf. mergeAcquisition, appele a l'hydratation).
+ */
+export interface LegacyAcquisitionVolume {
+  id: string;
+  source: string;
+  month: number;
+  year: number;
+  leadCount: number;
+}
+
+/**
+ * Fusionne d'anciens `acquisitionVolumes` dans `monthlyStats`.
  *
- * Chaque volume devient un MonthlyStat { leads: leadCount, budget: null }
- * (les plateformes d'annonces n'ont pas de budget -> cpl derive = null). Les
- * stats existantes sont conservees telles quelles.
+ * Chaque volume devient un MonthlyStat { leads: leadCount, budget: null } (les
+ * plateformes d'annonces n'ont pas de budget). Les stats existantes sont
+ * conservees telles quelles.
  *
  * SANS PERTE et IDEMPOTENT : un volume n'est replie QUE si aucune stat n'existe
- * deja pour le meme (annee, mois, source). Donc re-executer la migration, ou
- * re-hydrater un state deja migre, ne cree aucun doublon ; en cas de collision,
- * la stat existante (qui peut porter un budget) prime sur le volume.
+ * deja pour le meme (annee, mois, source). Re-executer la migration, ou re-
+ * hydrater un state deja migre, ne cree aucun doublon ; en cas de collision la
+ * stat existante (qui peut porter un budget) prime sur le volume.
  */
 export function mergeAcquisition(
   stats: MonthlyStat[],
-  volumes: AcquisitionVolume[],
+  volumes: LegacyAcquisitionVolume[],
 ): MonthlyStat[] {
   const key = (year: number, month: number, source: string) => `${year}|${month}|${source}`;
   const seen = new Set(stats.map(s => key(s.year, s.month, s.source)));
@@ -80,9 +91,19 @@ export function mergeAcquisition(
       source: v.source,
       budget: null,
       leads: v.leadCount,
-      cpl: computeCpl(null, v.leadCount), // = null : pas de budget pour une plateforme
     });
   }
 
   return [...stats, ...folded];
+}
+
+// Sources payantes (regies) : portent un budget -> comptent dans le denominateur
+// du CPL. Derive de la liste unifiee pour rester l'unique source de verite.
+const PAID_SOURCES = new Set(
+  ACQUISITION_SOURCES_ALL.filter(s => s.category === 'regie').map(s => s.name),
+);
+
+/** Une source payante (regie) ? (sinon plateforme d'annonces : leads seuls). */
+export function isPaidSource(source: string): boolean {
+  return PAID_SOURCES.has(source);
 }

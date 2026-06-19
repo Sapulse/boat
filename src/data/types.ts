@@ -112,6 +112,9 @@ export interface Lead {
   reportedAt: string;
 }
 
+// Stat d'acquisition d'un (annee, mois, source) : budget (regies payantes) et/ou
+// volume de leads (toutes sources). Le CPL n'est PAS stocke -> derive a la volee
+// (computeCpl, lib/acquisition) pour ne jamais diverger de (budget, leads).
 export interface MonthlyStat {
   id: string;
   year: number;
@@ -119,21 +122,6 @@ export interface MonthlyStat {
   source: string;
   budget: number | null;
   leads: number | null;
-  // @deprecated (refonte-acquisition) : le CPL est desormais DERIVE (computeCpl,
-  // lib/acquisition) et ne doit plus etre stocke. Champ conserve le temps que
-  // l'UI/seed/exports cessent de le lire (retrait prevu en etape 3).
-  cpl: number | null;
-}
-
-// @deprecated (refonte-acquisition, etape 1) : fusionne dans MonthlyStat
-// (mergeAcquisition). Plus aucune ecriture ; le tableau est vide a l'hydratation.
-// Type conserve pour la migration (lecture des anciens states) ; retrait en etape 3.
-export interface AcquisitionVolume {
-  id: string;
-  source: string;
-  month: number;
-  year: number;
-  leadCount: number;
 }
 
 export type CalendarEventCategory = 'reunion' | 'conge' | 'deplacement' | 'perso' | 'autre';
@@ -161,7 +149,6 @@ export interface AppState {
   actions: LeadAction[];
   commercials: Commercial[];
   monthlyStats: MonthlyStat[];
-  acquisitionVolumes: AcquisitionVolume[];
   // Avant v3.2 le champ s'appelait `emailTemplates` (templates email only) :
   // l'hydratation (appReducer.getInitialState) lit encore l'ancien nom.
   templates: MessageTemplate[];
