@@ -7,6 +7,35 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.15.0] — 2026-06-19 — Objectifs commerciaux
+
+### Ajouté
+- **Nouvelle page « Objectifs »** (menu + route `/objectifs`, icône `Target`) :
+  Nicolas définit des **cibles par commercial et par mois** (appels, relances,
+  RDV/visites, CA signé, taux de transformation) et un **suivi visuel** montre la
+  réalisation.
+  - **Réalisé calculé AUTOMATIQUEMENT** depuis les données du poste (actions du
+    pipeline + leads signés), **corrigeable à la main** (override par indicateur
+    qui prime, sans écraser le calcul auto).
+  - **Tableau de bord par cartes** : en-tête commercial mis en avant (pastille
+    avatar + nom + période), une carte par indicateur avec **réalisé en gros
+    chiffre coloré**, barre de progression et **% en code couleur**
+    (vert ≥100 / orange ≥70 / rouge <70). Zone de **saisie repliable** séparée.
+  - **Garde anti-perte** : confirmation au changement de mois/commercial et
+    `beforeunload` tant que des modifications sont en attente.
+
+### Technique
+- Entité **`CommercialGoal`** (cible + override par indicateur) ajoutée à
+  `AppState.goals` + action `SAVE_GOALS` ; hydratation `goals: stored.goals ?? []`
+  (**migration nulle**, `STORAGE_KEY` intouchée). Toute la logique de calcul est
+  **PURE** (`lib/goals` : `computeAutoRealized`, `applyOverrides`, `progressPct`,
+  `progressLevel`, comptage par type d'action, CA signé, taux de transfo) —
+  **cœur réutilisable au backend** : seule la SOURCE des données changera (poste →
+  base partagée), pas les calculs ni l'UI. Données **mono-poste** assumées en
+  démonstration. Couvert par un nouveau harnais **`harness-goals` (35)**.
+
+---
+
 ## [3.14.0] — 2026-06-19 — Refonte Acquisition (source de vérité unique)
 
 ### Modifié
