@@ -1,5 +1,5 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric } from '../data/types';
-import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../data/constants';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal } from '../data/types';
+import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
 import { mergeAcquisition, type LegacyAcquisitionVolume } from '../lib/acquisition';
@@ -28,7 +28,8 @@ export type Action =
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
   | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
-  | { type: 'SAVE_GOALS'; payload: CommercialGoal[] };
+  | { type: 'SAVE_GOALS'; payload: CommercialGoal[] }
+  | { type: 'SAVE_DEFAULT_GOAL'; payload: DefaultGoal };
 
 /**
  * Migration templates : double lecture (champ `templates` actuel, OU champ
@@ -118,6 +119,8 @@ export function getInitialState(): AppState {
       // Migration objectifs : tableau absent -> [] ; sinon normalise (retrait
       // `calls`, ajout prospectsCreated/coldCalls) via hydrateGoals.
       goals: hydrateGoals(stored),
+      // Migration objectifs par défaut : absent -> EMPTY_DEFAULT_GOAL (nulle).
+      defaultGoal: stored.defaultGoal ?? EMPTY_DEFAULT_GOAL,
     };
   }
 
@@ -133,6 +136,7 @@ export function getInitialState(): AppState {
     templates: DEFAULT_TEMPLATES,
     calendarEvents: [],
     goals: [],
+    defaultGoal: EMPTY_DEFAULT_GOAL,
   };
 }
 
@@ -258,6 +262,9 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'SAVE_GOALS':
       return { ...state, goals: action.payload };
+
+    case 'SAVE_DEFAULT_GOAL':
+      return { ...state, defaultGoal: action.payload };
 
     case 'ADD_COMMERCIAL':
       return { ...state, commercials: [...state.commercials, action.payload] };

@@ -173,6 +173,21 @@ export interface CommercialGoal {
   conversionRate: GoalMetric; // taux de transformation, en %
 }
 
+/**
+ * Objectifs PAR DÉFAUT de l'équipe (lot objectifs-defaut-equipe) : une seule cible
+ * par indicateur, valable pour TOUS les commerciaux et TOUS les mois, réglée une
+ * fois. Sert de repli quand un CommercialGoal n'a pas de `target` saisie pour
+ * (commercial, mois) — cf. effectiveTarget (lib/goals). null = pas de défaut.
+ */
+export interface DefaultGoal {
+  prospectsCreated: number | null;
+  coldCalls: number | null;
+  followups: number | null;
+  meetings: number | null;
+  revenue: number | null;
+  conversionRate: number | null;
+}
+
 export interface AppState {
   leads: Lead[];
   actions: LeadAction[];
@@ -187,4 +202,7 @@ export interface AppState {
   // Objectifs commerciaux mensuels (lot objectifs). Absent des anciens states
   // -> hydrate en [] (migration nulle, voir getInitialState).
   goals: CommercialGoal[];
+  // Objectifs par défaut de l'équipe (cibles communes). Absent des anciens states
+  // -> hydrate en EMPTY_DEFAULT_GOAL (migration nulle, voir getInitialState).
+  defaultGoal: DefaultGoal;
 }

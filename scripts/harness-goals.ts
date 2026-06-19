@@ -24,6 +24,7 @@ import {
   applyOverrides,
   progressPct,
   progressLevel,
+  effectiveTarget,
   FOLLOWUP_TYPES,
   MEETING_TYPES,
 } from '../src/lib/goals';
@@ -213,6 +214,17 @@ section('progressPct + progressLevel (vert>=100 / orange>=70 / rouge<70)');
   const r: GoalRealized = { prospectsCreated: 5, coldCalls: 12, followups: 30, meetings: 4, revenue: 50000, conversionRate: 40 };
   check('bout-en-bout : 30 relances / cible 40 -> 75% orange',
     progressLevel(progressPct(r.followups, 40)) === 'orange');
+}
+
+// ---------------------------------------------------------------------------
+section('effectiveTarget — cascade cible : surcharge > défaut équipe');
+{
+  check('surcharge présente -> prime (même si défaut différent)', effectiveTarget(30, 50) === 30);
+  check('surcharge absente (null) -> défaut équipe', effectiveTarget(null, 50) === 50);
+  check('surcharge absente (undefined) -> défaut équipe', effectiveTarget(undefined, 50) === 50);
+  check('les deux absents -> null (pas d\'objectif)', effectiveTarget(null, null) === null);
+  check('surcharge 0 -> 0 (exemption explicite, prime sur le défaut)', effectiveTarget(0, 50) === 0);
+  check('défaut 0 utilisé si pas de surcharge', effectiveTarget(null, 0) === 0);
 }
 
 // ---------------------------------------------------------------------------

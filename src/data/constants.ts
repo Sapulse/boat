@@ -1,4 +1,15 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate, CalendarEventCategory } from './types';
+import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate, CalendarEventCategory, DefaultGoal } from './types';
+
+// Objectifs par défaut « vides » : aucune cible d'équipe fixée (repli neutre à
+// l'hydratation d'un state sans defaultGoal — migration nulle).
+export const EMPTY_DEFAULT_GOAL: DefaultGoal = {
+  prospectsCreated: null,
+  coldCalls: null,
+  followups: null,
+  meetings: null,
+  revenue: null,
+  conversionRate: null,
+};
 
 export const LEAD_STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'nouveau', label: 'Nouveau', color: 'bg-gray-100 text-gray-800' },

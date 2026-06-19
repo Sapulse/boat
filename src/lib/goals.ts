@@ -154,6 +154,20 @@ export function applyOverrides(auto: GoalRealized, goal: CommercialGoal | undefi
   };
 }
 
+/**
+ * Cible EFFECTIVE d'un indicateur : la SURCHARGE (target du CommercialGoal pour
+ * un commercial/mois) si elle est saisie, SINON le DÉFAUT ÉQUIPE. Même patron que
+ * l'override du réalisé, appliqué à la cible. La progression doit se baser sur
+ * cette cible effective. `0` est une surcharge explicite (exemption) -> prime.
+ */
+export function effectiveTarget(
+  target: number | null | undefined,
+  defaultTarget: number | null | undefined,
+): number | null {
+  if (target !== null && target !== undefined) return target;
+  return defaultTarget ?? null;
+}
+
 /** % de realisation = realise / objectif * 100. null si pas d'objectif (cible <= 0 ou absente). */
 export function progressPct(realized: number | null, target: number | null): number | null {
   if (target === null || target === undefined || target <= 0) return null;

@@ -1,5 +1,5 @@
 import { useReducer, useEffect, type ReactNode } from 'react';
-import type { Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal } from '../data/types';
+import type { Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal } from '../data/types';
 import { saveState } from '../lib/storage';
 import { generateId } from '../lib/utils';
 import { reducer, getInitialState } from './appReducer';
@@ -68,6 +68,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SAVE_GOALS', payload: goals });
   };
 
+  const saveDefaultGoal = (defaultGoal: DefaultGoal) => {
+    dispatch({ type: 'SAVE_DEFAULT_GOAL', payload: defaultGoal });
+  };
+
   const addTemplate = (template: Omit<MessageTemplate, 'id'>): string => {
     const id = generateId();
     dispatch({ type: 'ADD_TEMPLATE', payload: { ...template, id } });
@@ -113,6 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getCommercialName,
         saveMonthlyStats,
         saveGoals,
+        saveDefaultGoal,
         addTemplate,
         updateTemplate,
         deleteTemplate,
