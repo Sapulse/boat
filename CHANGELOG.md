@@ -7,6 +7,24 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.18.0] — 2026-06-19 — Menu en sections repliables
+
+### Modifié
+- **Menu de gauche réorganisé en 3 sections** à titre cliquable (chevron) :
+  **Pilotage** (Dashboard, Performance, Objectifs, Acquisition) et **Commercial**
+  (Espace commercial, Leads/Prospects, Clients, Pipeline, À relancer, Agenda)
+  ouvertes par défaut ; **Paramètres** (Équipe, Modèles, Exports) repliée.
+  - État repli/déplié **par session** (pas de persistance) : repart du défaut au
+    chargement. Routes, libellés, icônes et état actif (`NavLink`) inchangés.
+
+### Technique
+- `Sidebar.tsx` uniquement : `mainNav`/`settingsNav` remplacés par une structure
+  `sections[]` (`{ id, label, defaultOpen, items[] }`) + état local `useState`.
+  `renderItem`, logo, pied de page et overlay mobile conservés. Aucune logique
+  métier → aucun harnais impacté.
+
+---
+
 ## [3.17.0] — 2026-06-19 — Espace commercial
 
 ### Ajouté
