@@ -17,6 +17,7 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  Crosshair,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -56,6 +57,7 @@ const sections: NavSection[] = [
     label: 'Paramètres',
     defaultOpen: false,
     items: [
+      { name: 'Objectifs par défaut', href: '/objectifs-defaut', icon: Crosshair },
       { name: 'Équipe', href: '/equipe', icon: UsersRound },
       { name: 'Modèles', href: '/templates', icon: Mail },
       { name: 'Exports', href: '/exports', icon: Download },

@@ -10,6 +10,7 @@ import PipelinePage from './pages/PipelinePage';
 import PerformancePage from './pages/PerformancePage';
 import AcquisitionPage from './pages/AcquisitionPage';
 import ObjectifsPage from './pages/ObjectifsPage';
+import ObjectifsDefautPage from './pages/ObjectifsDefautPage';
 import EspaceCommercialPage from './pages/EspaceCommercialPage';
 import EquipePage from './pages/EquipePage';
 import ExportsPage from './pages/ExportsPage';
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/acquisition" element={<AcquisitionPage />} />
             <Route path="/objectifs" element={<ObjectifsPage />} />
             <Route path="/espace-commercial" element={<EspaceCommercialPage />} />
+            <Route path="/objectifs-defaut" element={<ObjectifsDefautPage />} />
             <Route path="/equipe" element={<EquipePage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/exports" element={<ExportsPage />} />
