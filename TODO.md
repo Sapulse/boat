@@ -9,22 +9,23 @@ déploiement auto) → tag annoté. Commits sémantiques.
 
 ---
 
-## 🚧 EN COURS — lot `espace-commercial` (cible `v3.17.0`)
+## 🚧 EN COURS — lot `objectifs-defaut-equipe` (cible `v3.19.0`)
 
-Page de **synthèse par commercial** (Objectifs + Performances + Pipeline + Agenda) :
-agrège et filtre l'existant, **aucune logique métier nouvelle**. Branche `espace-commercial`.
+**Objectifs par défaut de l'équipe** : une cible commune par indicateur, réglée une fois,
+reconduite chaque mois pour chaque commercial, surchargeable par (commercial, mois).
+Branche `objectifs-defaut-equipe`.
 
-- [x] **Étape 1** — coquille : page + sélecteurs commercial/mois-année + en-tête + bandeau
-  démo + route `/espace-commercial` + entrée menu. Extraction de `CommercialHeader` (partagé).
-- [x] **Étape 2** — extraction `MetricCard` (+ mode `compact`) & `metricsConfig` partagés ;
-  bloc **Objectifs** (6 indicateurs condensés, lecture seule) + bloc **Performances** (CA signé
-  + taux de transfo du mois via `lib/goals`). `ObjectifsPage` refactorisée (iso-comportement).
-- [x] **Étape 3** — bloc **Pipeline** (compteurs par statut + leads chauds, état courant) +
-  bloc **Agenda** (prochaines actions via `buildAgendaEvents` + `calendarEvents` du commercial).
-- [x] **Merge `v3.17.0`** : ff-only → main, CHANGELOG, tag annoté.
+- [x] **Étape 1** — modèle `DefaultGoal` + `EMPTY_DEFAULT_GOAL` + `AppState.defaultGoal` +
+  `SAVE_DEFAULT_GOAL` + hydratation (migration nulle) + `saveDefaultGoal` ; fonction PURE
+  `effectiveTarget(target, défaut)` (cascade cible) + harnais goals (49 : 4 cas + `0`).
+- [x] **Étape 2** — écran Paramètres « Objectifs par défaut » (route `/objectifs-defaut` +
+  entrée section Paramètres) : 6 cibles par défaut en une colonne → `saveDefaultGoal`.
+- [x] **Étape 3** — cible EFFECTIVE à l'affichage (Objectifs + Espace commercial) : barre/%
+  sur cible effective, placeholder = défaut équipe grisé, `MetricCard.targetInherited`.
+- [x] **Merge `v3.19.0`** : ff-only → main, CHANGELOG, tag annoté.
 
-✅ Lot précédent `objectifs-prospection` livré en **v3.16.0** (6 indicateurs / 3 familles,
-filtre prospection par source, source obligatoire, auto-log appel).
+✅ Lots récents livrés : `espace-commercial` (**v3.17.0**), menu en sections repliables
+(**v3.18.0**), `objectifs-prospection` (**v3.16.0**).
 
 ⚠️ **Point de vigilance — « Recommandation »** (issu de v3.16.0) : classée en source de
 **prospection active** aujourd'hui, mais **discutable** (souvent un flux entrant non sollicité).

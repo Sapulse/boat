@@ -7,6 +7,29 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.19.0] — 2026-06-19 — Objectifs par défaut de l'équipe
+
+### Ajouté
+- **Objectifs par défaut communs à l'équipe** : une **cible par indicateur** réglée une seule
+  fois (nouvel écran **Paramètres → « Objectifs par défaut »**, route `/objectifs-defaut`),
+  **reconduite automatiquement chaque mois pour chaque commercial**.
+  - **Cascade à 2 niveaux pour la cible** : une cible saisie sur la page Objectifs
+    (un commercial, un mois) **prime** ; sinon le **défaut équipe** s'applique. `0` est une
+    surcharge explicite (exemption) qui prime aussi.
+  - **Affichage** : sur Objectifs et Espace commercial, la **progression (barre / %) utilise la
+    cible effective** ; une case de cible vide montre le **défaut équipe** (placeholder grisé +
+    mention discrète « · défaut équipe »).
+
+### Technique
+- Nouvelle entité `AppState.defaultGoal` (`DefaultGoal` : 6 cibles `number | null`) +
+  `EMPTY_DEFAULT_GOAL`, action `SAVE_DEFAULT_GOAL`, hook `saveDefaultGoal` ; hydratation
+  `defaultGoal ?? EMPTY_DEFAULT_GOAL` (**migration nulle**, `STORAGE_KEY` intouchée). Logique
+  **pure** `effectiveTarget(target, defaultTarget)` (`lib/goals`) **réutilisée partout** —
+  aucun recalcul, le **réalisé (auto + override) est inchangé**. Harnais `goals` porté à **49**
+  (surcharge prime, défaut seul, les deux null, `0` des deux côtés).
+
+---
+
 ## [3.18.0] — 2026-06-19 — Menu en sections repliables
 
 ### Modifié
