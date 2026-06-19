@@ -7,6 +7,46 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.14.0] — 2026-06-19 — Refonte Acquisition (source de vérité unique)
+
+### Modifié
+- **Page Acquisition refondue** : **2 onglets** (Saisie / Tableau de bord) au lieu
+  de 3, plus de **double saisie** des leads.
+  - **Saisie par mois sélectionné** (navigation ‹ ›) : **une ligne par source**,
+    regroupées **Régies** (budget + leads → CPL) puis **Plateformes d'annonces**
+    (leads seuls), avec **totaux du mois** (budget, leads, CPL moyen). Fini la
+    grille 12 mois × 36 colonnes qui débordait.
+  - **Tableau de bord unifié** sur **toutes les sources** (régies + plateformes) :
+    KPI, graphes mensuels, récap par source. CPL **moyen = budget / leads payants**.
+
+### Ajouté
+- **Garde anti-perte de saisie** : confirmation avant de quitter l'onglet Saisie
+  avec des modifications non enregistrées, et avertissement natif (`beforeunload`)
+  avant fermeture/rechargement. (Navigation interne SPA hors périmètre : HashRouter
+  sans data router.)
+
+### Technique
+- **UNE seule source de vérité** par (année, mois, source) : `acquisitionVolumes`
+  **fusionné dans** `monthlyStats` via `mergeAcquisition` — migration **idempotente,
+  sans perte**, `STORAGE_KEY` intouchée. Champ `cpl` **retiré du modèle** (DÉRIVÉ via
+  `computeCpl`, jamais stocké). `AcquisitionVolume` / `SAVE_ACQUISITION_VOLUMES` /
+  `saveAcquisitionVolumes` supprimés (type *legacy* conservé pour la lecture des
+  anciens states). Export Acquisition sort enfin **toutes** les sources. Logique
+  **pure** (`lib/acquisition` : `computeCpl` / `acquisitionTotals` / `mergeAcquisition`
+  / `isPaidSource`) couverte par un nouveau harnais **`harness-acquisition` (33)**.
+
+---
+
+## [3.13.1] — 2026-06-19 — Horizon des années dynamique
+
+### Corrigé
+- **Sélecteur d'année** (stats acquisition) borné à ±1 an (plafonnait toute saisie
+  future) → **plage DYNAMIQUE glissante** (année courante −5 / +50) via la fonction
+  pure `buildYearRange`. Plus aucune année en dur, plus jamais de plafond à
+  reconduire. Couvert par un harnais **`harness-dates` (14)**.
+
+---
+
 ## [3.13.0] — 2026-06-17 — Événements d'agenda libres
 
 ### Ajouté
