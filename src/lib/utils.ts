@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { differenceInDays, format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Lead, AlertLevel, LeadStatus } from '../data/types';
-import { ACTIVE_STATUSES } from '../data/constants';
+import { ACTIVE_STATUSES, YEAR_RANGE_BACK, YEAR_RANGE_FORWARD } from '../data/constants';
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -10,6 +10,24 @@ export function cn(...inputs: ClassValue[]) {
 
 export function generateId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Plage d'annees DYNAMIQUE autour de l'annee courante, pour les selecteurs
+ * d'annee (stats acquisition). Bornes incluses : [current - back .. current + forward].
+ *
+ * Horizon glissant : recalcule a partir de l'annee courante -> aucune annee codee
+ * en dur, jamais de plafond a reconduire. Volontairement large vers le futur pour
+ * ne JAMAIS bloquer une saisie a venir. `current` est injectable (tests purs).
+ */
+export function buildYearRange(
+  back: number = YEAR_RANGE_BACK,
+  forward: number = YEAR_RANGE_FORWARD,
+  current: number = new Date().getFullYear(),
+): number[] {
+  const start = current - back;
+  const end = current + forward;
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 export function formatDate(date: string): string {

@@ -15,7 +15,7 @@ import { useApp } from '../context/useApp';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { MONTHLY_STAT_SOURCES, ACQUISITION_SOURCES, MONTHS } from '../data/constants';
-import { formatCurrency, generateId } from '../lib/utils';
+import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
 import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 import type { MonthlyStat, AcquisitionVolume } from '../data/types';
 
@@ -36,7 +36,9 @@ const COLORS = [
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
+// Plage DYNAMIQUE (annee courante +- amplitude, cf. buildYearRange / constants) :
+// horizon glissant, plus aucune annee en dur, jamais de plafond de saisie future.
+const YEAR_OPTIONS = buildYearRange();
 
 // ---------------------------------------------------------------------------
 // Tab 1 — Budget & CPL

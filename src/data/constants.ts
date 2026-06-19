@@ -122,6 +122,13 @@ export const MONTHS = [
   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
 ];
 
+// Amplitude des selecteurs d'annee (stats acquisition). Plage DYNAMIQUE calculee
+// autour de l'annee courante par buildYearRange() (lib/utils) -> aucune annee en
+// dur, l'horizon glisse chaque annee, jamais de plafond a reconduire. Large vers
+// le futur pour ne JAMAIS bloquer une saisie a venir.
+export const YEAR_RANGE_BACK = 5;
+export const YEAR_RANGE_FORWARD = 50;
+
 // Nom d'entreprise centralise (rapports PDF, en-tetes, branding, futur re-fork client).
 export const COMPANY_NAME = 'Brest Ocean Boat';
 
