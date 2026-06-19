@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { Save, DollarSign, Users, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   BarChart,
@@ -64,13 +64,32 @@ function TotalCard({
 // Onglet — Saisie (mois selectionne, une ligne par source)
 // ---------------------------------------------------------------------------
 
-function SaisieTab() {
+function SaisieTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const { state, saveMonthlyStats } = useApp();
   const now = new Date();
   const [year, setYear] = useState(CURRENT_YEAR);
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [stats, setStats] = useState<MonthlyStat[]>(state.monthlyStats);
   const [dirty, setDirty] = useState(false);
+
+  // Garde anti-perte (1) : on remonte l'etat "modifications non enregistrees" au
+  // parent, qui confirme avant de quitter l'onglet Saisie.
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+
+  // Garde anti-perte (3) : avertissement natif du navigateur a la fermeture /
+  // rechargement de l'onglet, UNIQUEMENT si des modifications sont en attente.
+  // Le listener est retire des que dirty repasse false ou au demontage.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   // Saisie centree sur le (mois, annee) selectionne -> plus de grille 12 mois.
   const findStat = (source: string) =>
@@ -476,8 +495,25 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function AcquisitionPage() {
   const [activeTab, setActiveTab] = useState<Tab>('saisie');
+  // Etat "modifications non enregistrees" de l'onglet Saisie, remonte par SaisieTab.
+  const [saisieDirty, setSaisieDirty] = useState(false);
 
   const activeLabel = TABS.find((t) => t.id === activeTab)?.label ?? '';
+
+  // Garde au changement d'onglet : si on quitte la Saisie avec des modifications
+  // en attente, on confirme. Annuler -> on reste (rien perdu). Confirmer -> on
+  // bascule et on abandonne les modifs en cours (comportement actuel assume).
+  const handleTabChange = (id: Tab) => {
+    if (id === activeTab) return;
+    if (activeTab === 'saisie' && saisieDirty) {
+      const ok = window.confirm(
+        'Vous avez des modifications non enregistrées dans la saisie. Quitter sans enregistrer ?'
+      );
+      if (!ok) return;
+      setSaisieDirty(false);
+    }
+    setActiveTab(id);
+  };
 
   return (
     <div className="space-y-6">
@@ -500,7 +536,7 @@ export default function AcquisitionPage() {
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={[
                 'px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors focus:outline-none',
                 activeTab === tab.id
@@ -515,7 +551,7 @@ export default function AcquisitionPage() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'saisie' && <SaisieTab />}
+      {activeTab === 'saisie' && <SaisieTab onDirtyChange={setSaisieDirty} />}
       {activeTab === 'dashboard' && <DashboardTab />}
     </div>
   );
