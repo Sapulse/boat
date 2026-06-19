@@ -18,6 +18,7 @@ import { METRICS } from '../components/objectifs/metricsConfig';
 import {
   computeAutoRealized,
   applyOverrides,
+  effectiveTarget,
   sumSignedRevenue,
   conversionRate,
 } from '../lib/goals';
@@ -193,7 +194,10 @@ export default function EspaceCommercialPage() {
                   hint={m.hint}
                   unit={m.unit}
                   realizedVal={realized[m.key]}
-                  target={goal?.[m.key]?.target ?? null}
+                  target={effectiveTarget(goal?.[m.key]?.target ?? null, state.defaultGoal[m.key])}
+                  targetInherited={
+                    (goal?.[m.key]?.target ?? null) === null && state.defaultGoal[m.key] !== null
+                  }
                   autoVal={auto[m.key]}
                   overridden={goal?.[m.key]?.override != null}
                 />

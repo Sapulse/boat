@@ -32,6 +32,7 @@ export default function MetricCard({
   realizedInput = '',
   onRealizedChange,
   compact = false,
+  targetInherited = false,
 }: {
   label: string;
   hint: string;
@@ -44,6 +45,8 @@ export default function MetricCard({
   realizedInput?: string;
   onRealizedChange?: (value: string) => void;
   compact?: boolean;
+  // La cible effective vient du DÉFAUT ÉQUIPE (pas de surcharge) -> indication discrète.
+  targetInherited?: boolean;
 }) {
   const pct = progressPct(realizedVal, target);
   const level = progressLevel(pct);
@@ -77,7 +80,14 @@ export default function MetricCard({
           </div>
         )}
         <div className="text-xs text-gray-400 mt-0.5">
-          {target !== null ? `sur ${formatValue(target, unit)}` : "pas d'objectif"}
+          {target !== null ? (
+            <>
+              sur {formatValue(target, unit)}
+              {targetInherited && <span className="text-gray-300"> · défaut équipe</span>}
+            </>
+          ) : (
+            "pas d'objectif"
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">

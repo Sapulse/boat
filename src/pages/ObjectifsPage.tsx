@@ -5,7 +5,7 @@ import { generateId, buildYearRange } from '../lib/utils';
 import CommercialHeader from '../components/commercial/CommercialHeader';
 import MetricCard from '../components/objectifs/MetricCard';
 import { METRICS, FAMILIES, formatValue, type MetricKey } from '../components/objectifs/metricsConfig';
-import { computeAutoRealized, applyOverrides } from '../lib/goals';
+import { computeAutoRealized, applyOverrides, effectiveTarget } from '../lib/goals';
 import { MONTHS } from '../data/constants';
 import type { CommercialGoal, GoalMetric } from '../data/types';
 
@@ -229,7 +229,10 @@ export default function ObjectifsPage() {
                     hint={m.hint}
                     unit={m.unit}
                     realizedVal={realized[m.key]}
-                    target={currentGoal?.[m.key]?.target ?? null}
+                    target={effectiveTarget(currentGoal?.[m.key]?.target ?? null, state.defaultGoal[m.key])}
+                    targetInherited={
+                      (currentGoal?.[m.key]?.target ?? null) === null && state.defaultGoal[m.key] !== null
+                    }
                     autoVal={auto[m.key]}
                     overridden={currentGoal?.[m.key]?.override != null}
                     manual={m.manual}
@@ -295,7 +298,7 @@ export default function ObjectifsPage() {
                             inputMode="numeric"
                             value={metricValue(m.key, 'target')}
                             onChange={(e) => updateMetric(m.key, 'target', e.target.value)}
-                            placeholder="—"
+                            placeholder={formatValue(state.defaultGoal[m.key], m.unit)}
                           />
                           {m.unit && <span className="text-gray-400 text-xs w-3">{m.unit}</span>}
                         </div>
