@@ -15,6 +15,7 @@ import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, 
 import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/email';
 import { buildSms } from '../lib/sms';
 import { buildWhatsApp } from '../lib/whatsapp';
+import { buildCommunicationAction } from '../lib/communication';
 import { generateVCard } from '../lib/vcard';
 import { isEndAfterStart } from '../lib/agenda';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
@@ -87,14 +88,10 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const { subject, body } = template ? renderEmail(template, vars) : { subject: '', body: '' };
     window.location.assign(buildMailto(lead.email, subject, body));
-    addAction({
-      leadId: lead.id,
-      type: 'email',
-      date: toISODate(new Date()),
+    addAction(buildCommunicationAction(lead, 'email', toISODate(new Date()), {
       result: template ? `Email envoyé — ${template.title}` : 'Email envoyé — sans modèle',
       notes: subject,
-      authorId: lead.commercialId,
-    });
+    }));
     setShowEmailMenu(false);
   };
 
@@ -112,14 +109,10 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const body = template ? renderTemplate(template.body, vars) : '';
     window.location.assign(buildSms(lead.phone, body));
-    addAction({
-      leadId: lead.id,
-      type: 'sms',
-      date: toISODate(new Date()),
+    addAction(buildCommunicationAction(lead, 'sms', toISODate(new Date()), {
       result: template ? `SMS envoyé — ${template.title}` : 'SMS envoyé — sans modèle',
       notes: body,
-      authorId: lead.commercialId,
-    });
+    }));
     setShowSmsMenu(false);
   };
 
@@ -134,14 +127,10 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const body = template ? renderTemplate(template.body, vars) : '';
     window.open(buildWhatsApp(lead.phone, body), '_blank', 'noopener,noreferrer');
-    addAction({
-      leadId: lead.id,
-      type: 'whatsapp',
-      date: toISODate(new Date()),
+    addAction(buildCommunicationAction(lead, 'whatsapp', toISODate(new Date()), {
       result: template ? `WhatsApp envoyé — ${template.title}` : 'WhatsApp envoyé — sans modèle',
       notes: body,
-      authorId: lead.commercialId,
-    });
+    }));
     setShowWhatsappMenu(false);
   };
 
@@ -246,7 +235,15 @@ export default function LeadDetailPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-medium text-gray-500 mr-2">Actions rapides :</span>
             <button onClick={() => setShowActionForm(true)} className="btn-primary btn-sm"><Plus className="w-3 h-3" /> Ajouter action</button>
-            {lead.phone && <a href={`tel:${lead.phone}`} className="btn-secondary btn-sm"><Phone className="w-3 h-3" /> Appeler</a>}
+            {lead.phone && (
+              <a
+                href={`tel:${lead.phone}`}
+                onClick={() => addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }))}
+                className="btn-secondary btn-sm"
+              >
+                <Phone className="w-3 h-3" /> Appeler
+              </a>
+            )}
             {lead.email && (
               <div className="relative">
                 <button onClick={() => setShowEmailMenu(v => !v)} className="btn-secondary btn-sm">

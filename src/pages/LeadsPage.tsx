@@ -4,7 +4,8 @@ import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phon
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
+import { buildCommunicationAction } from '../lib/communication';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
@@ -36,7 +37,7 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 }
 
 export default function LeadsPage() {
-  const { state, getCommercialName, addLead } = useApp();
+  const { state, getCommercialName, addLead, addAction } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -324,7 +325,12 @@ export default function LeadsPage() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         {lead.phone && (
-                          <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()} className="p-1 text-gray-400 hover:text-success-600 rounded" title="Appeler">
+                          <a
+                            href={`tel:${lead.phone}`}
+                            onClick={(e) => { e.stopPropagation(); addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' })); }}
+                            className="p-1 text-gray-400 hover:text-success-600 rounded"
+                            title="Appeler"
+                          >
                             <Phone className="w-3.5 h-3.5" />
                           </a>
                         )}
