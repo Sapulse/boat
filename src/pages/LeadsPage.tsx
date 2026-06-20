@@ -4,7 +4,7 @@ import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phon
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
+import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
 import { buildCommunicationAction } from '../lib/communication';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
@@ -130,7 +130,10 @@ export default function LeadsPage() {
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortField(field); setSortDir('desc'); }
+    // Prochaine action : 1er clic en ASCENDANT (echeances les plus proches en
+    // haut, "sans date" en bas — l'intention metier "qui relancer en premier").
+    // Les autres champs gardent le defaut historique 'desc'.
+    else { setSortField(field); setSortDir(field === 'nextActionDate' ? 'asc' : 'desc'); }
   };
 
   const hasFilters = filterCommercial || filterStatus || filterBoatType || filterCondition || filterSource || filterAlert || filterTemp || filterPeriod || activeView;
@@ -280,6 +283,9 @@ export default function LeadsPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('lastActionDate')}>
                   <span className="inline-flex items-center gap-1">Dern. action <SortIcon field="lastActionDate" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
+                <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('nextActionDate')}>
+                  <span className="inline-flex items-center gap-1">Prochaine action <SortIcon field="nextActionDate" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
                 <th className="px-3 py-3 text-center font-medium text-gray-600 w-24">Actions</th>
               </tr>
             </thead>
@@ -305,12 +311,20 @@ export default function LeadsPage() {
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-gray-900 text-xs">{formatCurrency(lead.budget)}</td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('text-xs', days > 14 ? 'text-danger-600 font-medium' : days > 7 ? 'text-warning-600' : 'text-gray-500')}>
-                          {days === Infinity ? '-' : days === 0 ? "Auj." : `${days}j`}
+                      <span className={cn('text-xs', days > 14 ? 'text-danger-600 font-medium' : days > 7 ? 'text-warning-600' : 'text-gray-500')}>
+                        {days === Infinity ? '-' : days === 0 ? "Auj." : `${days}j`}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {/* Prochaine action : type + date (formatDateShort). Sans
+                          type ni date -> tiret discret (range en dernier au tri). */}
+                      {nextAction || lead.nextActionDate ? (
+                        <span className="text-xs text-gray-600">
+                          {[nextAction, lead.nextActionDate && formatDateShort(lead.nextActionDate)].filter(Boolean).join(' · ')}
                         </span>
-                        {nextAction && <span className="text-[10px] text-gray-400">{nextAction}</span>}
-                      </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">-</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       {/* Masque-jusqu'au-survol UNIQUEMENT sur pointeur fin
@@ -340,7 +354,7 @@ export default function LeadsPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">Aucun lead trouvé</td></tr>
+                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">Aucun lead trouvé</td></tr>
               )}
             </tbody>
           </table>
