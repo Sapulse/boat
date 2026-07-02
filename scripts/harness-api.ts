@@ -171,7 +171,7 @@ async function main() {
     check('status invalide rejeté', rejected);
   }
 
-  section('Routage (catch-all api/[...slug].ts) : mêmes URLs, mêmes réponses, garde');
+  section('Routage (catch-all api/[...slug].ts) : parse req.url comme Vercel');
   {
     // Le catch-all utilise le singleton _lib/prisma : on le fait viser la MÊME
     // base jetable (DATABASE_URL) et on active la garde par jeton, AVANT de
@@ -183,7 +183,9 @@ async function main() {
     const TOK = 'test-token';
 
     type Captured = { statusCode: number; payload: unknown; ended: boolean };
-    async function invoke(method: string, slug: string[], opts: { token?: string; body?: unknown } = {}): Promise<Captured> {
+    // On passe par req.URL (forme réelle Vercel), PAS req.query.slug : c'est le
+    // mécanisme exact de prod -> plus de décalage test-vert / prod-cassée.
+    async function call(method: string, url: string, opts: { token?: string; body?: unknown } = {}): Promise<Captured> {
       const cap: Captured = { statusCode: 0, payload: undefined, ended: false };
       const res = {
         status(s: number) { cap.statusCode = s; return res; },
@@ -191,10 +193,12 @@ async function main() {
         end() { cap.ended = true; return res; },
         setHeader() { return res; },
       };
-      const req = { method, query: { slug }, headers: { authorization: opts.token ? `Bearer ${opts.token}` : undefined }, body: opts.body };
+      const req = { method, url, headers: { authorization: opts.token ? `Bearer ${opts.token}` : undefined }, body: opts.body };
       await handler(req as unknown as VercelRequest, res as unknown as VercelResponse);
       return cap;
     }
+    const invoke = (method: string, slug: string[], opts: { token?: string; body?: unknown; query?: string } = {}) =>
+      call(method, '/api/' + slug.join('/') + (opts.query ?? ''), opts);
 
     const r401 = await invoke('GET', ['state']);
     check('GET /api/state SANS jeton -> 401', r401.statusCode === 401);
@@ -206,6 +210,12 @@ async function main() {
     const rState = await invoke('GET', ['state'], { token: TOK });
     check('GET /api/state -> 200', rState.statusCode === 200);
     check('state contient bien route-1', (rState.payload as { leads: Lead[] }).leads.some(l => l.id === 'route-1'));
+
+    // Robustesse du parsing : query string ignorée, préfixe /api optionnel.
+    const rQuery = await invoke('GET', ['state'], { token: TOK, query: '?ts=123&x=y' });
+    check('GET /api/state?ts=123 -> 200 (query string ignorée)', rQuery.statusCode === 200);
+    const rNoApi = await call('GET', '/state', { token: TOK });
+    check('GET /state (sans préfixe /api) -> 200 (parsing robuste)', rNoApi.statusCode === 200);
 
     const rPatch = await invoke('PATCH', ['leads', 'route-1'], { token: TOK, body: { status: 'devis_envoye' } });
     check('PATCH /api/leads/:id -> 200 + maj', rPatch.statusCode === 200 && (rPatch.payload as Lead).status === 'devis_envoye');

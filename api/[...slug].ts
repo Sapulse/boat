@@ -86,14 +86,22 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
   throw new HttpError(405, `Route non supportée : ${m} /api/${resource}${id ? '/' + id : ''}`);
 }
 
+// Segments du chemin APRÈS /api, extraits de req.url (et NON de req.query.slug :
+// pour une fonction @vercel/node brute, les segments de [...slug] ne sont pas
+// injectés dans req.query — seul req.url est fiable). Robuste aux query strings
+// et à la présence ou non du préfixe "api". Ex. "/api/leads/42?x=1" -> ["leads","42"].
+function pathSegments(url: string | undefined): string[] {
+  const pathname = new URL(url ?? '', 'http://localhost').pathname;
+  const segs = pathname.split('/').filter(Boolean);
+  return segs[0] === 'api' ? segs.slice(1) : segs;
+}
+
 // Point d'entrée unique : garde par jeton + parsing du chemin + dispatch, avec
 // gestion d'erreurs homogène (HttpError -> son statut, sinon 500).
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   try {
     requireToken(req);
-    const raw = req.query.slug;
-    const parts = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    const [resource, id] = parts;
+    const [resource, id] = pathSegments(req.url);
     if (!resource) throw new HttpError(404, 'Ressource manquante');
     await dispatch(req, res, resource, id);
   } catch (e) {
