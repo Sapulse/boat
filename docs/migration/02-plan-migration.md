@@ -94,15 +94,28 @@ question **Q9** sont **caducs**.
   assertions (CRUD, cascade, UNIQUE, batch, enum) ; build + lint + `api:typecheck` +
   8 harnais verts. **Non branché** (CRM sur localStorage) — zéro impact.
 
-**Partie INFRA (web, à faire — instructions au moment venu)** :
-- Créer la base **Turso région UE (Paris `cdg`)** → `TURSO_DATABASE_URL` +
-  `TURSO_AUTH_TOKEN`.
-- Créer le **projet Vercel** (préset Vite, option A même origine) + env vars
-  (`TURSO_*`, `API_SHARED_TOKEN`).
-- Pousser le schéma (`npm run db:push:turso`) → base **vierge** prête (D9).
-- Smoke test `curl` de l'API déployée (avec le jeton).
+**Partie INFRA (web)** :
+- ✅ Base **Turso région UE (Irlande `aws-eu-west-1`)** créée (compte **BrestOceanBoat**,
+  le client héberge ses données) → `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`.
+- ✅ **Projet Vercel** (compte **BrestOceanBoat**, préset Vite, option A même origine)
+  relié à `Sapulse/boat` + 3 env vars (`TURSO_*`, `API_SHARED_TOKEN`). **Déployé** :
+  `https://boat-eta.vercel.app` (app + API en ligne). API regroupée en **1 fonction**
+  (catch-all) pour tenir sous la limite Hobby (12).
+- ⏳ **Push du schéma** (`npm run db:push:turso`, `.env` local avec les 2 secrets Turso)
+  → base **vierge** prête (D9), 8 tables.
+- ⏳ Smoke test `curl` de l'API (avec le jeton).
 
-- **Décision actée :** **D10** (Q8). **Non-régression :** CRM toujours sur localStorage.
+- **Décision actée :** **D10** (Q8). **Non-régression :** CRM toujours sur localStorage
+  (GitHub Pages en `/boat/` inchangé ; Vercel en base `/`).
+
+### ⚠️ Suivi sécurité (à faire à froid, avant le vrai go-live)
+- **Régénérer le `TURSO_AUTH_TOKEN`** : l'actuel a été exposé en clair dans un échange
+  (commande CLI qui a déraillé). Sans gravité tant que la base est **vide**, mais à
+  **révoquer/regénérer** dans Turso, puis mettre à jour la variable dans **Vercel** et
+  le `.env` local. À planifier avant que des vraies données arrivent (import Excel).
+- **Régénérer aussi `API_SHARED_TOKEN`** au go-live (il a transité par un transcript
+  d'assistant lors de la mise en place). Rotation simple : nouvelle valeur → env var
+  Vercel → (Lot 5) le client.
 
 ---
 
