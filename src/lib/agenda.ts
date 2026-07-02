@@ -270,7 +270,7 @@ export interface DayGridLayout<T = AgendaEvent> {
  * Place les evenements d'UN jour dans la grille horaire en BLOCS :
  *  - `startIndex` = creneau de debut (arrondi plancher) ;
  *  - `span` = nb de creneaux couverts : de debut a fin si fin valide (clamp a la
- *    fin de plage 18h), sinon 1 (action ponctuelle / fin incoherente) ;
+ *    fin de plage END), sinon 1 (action ponctuelle / fin incoherente) ;
  *  - `lane`/`lanes` = couloirs cote a cote pour les chevauchements (assignation
  *    gloutonne par cluster). Aucun evenement perdu (all-day / hors-plage / place).
  * Helper PUR (constantes de plage), testable au harnais.

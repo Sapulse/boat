@@ -561,55 +561,66 @@ function makeEvent(over: Partial<AgendaEvent> = {}): AgendaEvent {
   return { leadId: 'l1', leadName: 'Test', commercialId: 'fred', type: 'rdv', date: '2026-06-22', status: 'future', ...over };
 }
 
-section('Agenda grille — buildTimeSlots : creneaux 8:00..17:30 (pas de 30 min)');
+section('Agenda grille — buildTimeSlots : creneaux 0:00..23:30 (24h, pas de 30 min)');
 {
   const slots = buildTimeSlots();
-  check('20 creneaux ((18-8)*2)', slots.length === 20, `=${slots.length}`);
-  check('premier creneau 08:00', slots[0] === '08:00', `=${slots[0]}`);
-  check('dernier creneau 17:30', slots[slots.length - 1] === '17:30', `=${slots[slots.length - 1]}`);
+  check('48 creneaux ((24-0)*2)', slots.length === 48, `=${slots.length}`);
+  check('premier creneau 00:00', slots[0] === '00:00', `=${slots[0]}`);
+  check('dernier creneau 23:30', slots[slots.length - 1] === '23:30', `=${slots[slots.length - 1]}`);
 }
 
-section('Agenda grille — eventSlot : none / out / creneau (arrondi plancher)');
+section('Agenda grille — eventSlot : none / creneau (plage 0-24 : plus aucun "out" pour une heure valide)');
 {
   check('sans heure -> none', eventSlot(makeEvent({ time: undefined })) === 'none');
-  check('07:00 (avant plage) -> out', eventSlot(makeEvent({ time: '07:00' })) === 'out');
-  check('18:00 (>= fin) -> out', eventSlot(makeEvent({ time: '18:00' })) === 'out');
-  check('19:30 (apres plage) -> out', eventSlot(makeEvent({ time: '19:30' })) === 'out');
+  check('heure invalide -> none', eventSlot(makeEvent({ time: '25:00' })) === 'none');
+  // Avec 0-24, toute heure valide (00:00..23:59) est DANS la plage : plus de "out".
+  const s0 = eventSlot(makeEvent({ time: '00:00' }));
+  check('00:00 -> creneau 00:00 (borne basse incluse)', typeof s0 === 'object' && s0.slot === '00:00', JSON.stringify(s0));
+  const sEarly = eventSlot(makeEvent({ time: '07:00' }));
+  check('07:00 -> creneau 07:00 (etait hors plage avant)', typeof sEarly === 'object' && sEarly.slot === '07:00', JSON.stringify(sEarly));
   const s1 = eventSlot(makeEvent({ time: '14:15' }));
   check('14:15 -> creneau 14:00 (arrondi plancher)', typeof s1 === 'object' && s1.slot === '14:00', JSON.stringify(s1));
-  const s2 = eventSlot(makeEvent({ time: '08:00' }));
-  check('08:00 -> creneau 08:00 (borne incluse)', typeof s2 === 'object' && s2.slot === '08:00', JSON.stringify(s2));
-  const s3 = eventSlot(makeEvent({ time: '17:45' }));
-  check('17:45 -> creneau 17:30', typeof s3 === 'object' && s3.slot === '17:30', JSON.stringify(s3));
+  const s3 = eventSlot(makeEvent({ time: '23:45' }));
+  check('23:45 -> creneau 23:30 (dernier creneau)', typeof s3 === 'object' && s3.slot === '23:30', JSON.stringify(s3));
 }
 
 section('Agenda grille — layoutDayEvents : repartit sans perdre aucun evenement');
 {
   const events = [
     makeEvent({ leadId: 'a', time: undefined }),   // all-day
-    makeEvent({ leadId: 'b', time: '07:30' }),     // hors plage
+    makeEvent({ leadId: 'b', time: '07:30' }),     // creneau 07:30 (dans la plage 0-24)
     makeEvent({ leadId: 'c', time: '09:00' }),     // creneau 09:00
     makeEvent({ leadId: 'd', time: '09:20' }),     // creneau 09:00 (meme cellule)
-    makeEvent({ leadId: 'e', time: '14:30' }),     // creneau 14:30
+    makeEvent({ leadId: 'e', time: '23:30' }),     // dernier creneau
   ];
   const lay = layoutDayEvents(events);
   check('1 all-day', lay.allDay.length === 1 && lay.allDay[0].leadId === 'a');
-  check('1 hors-plage', lay.outOfRange.length === 1 && lay.outOfRange[0].leadId === 'b');
+  check('0 hors-plage (0-24 : plus rien hors plage)', lay.outOfRange.length === 0, `=${lay.outOfRange.length}`);
+  check('1 evenement dans le creneau 07:30 (matin tot desormais visible)', (lay.bySlot.get('07:30') ?? []).length === 1);
   check('2 evenements dans le creneau 09:00', (lay.bySlot.get('09:00') ?? []).length === 2);
-  check('1 evenement dans le creneau 14:30', (lay.bySlot.get('14:30') ?? []).length === 1);
+  check('1 evenement dans le dernier creneau 23:30', (lay.bySlot.get('23:30') ?? []).length === 1);
   const total = lay.allDay.length + lay.outOfRange.length + [...lay.bySlot.values()].reduce((n, a) => n + a.length, 0);
   check('aucun evenement perdu (5 en entree, 5 repartis)', total === 5, `=${total}`);
 }
 
-section('Agenda grille — layoutDayGrid : span (bloc), clamp 18h, fallback span 1');
+section('Agenda grille — layoutDayGrid : span (bloc), START=0, fallback span 1');
 {
-  // 08:00–10:00 -> creneau de debut 0, couvre 4 creneaux (08:00..09:30).
+  // 08:00–10:00 -> avec START=0, creneau de debut 16 (8h*2), couvre 4 creneaux.
   const g1 = layoutDayGrid([makeEvent({ leadId: 'a', time: '08:00', endTime: '10:00' })]);
-  check('bloc 08:00–10:00 : startIndex 0', g1.positioned[0].startIndex === 0, `=${g1.positioned[0].startIndex}`);
+  check('bloc 08:00–10:00 : startIndex 16 (START=0)', g1.positioned[0].startIndex === 16, `=${g1.positioned[0].startIndex}`);
   check('bloc 08:00–10:00 : span 4', g1.positioned[0].span === 4, `=${g1.positioned[0].span}`);
-  // 17:00–20:00 -> fin clampee a 18:00 (span 2 : 17:00, 17:30).
+  // 17:00–20:00 -> DESORMAIS entierement dans la plage (span 6 : 17:00..19:30), plus de clamp.
   const g2 = layoutDayGrid([makeEvent({ leadId: 'b', time: '17:00', endTime: '20:00' })]);
-  check('fin hors plage clampee a 18h : span 2', g2.positioned[0].span === 2, `=${g2.positioned[0].span}`);
+  check('bloc 17:00–20:00 : startIndex 34', g2.positioned[0].startIndex === 34, `=${g2.positioned[0].startIndex}`);
+  check('bloc 17:00–20:00 : span 6 (plus de clamp 18h)', g2.positioned[0].span === 6, `=${g2.positioned[0].span}`);
+  // START=0 : un bloc a 00:00 commence au tout premier creneau.
+  const g0 = layoutDayGrid([makeEvent({ leadId: 'z', time: '00:00', endTime: '01:00' })]);
+  check('bloc 00:00–01:00 : startIndex 0 (premier creneau)', g0.positioned[0].startIndex === 0, `=${g0.positioned[0].startIndex}`);
+  check('bloc 00:00–01:00 : span 2', g0.positioned[0].span === 2, `=${g0.positioned[0].span}`);
+  // Fin de journee : 23:00–23:59 clampe a la fin de grille (slotCount - startIndex = 2).
+  const gEnd = layoutDayGrid([makeEvent({ leadId: 'e', time: '23:00', endTime: '23:59' })]);
+  check('bloc 23:00–23:59 : startIndex 46', gEnd.positioned[0].startIndex === 46, `=${gEnd.positioned[0].startIndex}`);
+  check('bloc 23:00–23:59 : span 2 (clamp fin de grille)', gEnd.positioned[0].span === 2, `=${gEnd.positioned[0].span}`);
   // sans fin -> ponctuel (span 1).
   const g3 = layoutDayGrid([makeEvent({ leadId: 'c', time: '09:00' })]);
   check('sans fin : span 1 (ponctuel)', g3.positioned[0].span === 1, `=${g3.positioned[0].span}`);
@@ -631,16 +642,18 @@ section('Agenda grille — layoutDayGrid : couloirs (lanes) de chevauchement');
   check('C isole : un seul couloir (lanes=1)', byId('C')?.lanes === 1, `=${byId('C')?.lanes}`);
 }
 
-section('Agenda drag-creneau — startSlotIndex : index ou null hors plage');
+section('Agenda drag-creneau — startSlotIndex : index (plage 0-24) ou null si heure invalide');
 {
-  check("'08:00' -> 0", startSlotIndex('08:00') === 0, `=${startSlotIndex('08:00')}`);
-  check("'17:30' -> 19", startSlotIndex('17:30') === 19, `=${startSlotIndex('17:30')}`);
-  check("'09:15' -> 2 (plancher)", startSlotIndex('09:15') === 2, `=${startSlotIndex('09:15')}`);
-  check("'07:00' -> null (avant plage)", startSlotIndex('07:00') === null);
-  check("'18:00' -> null (>= fin)", startSlotIndex('18:00') === null);
+  check("'00:00' -> 0 (premier creneau, START=0)", startSlotIndex('00:00') === 0, `=${startSlotIndex('00:00')}`);
+  check("'08:00' -> 16", startSlotIndex('08:00') === 16, `=${startSlotIndex('08:00')}`);
+  check("'17:30' -> 35", startSlotIndex('17:30') === 35, `=${startSlotIndex('17:30')}`);
+  check("'09:15' -> 18 (plancher)", startSlotIndex('09:15') === 18, `=${startSlotIndex('09:15')}`);
+  check("'07:00' -> 14 (matin tot, desormais dans la plage)", startSlotIndex('07:00') === 14, `=${startSlotIndex('07:00')}`);
+  check("'23:30' -> 47 (dernier creneau)", startSlotIndex('23:30') === 47, `=${startSlotIndex('23:30')}`);
+  check("'24:00' -> null (heure invalide)", startSlotIndex('24:00') === null);
 }
 
-section('Agenda drag-creneau — shiftEventBySlots : decalage, duree preservee, clamp');
+section('Agenda drag-creneau — shiftEventBySlots : decalage, duree preservee, clamp (plage 0-24)');
 {
   const a = shiftEventBySlots('10:00', '11:00', 6); // +3h
   check('10:00–11:00 +6 creneaux -> 13:00', a.time === '13:00', `=${a.time}`);
@@ -649,16 +662,20 @@ section('Agenda drag-creneau — shiftEventBySlots : decalage, duree preservee, 
   const b = shiftEventBySlots('09:00', undefined, 2); // ponctuel
   check('ponctuel 09:00 +2 -> 10:00, pas de fin', b.time === '10:00' && b.endTime === undefined, JSON.stringify(b));
 
-  const c = shiftEventBySlots('09:00', '11:00', 20); // bloc 2h lache tres bas -> cale a la fin
-  check('bloc 2h cale pour rentrer : debut 16:00', c.time === '16:00', `=${c.time}`);
-  check('bloc 2h cale : fin 18:00 (duree 2h preservee)', c.endTime === '18:00', `=${c.endTime}`);
+  const c = shiftEventBySlots('09:00', '11:00', 20); // +10h : de la place jusqu'a 21h desormais
+  check('bloc 2h +20 creneaux : debut 19:00 (plus de clamp premature)', c.time === '19:00', `=${c.time}`);
+  check('bloc 2h +20 : fin 21:00 (duree 2h preservee)', c.endTime === '21:00', `=${c.endTime}`);
 
-  const d = shiftEventBySlots('09:00', '10:00', -20); // clamp haut
-  check('clamp haut -> 08:00', d.time === '08:00', `=${d.time}`);
-  check('duree preservee au clamp haut -> 09:00', d.endTime === '09:00', `=${d.endTime}`);
+  const d = shiftEventBySlots('09:00', '10:00', -20); // clamp haut -> 00:00 (START=0)
+  check('clamp haut -> 00:00', d.time === '00:00', `=${d.time}`);
+  check('duree preservee au clamp haut -> 01:00', d.endTime === '01:00', `=${d.endTime}`);
 
-  const e = shiftEventBySlots('07:00', '08:00', 4); // debut hors plage -> inchange
-  check('heure hors plage -> aucun deplacement', e.time === '07:00' && e.endTime === '08:00', JSON.stringify(e));
+  const e = shiftEventBySlots('22:00', '23:00', 10); // bloc 1h lache tres bas -> cale a la fin de journee
+  check('bloc cale pour rentrer : debut 23:00', e.time === '23:00', `=${e.time}`);
+  check('bloc cale : fin 24:00 (fin de journee, duree 1h preservee)', e.endTime === '24:00', `=${e.endTime}`);
+
+  const f = shiftEventBySlots('24:00', '25:00', 4); // heure invalide -> inchange (defensif)
+  check('heure invalide -> aucun deplacement', f.time === '24:00' && f.endTime === '25:00', JSON.stringify(f));
 }
 
 section('Agenda drag-creneau — SET_NEXT_ACTION pose le nouveau jour + heure + fin decalee');
@@ -684,12 +701,12 @@ section('Agenda drag-creneau — NON-REGRESSION : drag inter-jours sans decalage
   check('jour change, heure+duree intactes', s.leads[0].nextActionDate === '2026-06-21' && s.leads[0].nextActionTime === '14:00' && s.leads[0].nextActionEndTime === '16:00');
 }
 
-section('Agenda resize — resizeEventBySlots : etire/raccourcit la fin, min 1 creneau, clamp 18h');
+section('Agenda resize — resizeEventBySlots : etire/raccourcit la fin, min 1 creneau, clamp fin de journee (24:00)');
 {
   check('09:00–09:30 +1 -> 10:00', resizeEventBySlots('09:00', '09:30', 1) === '10:00', `=${resizeEventBySlots('09:00', '09:30', 1)}`);
   check('09:00–10:00 +2 -> 11:00', resizeEventBySlots('09:00', '10:00', 2) === '11:00', `=${resizeEventBySlots('09:00', '10:00', 2)}`);
   check('09:00–10:00 -5 -> 09:30 (min 1 creneau)', resizeEventBySlots('09:00', '10:00', -5) === '09:30', `=${resizeEventBySlots('09:00', '10:00', -5)}`);
-  check('17:00–17:30 +10 -> 18:00 (clamp fin de plage)', resizeEventBySlots('17:00', '17:30', 10) === '18:00', `=${resizeEventBySlots('17:00', '17:30', 10)}`);
+  check('22:00–22:30 +10 -> 24:00 (clamp fin de journee)', resizeEventBySlots('22:00', '22:30', 10) === '24:00', `=${resizeEventBySlots('22:00', '22:30', 10)}`);
   check('ponctuel 09:00 (sans fin) +1 -> 10:00', resizeEventBySlots('09:00', undefined, 1) === '10:00', `=${resizeEventBySlots('09:00', undefined, 1)}`);
   check('ponctuel 09:00 -3 -> 09:30 (min 1 creneau)', resizeEventBySlots('09:00', undefined, -3) === '09:30', `=${resizeEventBySlots('09:00', undefined, -3)}`);
 }
@@ -706,17 +723,17 @@ section('Agenda resize — SET_NEXT_ACTION : SEULE la fin change (debut/jour/typ
   check('type inchange', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
 }
 
-section('Agenda grille — layoutDayGrid : all-day / hors-plage non perdus');
+section('Agenda grille — layoutDayGrid : all-day non perdu, matin tot positionne (0-24), slotCount 48');
 {
   const g = layoutDayGrid([
     makeEvent({ leadId: 'allday', time: undefined }),
     makeEvent({ leadId: 'early', time: '07:00', endTime: '08:30' }),
     makeEvent({ leadId: 'ok', time: '09:00', endTime: '09:30' }),
   ]);
-  check('1 all-day', g.allDay.length === 1 && g.allDay[0].leadId === 'allday');
-  check('1 hors-plage (07:00)', g.outOfRange.length === 1 && g.outOfRange[0].leadId === 'early');
-  check('1 positionne', g.positioned.length === 1 && g.positioned[0].event.leadId === 'ok');
-  check('slotCount = 20 (8h-18h, 30 min)', g.slotCount === 20, `=${g.slotCount}`);
+  check('1 all-day (sans heure -> bandeau)', g.allDay.length === 1 && g.allDay[0].leadId === 'allday');
+  check('0 hors-plage (0-24 : rien hors plage pour une heure valide)', g.outOfRange.length === 0, `=${g.outOfRange.length}`);
+  check('2 positionnes (07:00 desormais sur la grille)', g.positioned.length === 2, `=${g.positioned.length}`);
+  check('slotCount = 48 (0h-24h, 30 min)', g.slotCount === 48, `=${g.slotCount}`);
 }
 
 section('Agenda grille — CREER depuis un creneau : date + heure du creneau posees (via SET_NEXT_ACTION)');

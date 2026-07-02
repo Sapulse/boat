@@ -180,11 +180,17 @@ export const COMPANY_NAME = 'Brest Ocean Boat';
 // Plage horaire des vues Semaine/Journee en grille (lot agenda-grille-horaire).
 // CONSTANTE pour l'instant (un onglet Parametres reglable = lot separe) :
 // modifiable ici en une ligne. Plage affichee = [START:00, END:00), creneaux de
-// AGENDA_SLOT_MIN minutes. Une action hors de cette plage tombe dans le bandeau
-// "toute la journee / hors plage" (jamais perdue), pas sur un creneau.
-export const AGENDA_HOUR_START = 8;
-export const AGENDA_HOUR_END = 18;
+// AGENDA_SLOT_MIN minutes. La journee complete (0h->24h, lot agenda-24h) : aucune
+// action horodatee n'atterrit plus dans "hors plage", tout est sur la grille ; le
+// bandeau "toute la journee" ne recoit plus que les actions SANS heure.
+export const AGENDA_HOUR_START = 0;
+export const AGENDA_HOUR_END = 24;
 export const AGENDA_SLOT_MIN = 30;
+
+// Heure vers laquelle la grille (haute : 24h * 2 creneaux) defile a l'ouverture,
+// pour ne pas apparaitre sur minuit. Offset VISUEL seulement, INDEPENDANT de la
+// plage [START, END) : on ancre sur une heure ouvree sans restreindre l'amplitude.
+export const AGENDA_SCROLL_TO_HOUR = 8;
 
 // Palette deterministe pour identifier visuellement chaque commercial dans
 // l'agenda. Attribuee par POSITION dans la liste des commerciaux (stable au

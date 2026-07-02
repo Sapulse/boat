@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2,
@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/core';
 import { useApp } from '../context/useApp';
 import Modal from '../components/ui/Modal';
-import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo } from '../data/constants';
+import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo, AGENDA_HOUR_START, AGENDA_SLOT_MIN, AGENDA_SCROLL_TO_HOUR } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { activateOnKey } from '../lib/a11y';
 import {
@@ -130,7 +130,7 @@ export default function AgendaPage() {
     if (item.kind === 'lead') setNextAction(item.lead.leadId, item.lead.type, drop.date, drop.time, drop.endTime);
     else updateCalendarEvent(item.event.id, { date: drop.date, time: drop.time, endTime: drop.endTime });
   };
-  // Resize = seule la fin change (debut/jour fixes), min 1 creneau, clamp 18h.
+  // Resize = seule la fin change (debut/jour fixes), min 1 creneau, clamp fin de plage.
   const onItemResize: OnItemResize = (item, slotDelta) => {
     if (item.kind === 'lead') {
       if (!item.lead.time) return;
@@ -660,7 +660,7 @@ function GridBlock({ p, slotCount, render, onResize }: {
   const resizable = !!onResize;
 
   const minDelta = 1 - p.span;                       // duree mini 1 creneau
-  const maxDelta = slotCount - p.startIndex - p.span; // fin <= 18h
+  const maxDelta = slotCount - p.startIndex - p.span; // fin <= fin de plage
   const clampDelta = (d: number) => Math.min(Math.max(d, minDelta), maxDelta);
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -759,8 +759,21 @@ function TimeGrid({ slots, columns, renderEvent, droppable = false, onSlotClick,
   const hasBanner = columns.some(c => c.layout.allDay.length > 0 || c.layout.outOfRange.length > 0);
   const render = renderEvent;
 
+  // Grille 24h = haute (48 creneaux). Au montage, on defile vers l'heure ouvree
+  // (AGENDA_SCROLL_TO_HOUR) pour ne pas ouvrir sur minuit. Une seule fois : la
+  // navigation (semaine/jour suivant) ne re-scrolle pas, l'utilisateur garde sa
+  // position. Un meme axe de scroll (x + y) synchronise en-tete, bandeau et corps.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const slotsFromStart = Math.max(0, ((AGENDA_SCROLL_TO_HOUR - AGENDA_HOUR_START) * 60) / AGENDA_SLOT_MIN);
+    el.scrollTop = slotsFromStart * SLOT_PX;
+  }, []);
+
   return (
-    <div className="card p-0 overflow-x-auto">
+    <div className="card p-0">
+      <div ref={scrollRef} className="overflow-auto max-h-[70vh]">
       <div className="min-w-max">
         {/* En-tetes de colonnes (gouttiere vide + colonnes) */}
         <div className="grid sticky top-0 bg-white z-10 border-b border-gray-200" style={{ gridTemplateColumns: templateCols }}>
@@ -802,6 +815,7 @@ function TimeGrid({ slots, columns, renderEvent, droppable = false, onSlotClick,
             <ColumnBody key={c.id} col={c} slots={slots} droppable={droppable} onSlotClick={onSlotClick} render={render} onResize={onResize} />
           ))}
         </div>
+      </div>
       </div>
     </div>
   );
