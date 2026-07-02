@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireToken, HttpError, body } from './_lib/http.js';
+import { requireToken, HttpError, toHttpError, body } from './_lib/http.js';
 import { prisma } from './_lib/prisma.js';
 import {
   getState,
@@ -105,7 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (!resource) throw new HttpError(404, 'Ressource manquante');
     await dispatch(req, res, resource, id);
   } catch (e) {
-    const err = e instanceof HttpError ? e : new HttpError(500, (e as Error).message);
+    // Statuts précis : 400 validation/JSON/FK, 404 introuvable, 409 unicité, 500 sinon.
+    const err = toHttpError(e);
     res.status(err.status).json({ error: err.message });
   }
 }

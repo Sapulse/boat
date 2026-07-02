@@ -171,6 +171,71 @@ async function main() {
     check('status invalide rejeté', rejected);
   }
 
+  section('Validation zod — payloads INVALIDES refusés (400 clair) SANS écriture');
+  {
+    // Attend une HttpError au statut donné (400/404/409) ; échec si aucune erreur.
+    async function expectStatus(status: number, label: string, fn: () => Promise<unknown>) {
+      try { await fn(); check(label, false, 'aucune erreur levée'); }
+      catch (e) {
+        const he = e as { status?: number; message?: string };
+        check(label, he.status === status, `status=${he.status} — ${he.message}`);
+      }
+    }
+    const leadsBefore = (await getState(prisma)).leads.length;
+
+    // Champ requis manquant (status retiré).
+    const noStatus = makeLead({ id: 'vz1' }) as Record<string, unknown>;
+    delete noStatus.status;
+    await expectStatus(400, 'lead sans status -> 400', () => createLead(prisma, noStatus as unknown as Lead));
+    // Type incohérent.
+    await expectStatus(400, 'budget "abc" (string) -> 400', () => createLead(prisma, makeLead({ id: 'vz2', budget: 'abc' as unknown as number })));
+    // Taille déraisonnable (bornes larges mais finies).
+    await expectStatus(400, 'comments de 60 000 caractères -> 400', () => createLead(prisma, makeLead({ id: 'vz3', comments: 'x'.repeat(60_000) })));
+    // Id mal formé.
+    await expectStatus(400, "id 'a b!' mal formé -> 400", () => createLead(prisma, makeLead({ id: 'a b!' })));
+    // Date mal formée.
+    await expectStatus(400, "createdAt 'demain' -> 400", () => createLead(prisma, makeLead({ id: 'vz4', createdAt: 'demain' })));
+    check('AUCUNE écriture sur les 5 refus (leads inchangés)', (await getState(prisma)).leads.length === leadsBefore);
+
+    // Champ inconnu -> STRIPPÉ (tolérance, pas de rejet).
+    const withExtra = { ...makeLead({ id: 'strip-1' }), foo: 'bar' } as unknown as Lead;
+    const created = await createLead(prisma, withExtra);
+    check('champ inconnu ignoré (strippé), création OK', created.id === 'strip-1' && !('foo' in (created as unknown as Record<string, unknown>)));
+    // PATCH : l'id du corps est strippé -> jamais de renommage de clé primaire.
+    await updateLead(prisma, 'strip-1', { id: 'HACKED', status: 'qualifie' } as Partial<Lead>);
+    const afterPatch = await getState(prisma);
+    check('PATCH ne renomme jamais la PK (id du corps strippé)',
+      afterPatch.leads.some(l => l.id === 'strip-1' && l.status === 'qualifie') && !afterPatch.leads.some(l => l.id === 'HACKED'));
+    await deleteLead(prisma, 'strip-1');
+
+    // Autres entités.
+    const noType = { id: 'va1', leadId: 'x', authorId: 'fred', date: '2026-06-05', result: '', notes: '' } as unknown as LeadAction;
+    await expectStatus(400, 'action sans type -> 400', () => createAction(prisma, noType));
+    await expectStatus(400, "commercial active:'true' (string) -> 400", () => createCommercial(prisma, { id: 'vc1', name: 'X', active: 'true' as unknown as boolean }));
+    await expectStatus(400, 'commercial nom vide -> 400', () => createCommercial(prisma, { id: 'vc2', name: '', active: true }));
+    await expectStatus(400, "événement date 'demain' -> 400", () => createCalendarEvent(prisma, { id: 've1', title: 'Réunion', date: 'demain' }));
+
+    // Batchs : sémantique + forme + unicité intra-payload.
+    const goalsBefore = JSON.stringify((await getState(prisma)).goals);
+    await expectStatus(400, 'goal month 13 -> 400', () => saveGoals(prisma, [makeGoal({ id: 'vg1', month: 13 })]));
+    await expectStatus(400, 'goals corps non-tableau -> 400 (plus de crash .map)', () => saveGoals(prisma, {} as unknown as CommercialGoal[]));
+    await expectStatus(400, 'goals doublon (commercial, année, mois) -> 400',
+      () => saveGoals(prisma, [makeGoal({ id: 'vg2' }), makeGoal({ id: 'vg3' })]));
+    check('AUCUNE écriture goals sur refus', JSON.stringify((await getState(prisma)).goals) === goalsBefore);
+    await expectStatus(400, 'stats doublon (année, mois, source) -> 400', () => saveMonthlyStats(prisma, [
+      { id: 'vs1', year: 2026, month: 2, source: 'X', budget: null, leads: 1 },
+      { id: 'vs2', year: 2026, month: 2, source: 'X', budget: null, leads: 2 },
+    ]));
+    await expectStatus(400, "defaultGoal revenue:'abc' -> 400", () => saveDefaultGoal(prisma, {
+      prospectsCreated: null, coldCalls: null, followups: null, meetings: null,
+      revenue: 'abc' as unknown as number, conversionRate: null,
+    }));
+
+    // NB : le mapping des erreurs Prisma (P2025 -> 404, P2002 -> 409) vit dans le
+    // HANDLER (toHttpError), pas dans store -> testé dans la section Routage,
+    // qui passe par le vrai chemin de prod.
+  }
+
   section('Routage (catch-all api/[...slug].ts) : parse req.url comme Vercel');
   {
     // Le catch-all utilise le singleton _lib/prisma : on le fait viser la MÊME
@@ -234,6 +299,18 @@ async function main() {
 
     const r405c = await invoke('DELETE', ['commercials', 'fred'], { token: TOK });
     check('DELETE /api/commercials/:id -> 405 (non supporté)', r405c.statusCode === 405);
+
+    // Corps JSON malformé (string non parsable) -> 400 propre (SyntaxError mappée).
+    const rBadJson = await invoke('POST', ['leads'], { token: TOK, body: '{oops' });
+    check('POST corps JSON malformé -> 400 (pas 500)', rBadJson.statusCode === 400);
+
+    // Mapping erreurs Prisma via le handler (vrai chemin de prod) :
+    const r404 = await invoke('PATCH', ['leads', 'inexistant-xyz'], { token: TOK, body: { status: 'contacte' } });
+    check('PATCH id inexistant -> 404 (P2025 mappée)', r404.statusCode === 404);
+    const r409 = await invoke('POST', ['commercials'], { token: TOK, body: { id: 'fred', name: 'Doublon', active: true } });
+    check('POST id déjà existant -> 409 (P2002 mappée)', r409.statusCode === 409);
+    const rBadPayload = await invoke('POST', ['leads'], { token: TOK, body: { id: 'zz', status: 'zzz' } });
+    check('POST payload invalide via handler -> 400 zod', rBadPayload.statusCode === 400);
   }
 
   await prisma.$disconnect();

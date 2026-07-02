@@ -5,7 +5,10 @@ import type {
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import {
-  validateLeadInput, validateActionInput, validateTemplateInput, validateCalendarInput,
+  parseLeadCreate, parseLeadPatch, parseActionCreate, parseActionPatch,
+  parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
+  parseCalendarCreate, parseCalendarPatch,
+  parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal,
 } from './validate.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
@@ -212,13 +215,17 @@ export async function getState(prisma: PrismaClient): Promise<AppState> {
 // Leads (l'id est fourni par le client — génération côté client conservée).
 // ---------------------------------------------------------------------------
 export async function createLead(prisma: PrismaClient, lead: Lead): Promise<Lead> {
-  validateLeadInput(lead as unknown as Record<string, unknown>);
-  const row = await prisma.lead.create({ data: lead });
+  // Validation zod AVANT toute écriture ; on persiste le résultat PARSÉ
+  // (champs inconnus strippés -> jamais transmis à Prisma).
+  const data = parseLeadCreate(lead) as unknown as Lead;
+  const row = await prisma.lead.create({ data });
   return toLead(row as LeadRow);
 }
 export async function updateLead(prisma: PrismaClient, id: string, patch: Partial<Lead>): Promise<Lead> {
-  validateLeadInput(patch as Record<string, unknown>);
-  const row = await prisma.lead.update({ where: { id }, data: patch });
+  // Le schéma PATCH n'a pas de champ `id` -> strippé : un PATCH ne peut jamais
+  // renommer une clé primaire (l'id du chemin fait foi).
+  const data = parseLeadPatch(patch) as Partial<Lead>;
+  const row = await prisma.lead.update({ where: { id }, data });
   return toLead(row as LeadRow);
 }
 export async function deleteLead(prisma: PrismaClient, id: string): Promise<void> {
@@ -230,13 +237,13 @@ export async function deleteLead(prisma: PrismaClient, id: string): Promise<void
 // Actions.
 // ---------------------------------------------------------------------------
 export async function createAction(prisma: PrismaClient, action: LeadAction): Promise<LeadAction> {
-  validateActionInput(action as unknown as Record<string, unknown>);
-  const row = await prisma.leadAction.create({ data: action });
+  const data = parseActionCreate(action) as unknown as LeadAction;
+  const row = await prisma.leadAction.create({ data });
   return toAction(row as Record<string, unknown>);
 }
 export async function updateAction(prisma: PrismaClient, id: string, patch: Partial<LeadAction>): Promise<LeadAction> {
-  validateActionInput(patch as Record<string, unknown>);
-  const row = await prisma.leadAction.update({ where: { id }, data: patch });
+  const data = parseActionPatch(patch) as Partial<LeadAction>;
+  const row = await prisma.leadAction.update({ where: { id }, data });
   return toAction(row as Record<string, unknown>);
 }
 export async function deleteAction(prisma: PrismaClient, id: string): Promise<void> {
@@ -248,11 +255,13 @@ export async function deleteAction(prisma: PrismaClient, id: string): Promise<vo
 // active côté client, l'API pose juste la valeur).
 // ---------------------------------------------------------------------------
 export async function createCommercial(prisma: PrismaClient, commercial: Commercial): Promise<Commercial> {
-  const row = await prisma.commercial.create({ data: commercial });
+  const data = parseCommercialCreate(commercial) as unknown as Commercial;
+  const row = await prisma.commercial.create({ data });
   return toCommercial(row as Record<string, unknown>);
 }
 export async function updateCommercial(prisma: PrismaClient, id: string, patch: Partial<Commercial>): Promise<Commercial> {
-  const row = await prisma.commercial.update({ where: { id }, data: patch });
+  const data = parseCommercialPatch(patch) as Partial<Commercial>;
+  const row = await prisma.commercial.update({ where: { id }, data });
   return toCommercial(row as Record<string, unknown>);
 }
 
@@ -260,13 +269,13 @@ export async function updateCommercial(prisma: PrismaClient, id: string, patch: 
 // Modèles de message.
 // ---------------------------------------------------------------------------
 export async function createTemplate(prisma: PrismaClient, template: MessageTemplate): Promise<MessageTemplate> {
-  validateTemplateInput(template as unknown as Record<string, unknown>);
-  const row = await prisma.messageTemplate.create({ data: template });
+  const data = parseTemplateCreate(template) as unknown as MessageTemplate;
+  const row = await prisma.messageTemplate.create({ data });
   return toTemplate(row as Record<string, unknown>);
 }
 export async function updateTemplate(prisma: PrismaClient, id: string, patch: Partial<MessageTemplate>): Promise<MessageTemplate> {
-  validateTemplateInput(patch as Record<string, unknown>);
-  const row = await prisma.messageTemplate.update({ where: { id }, data: patch });
+  const data = parseTemplatePatch(patch) as Partial<MessageTemplate>;
+  const row = await prisma.messageTemplate.update({ where: { id }, data });
   return toTemplate(row as Record<string, unknown>);
 }
 export async function deleteTemplate(prisma: PrismaClient, id: string): Promise<void> {
@@ -278,13 +287,13 @@ export async function deleteTemplate(prisma: PrismaClient, id: string): Promise<
 // Événements d'agenda libres.
 // ---------------------------------------------------------------------------
 export async function createCalendarEvent(prisma: PrismaClient, event: CalendarEvent): Promise<CalendarEvent> {
-  validateCalendarInput(event as unknown as Record<string, unknown>);
-  const row = await prisma.calendarEvent.create({ data: event });
+  const data = parseCalendarCreate(event) as unknown as CalendarEvent;
+  const row = await prisma.calendarEvent.create({ data });
   return toCalendarEvent(row as Record<string, unknown>);
 }
 export async function updateCalendarEvent(prisma: PrismaClient, id: string, patch: Partial<CalendarEvent>): Promise<CalendarEvent> {
-  validateCalendarInput(patch as Record<string, unknown>);
-  const row = await prisma.calendarEvent.update({ where: { id }, data: patch });
+  const data = parseCalendarPatch(patch) as Partial<CalendarEvent>;
+  const row = await prisma.calendarEvent.update({ where: { id }, data });
   return toCalendarEvent(row as Record<string, unknown>);
 }
 export async function deleteCalendarEvent(prisma: PrismaClient, id: string): Promise<void> {
@@ -297,31 +306,32 @@ export async function deleteCalendarEvent(prisma: PrismaClient, id: string): Pro
 // on upsert le reste.
 // ---------------------------------------------------------------------------
 export async function saveGoals(prisma: PrismaClient, goals: CommercialGoal[]): Promise<CommercialGoal[]> {
-  const ids = goals.map(g => g.id);
+  // Valide AVANT la transaction : tableau exigé (fini le TypeError sur un objet),
+  // month 1-12, unicité intra-payload (commercial, année, mois).
+  const parsed = parseGoalsBatch(goals) as unknown as CommercialGoal[];
+  const ids = parsed.map(g => g.id);
   await prisma.$transaction([
     prisma.commercialGoal.deleteMany({ where: { id: { notIn: ids } } }),
-    ...goals.map(g => prisma.commercialGoal.upsert({ where: { id: g.id }, create: fromGoal(g), update: fromGoal(g) })),
+    ...parsed.map(g => prisma.commercialGoal.upsert({ where: { id: g.id }, create: fromGoal(g), update: fromGoal(g) })),
   ]);
-  return goals;
+  return parsed;
 }
 
 export async function saveMonthlyStats(prisma: PrismaClient, stats: MonthlyStat[]): Promise<MonthlyStat[]> {
-  const ids = stats.map(s => s.id);
+  const parsed = parseMonthlyStatsBatch(stats) as unknown as MonthlyStat[];
+  const ids = parsed.map(s => s.id);
   const data = (s: MonthlyStat) => ({ id: s.id, year: s.year, month: s.month, source: s.source, budget: s.budget, leads: s.leads });
   await prisma.$transaction([
     prisma.monthlyStat.deleteMany({ where: { id: { notIn: ids } } }),
-    ...stats.map(s => prisma.monthlyStat.upsert({ where: { id: s.id }, create: data(s), update: data(s) })),
+    ...parsed.map(s => prisma.monthlyStat.upsert({ where: { id: s.id }, create: data(s), update: data(s) })),
   ]);
-  return stats;
+  return parsed;
 }
 
 export async function saveDefaultGoal(prisma: PrismaClient, dg: DefaultGoal): Promise<DefaultGoal> {
-  const data = {
-    prospectsCreated: dg.prospectsCreated, coldCalls: dg.coldCalls, followups: dg.followups,
-    meetings: dg.meetings, revenue: dg.revenue, conversionRate: dg.conversionRate,
-  };
-  await prisma.defaultGoal.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
-  return dg;
+  const parsed = parseDefaultGoal(dg) as DefaultGoal;
+  await prisma.defaultGoal.upsert({ where: { id: 1 }, create: { id: 1, ...parsed }, update: { ...parsed } });
+  return parsed;
 }
 
 // Ré-exporté pour un message d'erreur homogène si besoin côté handlers.

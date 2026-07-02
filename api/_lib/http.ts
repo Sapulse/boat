@@ -9,6 +9,25 @@ export class HttpError extends Error {
 }
 
 /**
+ * Traduit toute erreur en HttpError au statut PRÉCIS (correctif audit #2/4.2) :
+ * refus propre plutôt que 500 générique.
+ *  - JSON malformé (SyntaxError du parse) -> 400 ;
+ *  - Prisma P2025 (enregistrement introuvable sur update/delete) -> 404 ;
+ *  - Prisma P2002 (violation d'unicité) -> 409 ;
+ *  - Prisma P2003 (clé étrangère invalide, ex. leadId inconnu) -> 400 ;
+ *  - reste -> 500.
+ */
+export function toHttpError(e: unknown): HttpError {
+  if (e instanceof HttpError) return e;
+  if (e instanceof SyntaxError) return new HttpError(400, 'JSON malformé');
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === 'P2025') return new HttpError(404, 'Ressource introuvable');
+  if (code === 'P2002') return new HttpError(409, "Conflit d'unicité (enregistrement déjà existant)");
+  if (code === 'P2003') return new HttpError(400, 'Référence invalide (clé étrangère inconnue)');
+  return new HttpError(500, (e as Error).message);
+}
+
+/**
  * Garde d'API par JETON PARTAGÉ (Lot 4-6), en attendant l'auth réelle (Lot 7).
  * Le client enverra `Authorization: Bearer <API_SHARED_TOKEN>`. Si la variable
  * `API_SHARED_TOKEN` n'est pas définie côté serveur, l'API REFUSE tout (fail-safe :
