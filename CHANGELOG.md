@@ -7,6 +7,26 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.20.0] — 2026-07-02 — Infra : schéma Prisma des 8 modèles (Lot 1 migration)
+
+### Technique
+- **Chantier migration — Lot 1** : mise en place de l'infrastructure base de données
+  **en parallèle**, sans aucun impact sur le CRM (qui continue de tourner à 100 % sur
+  localStorage). **Zéro-impact prouvé** : build + lint + 7 harnais verts, bundle
+  applicatif **byte-identique** (rien de Prisma n'entre dans `src/` ni dans le bundle).
+- **`prisma/schema.prisma`** : traduction fidèle de la cartographie en 8 modèles
+  (`Commercial`, `Lead`, `LeadAction`, `MessageTemplate`, `MonthlyStat`,
+  `CalendarEvent`, `CommercialGoal`, `DefaultGoal`) sur provider Turso/libSQL
+  (Prisma 7). IDs `TEXT`, enums en `String`, sentinelles `''` conservées, dates
+  métier en `String` ISO, audit `createdAt`/`updatedAt`, FK + cascade
+  `lead → lead_actions`, clés uniques naturelles, `GoalMetric` aplati en 12 colonnes.
+- **Outillage isolé** : `prisma`/`@prisma/client` en devDependencies, scripts `db:*`
+  (build non touché), `prisma.config.ts`, `.env.example`, migration **locale** de dev
+  (`dev.db`) générée. **Aucune base Turso de production créée** à ce stade.
+- Cf. `docs/migration/` (cartographie, décisions, plan séquencé).
+
+---
+
 ## [3.19.3] — 2026-07-02 — Finitions UX (audit fraîcheur)
 
 ### Ajouté

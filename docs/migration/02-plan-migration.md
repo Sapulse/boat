@@ -27,17 +27,26 @@ démarrer immédiatement.
 
 ---
 
-## Lot 1 — Infra DB en parallèle (schéma Prisma, zéro impact runtime)
+## Lot 1 — Infra DB en parallèle (schéma Prisma, zéro impact runtime) ✅ *(fait — v3.20.0)*
 
-- **Fait :** projet Prisma + provider Turso/libSQL ; `schema.prisma` reflétant la
-  cartographie (§6 du doc 00) ; 1re migration générée ; client généré. **Rien n'est
-  importé par l'app** — le CRM tourne toujours à 100 % sur localStorage.
-- **Comment on teste :** `prisma validate` + `prisma migrate` sur une DB de dev ; un
-  **script de parité schéma** vérifiant que chaque champ des types TS a une colonne
-  (garde-fou anti-oubli). Build / lint / 7 harnais du CRM **inchangés et verts**.
-- **Non-régression :** additif pur, hors du bundle app.
+- **Fait :** Prisma 7 + provider Turso/libSQL en devDependencies ; `prisma/schema.prisma`
+  reflétant la cartographie (§6 du doc 00), 8 modèles ; `prisma.config.ts` (url hors
+  schéma) ; 1re migration **locale** générée (`init_crm_schema` sur `dev.db`) ; client
+  généré. Scripts `db:*` (build non touché). **Rien n'est importé par `src/`** — le CRM
+  tourne toujours à 100 % sur localStorage. **Aucune base Turso prod créée.**
+- **Testé :** `prisma validate` OK ; migration locale appliquée ; **build + lint +
+  7 harnais (427 assertions) verts**, **bundle applicatif byte-identique** (preuve du
+  zéro-impact).
+- **Non-régression :** additif pur, hors du bundle app (vérifié : aucune trace Prisma
+  dans `dist/`).
 - **Forme actée (D8) :** `GoalMetric` **aplati en 12 colonnes** sur
   `commercial_goals` (pas de table fille).
+- **Note reportée :** `default_goal` généré en `INTEGER … AUTOINCREMENT DEFAULT 1` ;
+  invariant « 1 seule ligne » garanti côté app (upsert `id=1`). Un `CHECK(id=1)` en
+  base pourra être ajouté par migration manuelle si on veut le verrouiller.
+- **À installer plus tard (Lot 4-5) :** adaptateurs runtime `@prisma/adapter-libsql`
+  (Turso) / `@prisma/adapter-better-sqlite3` (local) — inutiles pour
+  validate/migrate/generate.
 
 ---
 
@@ -137,8 +146,10 @@ démarrer immédiatement.
 
 - Plan **validé** le 2026-07-02 (approche strangler-fig + bascule derrière feature
   flag).
+- **Lot 0** ✅ (cartographie & décisions) · **Lot 1** ✅ (schéma Prisma, v3.20.0).
 - **Q8** (synchro) et **Q9** (poste de référence / export) restent **ouvertes** —
   tranchées au démarrage des Lots 4 et 2 respectivement. **Q10** tranchée (→ D8 :
   `GoalMetric` aplati).
-- Prochaine étape exécutable : **Lot 1** (schéma Prisma), démarrable dès validation
-  du go.
+- Prochaines étapes exécutables : **Lot 3** (couche repository côté client, iso-
+  comportement — ne dépend d'aucune décision ouverte) ou **Lot 2** (import, dès que
+  **Q9** est tranchée).
