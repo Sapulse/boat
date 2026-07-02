@@ -7,6 +7,28 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.19.2] — 2026-07-02 — Agenda : grille horaire sur 24h
+
+### Modifié
+- **Grille horaire de l'Agenda sur 24h** (0h → 24h) dans les vues **Semaine** et
+  **Journée**, au lieu de la plage limitée 8h–18h. Les actions **tôt matin / soir**
+  qui tombaient auparavant dans le bandeau « hors plage » s'affichent désormais
+  **positionnées sur la grille** ; le bandeau ne reçoit plus que les actions **sans
+  heure** (« toute la journée »). La vue **Mois** est inchangée.
+- **Conteneur scrollable** : la grille (plus haute) défile dans une zone bornée avec
+  **en-tête de colonnes figé** (sticky), et **s'ouvre sur les heures ouvrées** (ancrage
+  à 8h) pour ne pas apparaître sur minuit.
+
+### Technique
+- Plage pilotée par `AGENDA_HOUR_START = 0` / `AGENDA_HOUR_END = 24` ; nouvelle
+  constante `AGENDA_SCROLL_TO_HOUR = 8` (offset visuel du scroll, indépendant de la
+  plage). Aucun changement de modèle : les helpers purs (`buildTimeSlots`,
+  `layoutDayGrid`, `startSlotIndex`, `shift`/`resize`) dérivent des constantes.
+  Section Agenda du harnais réécrite pour la plage 0–24 (+ cas START=0) ; 418
+  assertions vertes.
+
+---
+
 ## [3.19.1] — 2026-07-02 — Liste Leads : colonne « Prochaine action »
 
 ### Ajouté
