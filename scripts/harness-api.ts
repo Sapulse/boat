@@ -29,6 +29,7 @@ import {
   saveGoals, saveMonthlyStats, saveDefaultGoal,
 } from '../api/_lib/store';
 import type { Lead, LeadAction, CommercialGoal } from '../src/data/types';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const DB_FILE = path.resolve('.harness-api.db');
 const DB_URL = `file:${DB_FILE}`;
@@ -168,6 +169,61 @@ async function main() {
     let rejected = false;
     try { await createLead(prisma, makeLead({ id: 'lx', status: 'zzz' as Lead['status'] })); } catch { rejected = true; }
     check('status invalide rejeté', rejected);
+  }
+
+  section('Routage (catch-all api/[...slug].ts) : mêmes URLs, mêmes réponses, garde');
+  {
+    // Le catch-all utilise le singleton _lib/prisma : on le fait viser la MÊME
+    // base jetable (DATABASE_URL) et on active la garde par jeton, AVANT de
+    // charger le module (import dynamique) pour que le singleton lise ces vars.
+    process.env.API_SHARED_TOKEN = 'test-token';
+    process.env.DATABASE_URL = DB_URL;
+    const mod = await import('../api/[...slug].ts');
+    const handler = mod.default as (req: VercelRequest, res: VercelResponse) => Promise<void>;
+    const TOK = 'test-token';
+
+    type Captured = { statusCode: number; payload: unknown; ended: boolean };
+    async function invoke(method: string, slug: string[], opts: { token?: string; body?: unknown } = {}): Promise<Captured> {
+      const cap: Captured = { statusCode: 0, payload: undefined, ended: false };
+      const res = {
+        status(s: number) { cap.statusCode = s; return res; },
+        json(d: unknown) { cap.payload = d; cap.ended = true; return res; },
+        end() { cap.ended = true; return res; },
+        setHeader() { return res; },
+      };
+      const req = { method, query: { slug }, headers: { authorization: opts.token ? `Bearer ${opts.token}` : undefined }, body: opts.body };
+      await handler(req as unknown as VercelRequest, res as unknown as VercelResponse);
+      return cap;
+    }
+
+    const r401 = await invoke('GET', ['state']);
+    check('GET /api/state SANS jeton -> 401', r401.statusCode === 401);
+
+    const rPost = await invoke('POST', ['leads'], { token: TOK, body: makeLead({ id: 'route-1', commercialId: 'fred' }) });
+    check('POST /api/leads -> 201', rPost.statusCode === 201);
+    check('POST /api/leads renvoie le lead créé', (rPost.payload as Lead)?.id === 'route-1');
+
+    const rState = await invoke('GET', ['state'], { token: TOK });
+    check('GET /api/state -> 200', rState.statusCode === 200);
+    check('state contient bien route-1', (rState.payload as { leads: Lead[] }).leads.some(l => l.id === 'route-1'));
+
+    const rPatch = await invoke('PATCH', ['leads', 'route-1'], { token: TOK, body: { status: 'devis_envoye' } });
+    check('PATCH /api/leads/:id -> 200 + maj', rPatch.statusCode === 200 && (rPatch.payload as Lead).status === 'devis_envoye');
+
+    const rDel = await invoke('DELETE', ['leads', 'route-1'], { token: TOK });
+    check('DELETE /api/leads/:id -> 204 (vide)', rDel.statusCode === 204 && rDel.ended && rDel.payload === undefined);
+
+    const rGoals = await invoke('PUT', ['goals'], { token: TOK, body: [] });
+    check('PUT /api/goals (batch) -> 200', rGoals.statusCode === 200);
+
+    const r405 = await invoke('GET', ['nope'], { token: TOK });
+    check('GET /api/nope -> 405 (route inconnue)', r405.statusCode === 405);
+
+    const r405b = await invoke('GET', ['leads'], { token: TOK });
+    check('GET /api/leads -> 405 (méthode non gérée sur route connue)', r405b.statusCode === 405);
+
+    const r405c = await invoke('DELETE', ['commercials', 'fred'], { token: TOK });
+    check('DELETE /api/commercials/:id -> 405 (non supporté)', r405c.statusCode === 405);
   }
 
   await prisma.$disconnect();
