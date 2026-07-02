@@ -1,31 +1,36 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.13** (dernier tag `v3.13.0`). Ce fichier sert de fil conducteur entre sessions.
+État au jalon **V3.19** (dernier tag `v3.19.3`). Ce fichier sert de fil conducteur entre sessions.
 
 App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
 GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
-→ branche → tsc + build + lint + 3 harnais → diff review → merge --ff-only → push (=
+→ branche → tsc + build + lint + 7 harnais → diff review → merge --ff-only → push (=
 déploiement auto) → tag annoté. Commits sémantiques.
 
 ---
 
-## 🚧 EN COURS — lot `objectifs-defaut-equipe` (cible `v3.19.0`)
+## 🚧 EN COURS
 
-**Objectifs par défaut de l'équipe** : une cible commune par indicateur, réglée une fois,
-reconduite chaque mois pour chaque commercial, surchargeable par (commercial, mois).
-Branche `objectifs-defaut-equipe`.
+Aucun lot en cours. Prochain jalon : voir la roadmap ci-dessous.
 
-- [x] **Étape 1** — modèle `DefaultGoal` + `EMPTY_DEFAULT_GOAL` + `AppState.defaultGoal` +
-  `SAVE_DEFAULT_GOAL` + hydratation (migration nulle) + `saveDefaultGoal` ; fonction PURE
-  `effectiveTarget(target, défaut)` (cascade cible) + harnais goals (49 : 4 cas + `0`).
-- [x] **Étape 2** — écran Paramètres « Objectifs par défaut » (route `/objectifs-defaut` +
-  entrée section Paramètres) : 6 cibles par défaut en une colonne → `saveDefaultGoal`.
-- [x] **Étape 3** — cible EFFECTIVE à l'affichage (Objectifs + Espace commercial) : barre/%
-  sur cible effective, placeholder = défaut équipe grisé, `MetricCard.targetInherited`.
-- [x] **Merge `v3.19.0`** : ff-only → main, CHANGELOG, tag annoté.
-
-✅ Lots récents livrés : `espace-commercial` (**v3.17.0**), menu en sections repliables
-(**v3.18.0**), `objectifs-prospection` (**v3.16.0**).
+### ✅ Derniers lots livrés
+- **`v3.16.0`** — `objectifs-prospection`.
+- **`v3.17.0`** — `espace-commercial`.
+- **`v3.18.0`** — menu en sections repliables.
+- **`v3.19.0`** — **objectifs par défaut de l'équipe** : cible commune par indicateur réglée
+  une fois (écran Paramètres `/objectifs-defaut`), reconduite chaque mois pour chaque
+  commercial, surchargeable par (commercial, mois) ; cascade PURE `effectiveTarget`, cible
+  effective à l'affichage (Objectifs + Espace commercial). Harnais goals 49.
+- **`v3.19.1`** — liste Leads : colonne **« Prochaine action » triable** (type + date), 1er
+  clic ascendant, nettoyage de la cellule « Dern. action ».
+- **`v3.19.2`** — **Agenda sur 24h** : grille horaire 0h→24h (au lieu de 8h-18h) en vues
+  Semaine/Journée, conteneur scrollable à en-tête figé, ouverture ancrée sur les heures
+  ouvrées (`AGENDA_SCROLL_TO_HOUR=8`). Mois inchangé. Harnais reducer 206.
+- **`v3.19.3`** — **finitions UX** (audit fraîcheur) : recherche Pipeline alignée sur Leads
+  (helper partagé `leadMatchesSearch` : nom/email/tél/bateau/marque), doublons de boutons
+  nettoyés (crayon « Modifier » de la liste retiré ; « Relancer » ↔ éditeur de prochaine
+  action), envoi de **message vierge toujours possible** (Email/SMS/WhatsApp). Harnais
+  reducer 215.
 
 ⚠️ **Point de vigilance — « Recommandation »** (issu de v3.16.0) : classée en source de
 **prospection active** aujourd'hui, mais **discutable** (souvent un flux entrant non sollicité).
@@ -157,7 +162,8 @@ sans migration). À confirmer avec Nicolas/Mickaël.
     propre en localStorage car champ par lead).
   - **L2 — grille horaire visuelle** (vues Semaine/Journée) → ✅ **FAIT en v3.9.0**,
     enrichi ensuite : **durée/blocs** (v3.10.0), **drag par créneau** jour+heure
-    (v3.11.0), **resize à la poignée** (v3.12.0). Axe 8h-18h, créneaux 30 min.
+    (v3.11.0), **resize à la poignée** (v3.12.0), **amplitude 0h-24h + scroll** (v3.19.2).
+    Créneaux 30 min.
   - **L3 — événements libres** (réunion, congé, déplacement, bloc perso, non liés à
     un lead) → ✅ **FAIT en v3.13.0** (version test localStorage) : entité
     `CalendarEvent` isolée (tableau + ADD/UPDATE/DELETE confinés), catégories

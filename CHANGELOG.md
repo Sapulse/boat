@@ -7,6 +7,25 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.19.3] — 2026-07-02 — Finitions UX (audit fraîcheur)
+
+### Ajouté
+- **Recherche Pipeline alignée sur la liste Leads** : le Pipeline matche désormais aussi
+  **email, téléphone et marque** (en plus du nom et du bateau recherché). Prédicat de
+  recherche **factorisé** dans un helper partagé (`leadMatchesSearch`) pour que les deux
+  écrans ne divergent plus.
+- **Envoi de message vierge toujours possible** : dans les menus Email / SMS / WhatsApp de
+  la fiche lead, l'entrée « … vierge (sans modèle) » est désormais **toujours proposée**,
+  en plus des modèles existants (auparavant visible uniquement en l'absence de modèle).
+
+### Modifié
+- **Doublon de boutons nettoyé** : sur la liste Leads, le bouton crayon « Modifier »
+  (identique à « Voir ») est retiré — l'édition reste accessible depuis la fiche. Sur la
+  fiche lead, « Relancer » ouvre maintenant l'**éditeur de prochaine action** (planifier),
+  distinct de « Ajouter action » (journaliser une action réalisée).
+
+---
+
 ## [3.19.2] — 2026-07-02 — Agenda : grille horaire sur 24h
 
 ### Modifié
