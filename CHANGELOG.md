@@ -7,6 +7,25 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.21.1] — 2026-07-02 — Préparation déploiement Vercel (base path conditionnel)
+
+### Technique
+- **Chantier migration — Lot 4 (prépa déploiement)** : ajustements de build pour héberger
+  l'app **et** l'API sur Vercel (même origine), **sans casser GitHub Pages** pendant la
+  transition.
+- **Base path conditionnel** (`vite.config.ts`) : `process.env.VERCEL ? '/' : '/boat/'`.
+  Sur Vercel l'app est servie à la racine (`'/'`) ; sur GitHub Pages / local elle reste
+  sous `'/boat/'` (inchangé). Les **deux cibles restent correctes en même temps** →
+  aucune fenêtre de casse (le CRM des commerciaux sur Pages ne bouge pas). Le `HashRouter`
+  fonctionne à la racine (routing par hash, indépendant du base path).
+- **Script `vercel-build`** (`package.json`) : `prisma generate && …build` — Vercel
+  l'utilise à la place de `build`, garantissant la génération du client Prisma pour les
+  fonctions `/api` (Pages continue d'utiliser `build`, inchangé).
+- **Prouvé** : `npm run build` → assets en `/boat/assets/…` ; `VERCEL=1 npm run build` →
+  assets à la racine `/assets/…`. lint + 8 harnais verts.
+
+---
+
 ## [3.21.0] — 2026-07-02 — API par entité, portier Turso (Lot 4 migration, partie code)
 
 ### Technique
