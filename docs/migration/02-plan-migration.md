@@ -80,17 +80,18 @@ question **Q9** sont **caducs**.
 
 ---
 
-## Lot 4 — Backend API par entité (Prisma/Turso) + résolution Q8
+## Lot 4 — Backend API par entité (Prisma/Turso) + infra (Q8 → D10)
 
-- **Fait :** backend (Vercel functions ou infra retenue) exposant des endpoints
-  **par entité**, adossés à Prisma. Les actions « remplace tout le tableau »
+- **Fait :** base **Turso/libSQL (région UE)** + projet **Vercel** ; API **par
+  entité** (Vercel Functions) adossée à Prisma, **portier** entre l'app et Turso (le
+  secret Turso reste côté serveur). Les actions « remplace tout le tableau »
   (`SAVE_GOALS` / `SAVE_MONTHLY_STATS` / `SAVE_DEFAULT_GOAL`) deviennent des
   **upsert/delete différentiels**. **Pas encore branché** au client par défaut.
 - **Comment on teste :** tests d'intégration API + **tests de contrat** rejouant les
   invariants des harnais **côté serveur** (cascade delete, garde-fou min-1 templates,
   `lastActionDate` non-recul, clés `UNIQUE`).
-- **Prérequis décision :** **Q8** (forme d'API, stratégie d'écriture, conflits
-  `updated_at`, infra).
+- **Décision actée :** **D10** (Q8) — synchro **optimiste**, **API par entité**,
+  conflits **last-write-wins** (`updated_at`). Plus aucune décision en attente.
 - **Non-régression :** CRM toujours sur localStorage (flag off).
 
 ---
@@ -147,8 +148,9 @@ question **Q9** sont **caducs**.
 - Plan **validé** le 2026-07-02 (approche strangler-fig + bascule derrière feature
   flag).
 - **Lot 0** ✅ (cartographie & décisions) · **Lot 1** ✅ (schéma Prisma, v3.20.0) ·
-  **Lot 3** ✅ (couche repository, iso-comportement). **Lot 2** ❌ supprimé (D9).
-- **Q8** (synchro) : **ouverte**, à trancher avant le Lot 4 (API). **Q9** caduque
-  (D9). **Q10** tranchée (D8).
-- Prochaine étape exécutable : **Lot 4** (backend API par entité), dès que **Q8** est
-  tranchée. *(Le remplissage réel = import Excel, post-bascule.)*
+  **Lot 3** ✅ (couche repository, v3.20.1). **Lot 2** ❌ supprimé (D9).
+- **Toutes les décisions sont tranchées** : **Q8** → D10 (synchro optimiste / API par
+  entité / last-write-wins), **Q9** caduque (D9), **Q10** → D8.
+- Prochaine étape exécutable : **Lot 4** (backend API par entité + base Turso région
+  UE + projet Vercel) — plus aucune décision en attente. *(Le remplissage réel =
+  import Excel, post-bascule.)*

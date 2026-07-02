@@ -19,6 +19,7 @@ Contexte : migration du CRM de **localStorage** (`AppState` JSON, clé
 | D7 | **`defaultGoal`** | **Table dédiée à 1 ligne** (`default_goal`, `id = 1`), pas de table `app_config` clé/valeur générique. |
 | D8 | **`GoalMetric` (forme)** | **Aplati en 12 colonnes** sur `commercial_goals` (6 indicateurs fixes × `target`/`override`). **Pas** de table fille `goal_metrics` (indicateurs figés, jointure évitée, reflet direct de l'objet actuel). |
 | D9 | **Données au démarrage** | La base démarre **VIERGE**. Les données de dev actuelles (localStorage) sont **jetables** — rien à migrer. Les vraies données viendront **plus tard, via un IMPORT du fichier Excel du client** (opération séparée, **post-bascule**, à cadrer le moment venu). **Conséquences :** le **Lot 2** (export localStorage → réimport) est **supprimé / sans objet** ; **Q9 devient caduque** ; le **Lot 6** (cutover) devient **trivial** (activer le flag sur une base vierge, aucune migration de données). |
+| D10 | **Modèle de synchro** (Q8 tranchée) | **Écriture OPTIMISTE** (l'UI applique la mutation localement d'abord — le reducer reste le cache — puis synchronise en tâche de fond) + **API PAR ENTITÉ** (endpoints par entité ; les actions « remplace tout le tableau » — `SAVE_GOALS`/`SAVE_MONTHLY_STATS`/`SAVE_DEFAULT_GOAL` — deviennent des **upsert/delete différentiels**) + **conflits « last-write-wins »** (dernier écrit gagne via `updated_at` ; pas de verrouillage optimiste, adapté à ~4 utilisateurs). |
 
 ### Conséquences déjà actées sur le schéma (cf. `00`, §6)
 
@@ -35,27 +36,18 @@ Contexte : migration du CRM de **localStorage** (`AppState` JSON, clé
 
 ## ❓ Questions encore ouvertes (à trancher avant les étapes concernées)
 
-### Q8 — Modèle de synchro / accès aux données (§8 de la cartographie)
+### Q8 — Modèle de synchro / accès aux données — ✅ TRANCHÉE → voir **D10**
 
-Le passage d'un **blob localStorage réécrit en entier** à des **écritures par
-ligne** change la sémantique de plusieurs actions du reducer :
+**Résolu (2026-07-02) :** synchro **OPTIMISTE** + **API PAR ENTITÉ** + conflits
+**« last-write-wins »** (via `updated_at`). Backend sur **Vercel** (functions),
+base **Turso/libSQL** (région UE). Le reducer reste le **cache optimiste** côté
+client ; les actions « remplace tout le tableau » deviennent des upsert/delete
+différentiels côté service.
 
-- `SAVE_MONTHLY_STATS`, `SAVE_GOALS`, `SAVE_DEFAULT_GOAL` **remplacent tout un
-  tableau** → deviennent des **upsert/delete différentiels** côté service.
-
-Points à décider :
-
-- **API par entité** (REST/RPC) exposée par un backend, avec le **reducer conservé
-  côté client comme cache optimiste** ? (recommandé : impact minimal sur l'UI)
-- **Stratégie d'écriture** : optimiste (UI d'abord, sync en tâche de fond) vs
-  bloquante (attendre la confirmation serveur) ?
-- **Rafraîchissement multi-postes** : polling simple, revalidation à intervalle,
-  ou temps réel (hors scope raisonnable au début) ? Fréquence acceptable ?
-- **Gestion de conflits** : « dernier écrit gagne » via `updated_at` suffit-il pour
-  4 utilisateurs, ou faut-il un verrouillage optimiste (rejet si `updated_at`
-  a changé) ?
-- **Où tourne le backend** : Vercel functions (comme SAForm), edge, autre ?
-  (recoupe « base partagée multi-postes » du TODO — le grand jalon d'infra).
+*Points laissés au cadrage du Lot 4 (implémentation, pas décision de principe) :*
+rafraîchissement multi-postes (revalidation légère type polling/refetch au focus,
+temps réel hors scope initial) ; granularité exacte des endpoints ; format d'erreur
+et de réconciliation optimiste (rollback du cache si le serveur rejette).
 
 ### Q9 — Stratégie d'import des données existantes — ❌ CADUQUE → voir **D9**
 
@@ -79,9 +71,9 @@ au TODO). Les questions d'idempotence / réconciliation / validation seront repr
 ## Statut
 
 - Étape 0 (cartographie) : **faite** (`00-cartographie-modele.md`).
-- Décisions D1–D9 : **validées** (D8 = Q10 tranchée ; D9 = base vierge).
-- Question **Q8** (synchro) : **ouverte**, à trancher avant le Lot 4 (API).
-- **Q9** : **caduque** (→ D9, base vierge / import Excel post-bascule). **Q10** :
-  tranchée (→ D8).
+- Décisions D1–D10 : **validées** (D8 = Q10 ; D9 = base vierge ; D10 = Q8 synchro).
+- **Toutes les questions ouvertes sont tranchées** : **Q8** → D10 (synchro optimiste
+  / API par entité / last-write-wins) ; **Q9** caduque (→ D9) ; **Q10** → D8.
 - Lots faits : **0** (cartographie), **1** (schéma Prisma, v3.20.0), **3** (couche
-  repository, iso-comportement). **Lot 2 supprimé** (D9).
+  repository, v3.20.1). **Lot 2 supprimé** (D9). **Prochain : Lot 4** (backend API +
+  base Turso région UE + projet Vercel) — plus aucune décision en attente.
