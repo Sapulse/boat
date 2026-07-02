@@ -7,6 +7,26 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.22.1] — 2026-07-02 — Finitions UX (confirmations + tri Clients)
+
+### Ajouté
+- **Confirmation avant de supprimer un événement d'agenda** (cohérent avec les autres
+  suppressions — lead, action, modèle) ; l'annulation garde la fenêtre ouverte.
+- **Confirmation avant d'enregistrer un « appel passé »** depuis la liste Leads : le
+  bouton « Appeler » (ambigu) demande confirmation avant de journaliser l'action ; le
+  numéro se compose nativement (lien `tel:`) dans tous les cas. *(La fiche lead reste
+  inchangée : son bouton d'appel est explicite dans son contexte.)*
+- **Tri des colonnes de la liste Clients** (Nom, Commercial, Montant signé, Date
+  signature, Date livraison), aligné sur le mécanisme de la liste Leads (indicateur de
+  tri, clic sur l'en-tête). Tri par défaut : date de signature décroissante.
+
+### Technique
+- Composant `SortIcon` (indicateur de tri) **extrait et partagé** entre les listes Leads
+  et Clients (`src/components/ui/SortIcon.tsx`), sans duplication.
+- Hors chantier migration (localStorage inchangé) ; reducer non touché ; 8 harnais verts.
+
+---
+
 ## [3.22.0] — 2026-07-02 — Bascule client → API derrière un feature flag (Lot 5 migration)
 
 ### Technique
