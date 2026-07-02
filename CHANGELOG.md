@@ -7,6 +7,34 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.21.2] — 2026-07-02 — Lot 4 complet : API portier déployée (Vercel + Turso UE)
+
+### Technique
+- **Chantier migration — Lot 4 terminé** : l'**API portier est en ligne sur Vercel**
+  (compte client BrestOceanBoat, option A même origine que l'app) et la **base Turso
+  région UE (Irlande `aws-eu-west-1`)** est opérationnelle (schéma poussé, base vierge
+  D9). Smoke test vert (`GET /api/state` renvoie les collections vides depuis Turso).
+  Le CRM des commerciaux (GitHub Pages) reste inchangé (base path conditionnel).
+- **API regroupée en 1 fonction** (`api/[...slug].ts`, catch-all) pour tenir sous la
+  limite Hobby (12 fonctions) — mêmes URLs publiques, mêmes réponses (24→37 assertions
+  de contrat au harnais, dont routage).
+- **Corrections de déploiement** :
+  - `vercel.json` sans propriété hors-schéma (`//`).
+  - **Compatibilité ESM** (`"type":"module"` → Vercel exécute en ESM strict) : extensions
+    `.js` sur les imports relatifs de `api/` + **découplage runtime de `src/`** (enums et
+    `EMPTY_DEFAULT_GOAL` réinlinés ; seuls les types sont importés). Corrige
+    `ERR_MODULE_NOT_FOUND`.
+  - **Routage via `req.url`** (et non `req.query.slug`, non peuplé pour une fonction
+    `@vercel/node` brute) — corrige le « Ressource manquante » généralisé. Le harnais
+    teste désormais le **mécanisme réel** (parse d'URL Vercel) → plus de décalage
+    test/prod.
+- **Suivi sécurité** consigné : régénérer `TURSO_AUTH_TOKEN` + `API_SHARED_TOKEN` à froid
+  avant le go-live (cf. `docs/migration/02-plan-migration.md`).
+- **Non-régression** : API **non branchée** au client (le CRM tourne toujours sur
+  localStorage — bascule = Lot 5). build + lint + api:typecheck + 8 harnais verts.
+
+---
+
 ## [3.21.1] — 2026-07-02 — Préparation déploiement Vercel (base path conditionnel)
 
 ### Technique
