@@ -1,0 +1,16 @@
+{
+  "//": "Typecheck des fonctions API (chantier migration, Lot 4). HORS du build Vite (tsc -b ne compile que src + vite.config) : les fonctions sont compilées par Vercel. Ce tsconfig sert au `npm run api:typecheck` local.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

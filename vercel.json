@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "//": "Projet Vercel (chantier migration, Lot 4). Préset Vite pour le build de l'app statique ; les fichiers api/**/*.ts sont automatiquement servis comme Vercel Functions (runtime Node) — MÊME ORIGINE que l'app (option A, pas de CORS). Les secrets Turso vivent dans les env vars Vercel, jamais ici.",
+  "framework": "vite"
+}
