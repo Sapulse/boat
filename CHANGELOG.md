@@ -7,6 +7,31 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.21.0] — 2026-07-02 — API par entité, portier Turso (Lot 4 migration, partie code)
+
+### Technique
+- **Chantier migration — Lot 4 (partie code, local)** : mise en place de l'**API par
+  entité** qui servira de **portier** entre l'app et la base (décision **D10** : synchro
+  **optimiste**, **API par entité**, conflits **last-write-wins**). L'app ne parlera
+  **jamais** directement à Turso : elle passera par l'API, seule détentrice du secret.
+- **`api/`** (Vercel Functions, hors bundle Vite) : factory Prisma **adaptateur libSQL**
+  (Turso si `TURSO_*`, sinon `file:./dev.db` en local) ; enveloppe de route avec **garde
+  par jeton `API_SHARED_TOKEN`** (en attendant l'auth du Lot 7) ; validation applicative
+  des enums ; couche d'accès + **mappers domaine↔Prisma** (audit masqué, `GoalMetric`
+  aplati, `null`/`undefined`, sentinelles `''`). Routes **CRUD par entité** + **batch**
+  (goals, monthly-stats, default-goal) + **`/api/state`** (hydratation).
+- **Serveur mince** : la logique métier dérivée (jalons, `lastActionDate`, min-1 modèles)
+  reste dans le **reducer partagé** côté client ; seuls invariants côté base = **cascade
+  FK** et **clés UNIQUE**.
+- **Prouvé en local, sans cloud** : harnais de contrat (`scripts/harness-api.ts`, base
+  libSQL fichier jetable) — **24 assertions** (CRUD, cascade, UNIQUE, batch, garde d'enum).
+  build + lint + `api:typecheck` + **8 harnais (451 assertions)** verts.
+- **Zéro impact** : API **non branchée** (le CRM reste sur localStorage / GitHub Pages),
+  aucun fichier `src/` touché, bundle applicatif inchangé. **Aucune base Turso ni projet
+  Vercel créés** à ce stade (étape web à venir : base **région UE — Paris `cdg`**).
+
+---
+
 ## [3.20.1] — 2026-07-02 — Couche repository (Lot 3 migration)
 
 ### Technique

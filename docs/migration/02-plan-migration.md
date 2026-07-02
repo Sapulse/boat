@@ -82,17 +82,27 @@ question **Q9** sont **caducs**.
 
 ## Lot 4 — Backend API par entité (Prisma/Turso) + infra (Q8 → D10)
 
-- **Fait :** base **Turso/libSQL (région UE)** + projet **Vercel** ; API **par
-  entité** (Vercel Functions) adossée à Prisma, **portier** entre l'app et Turso (le
-  secret Turso reste côté serveur). Les actions « remplace tout le tableau »
-  (`SAVE_GOALS` / `SAVE_MONTHLY_STATS` / `SAVE_DEFAULT_GOAL`) deviennent des
-  **upsert/delete différentiels**. **Pas encore branché** au client par défaut.
-- **Comment on teste :** tests d'intégration API + **tests de contrat** rejouant les
-  invariants des harnais **côté serveur** (cascade delete, garde-fou min-1 templates,
-  `lastActionDate` non-recul, clés `UNIQUE`).
-- **Décision actée :** **D10** (Q8) — synchro **optimiste**, **API par entité**,
-  conflits **last-write-wins** (`updated_at`). Plus aucune décision en attente.
-- **Non-régression :** CRM toujours sur localStorage (flag off).
+**Partie CODE (local)** ✅ *(fait — v3.21.0)* :
+- API **par entité** (Vercel Functions, `api/`) adossée à Prisma, **portier** entre
+  l'app et Turso (le secret reste côté serveur) : factory adaptateur **libSQL**
+  (Turso ou `file:./dev.db`), garde par **jeton `API_SHARED_TOKEN`**, validation des
+  enums, mappers domaine↔Prisma. CRUD par entité + **batch** (`SAVE_GOALS` /
+  `SAVE_MONTHLY_STATS` / `SAVE_DEFAULT_GOAL` → **upsert/delete différentiels**) +
+  `/api/state`. **Serveur mince** (logique dérivée = reducer client ; invariants
+  serveur = cascade FK + UNIQUE).
+- **Testé sans cloud** : `scripts/harness-api.ts` (base libSQL fichier jetable) — 24
+  assertions (CRUD, cascade, UNIQUE, batch, enum) ; build + lint + `api:typecheck` +
+  8 harnais verts. **Non branché** (CRM sur localStorage) — zéro impact.
+
+**Partie INFRA (web, à faire — instructions au moment venu)** :
+- Créer la base **Turso région UE (Paris `cdg`)** → `TURSO_DATABASE_URL` +
+  `TURSO_AUTH_TOKEN`.
+- Créer le **projet Vercel** (préset Vite, option A même origine) + env vars
+  (`TURSO_*`, `API_SHARED_TOKEN`).
+- Pousser le schéma (`npm run db:push:turso`) → base **vierge** prête (D9).
+- Smoke test `curl` de l'API déployée (avec le jeton).
+
+- **Décision actée :** **D10** (Q8). **Non-régression :** CRM toujours sur localStorage.
 
 ---
 
