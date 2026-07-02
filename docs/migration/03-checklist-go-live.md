@@ -48,6 +48,6 @@ Complète le plan de migration ([`02-plan-migration.md`](./02-plan-migration.md)
 | Correctif | Statut |
 |---|---|
 | #1 Backup | **Atténué (natif 24 h) + planifié (externe avant go-live)** — cf. ci-dessus |
-| #2 Validation des entrées API | En cours de cadrage |
+| #2 Validation des entrées API | ✅ **Fait (v3.22.2)** — schémas zod par entité, 400 clair sans écriture, mapping 404/409, PK non renommable |
 | #3 Concurrence multi-postes (staleness + PATCH entité complète) | À traiter avant usage multi-utilisateurs |
 | #4 File de synchro non gardée à la fermeture (`beforeunload`) | À traiter avant go-live |

@@ -7,6 +7,29 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.22.2] — 2026-07-02 — Sécurité : validation zod des entrées API (correctif audit #2)
+
+### Technique
+- **Validation zod de toutes les écritures API** (`api/_lib/validate.ts` réécrit) : un
+  schéma par entité écrivable, **create** (champs requis complets) vs **patch** (partiel,
+  **sans `id`** — un PATCH ne peut plus renommer une clé primaire). **Enums stricts**
+  (aucun statut/type inexistant n'atteint la base), **bornes larges mais finies**
+  (2 000 / 50 000 caractères, batchs ≤ 2 000 items, nombres finis), dates `YYYY-MM-DD`
+  et heures `HH:mm` vérifiées, `month` 1-12, **unicité intra-payload** des batchs,
+  corps batch = tableau exigé. **Champs inconnus strippés** (tolérance aux évolutions).
+  Sentinelles `''` préservées (D3) ; listes d'enums dans `api/_lib` (découplage
+  `src/`↔`api/` du Lot 4 respecté).
+- **Refus propre, jamais d'écriture sale** : payload invalide → **400** avec champ +
+  problème, aucune écriture (vérifié au harnais). **Mapping des erreurs** : JSON
+  malformé → 400, id inexistant (P2025) → **404**, conflit d'unicité (P2002) → **409**,
+  FK inconnue (P2003) → 400 — fini les 500 génériques trompeurs.
+- **Non-régression prouvée** : les payloads valides (ce que le front envoie) passent à
+  l'identique — harnais API **37 → 59 assertions**, 9 harnais (503 assertions) verts,
+  aucun fichier `src/` touché (CRM localStorage flag off intact). `zod` en dependency
+  runtime.
+
+---
+
 ## [3.22.1] — 2026-07-02 — Finitions UX (confirmations + tri Clients)
 
 ### Ajouté
