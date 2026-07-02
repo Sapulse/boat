@@ -7,6 +7,21 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.19.1] — 2026-07-02 — Liste Leads : colonne « Prochaine action »
+
+### Ajouté
+- **Colonne « Prochaine action » triable** dans la liste Leads (entre « Dern. action »
+  et « Actions »), affichant **type + date** (`formatDateShort`). Le **1er clic trie en
+  ascendant** : échéances les plus proches en haut, leads sans date en dernier
+  (« qui relancer en premier »).
+
+### Modifié
+- Cellule « Dern. action » **nettoyée** : le type de prochaine action y était dupliqué,
+  retiré (ne reste que les jours). Cas sans prochaine action : **tiret discret**, rangé
+  en dernier au tri.
+
+---
+
 ## [3.19.0] — 2026-06-19 — Objectifs par défaut de l'équipe
 
 ### Ajouté
