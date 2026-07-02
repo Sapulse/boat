@@ -17,7 +17,7 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn } from '../lib/utils';
 import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES } from '../data/constants';
 import type { Lead, LeadStatus } from '../data/types';
 
@@ -181,8 +181,7 @@ export default function PipelinePage() {
   const filteredLeads = useMemo(() => {
     let leads = [...state.leads];
     if (search) {
-      const q = search.toLowerCase();
-      leads = leads.filter(l => getLeadFullName(l).toLowerCase().includes(q) || l.boatInterest.toLowerCase().includes(q));
+      leads = leads.filter(l => leadMatchesSearch(l, search));
     }
     if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);

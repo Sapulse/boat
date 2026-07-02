@@ -253,17 +253,19 @@ export default function LeadDetailPage() {
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowEmailMenu(false)} />
                     <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                      {emailTemplates.length > 0 && (
+                        <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                      )}
                       {emailTemplates.map(t => (
                         <button key={t.id} onClick={() => sendEmail(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                           {t.title}
                         </button>
                       ))}
-                      {emailTemplates.length === 0 && (
-                        <button onClick={() => sendEmail(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                          Email vierge (sans modèle)
-                        </button>
-                      )}
+                      {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
+                      {emailTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                      <button onClick={() => sendEmail(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        Email vierge (sans modèle)
+                      </button>
                     </div>
                   </>
                 )}
@@ -282,17 +284,19 @@ export default function LeadDetailPage() {
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowSmsMenu(false)} />
                   <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    {smsTemplates.length > 0 && (
+                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    )}
                     {smsTemplates.map(t => (
                       <button key={t.id} onClick={() => sendSms(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         {t.title}
                       </button>
                     ))}
-                    {smsTemplates.length === 0 && (
-                      <button onClick={() => sendSms(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        SMS vierge (sans modèle)
-                      </button>
-                    )}
+                    {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
+                    {smsTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                    <button onClick={() => sendSms(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      SMS vierge (sans modèle)
+                    </button>
                   </div>
                 </>
               )}
@@ -310,22 +314,26 @@ export default function LeadDetailPage() {
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowWhatsappMenu(false)} />
                   <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    {whatsappTemplates.length > 0 && (
+                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
+                    )}
                     {whatsappTemplates.map(t => (
                       <button key={t.id} onClick={() => sendWhatsapp(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         {t.title}
                       </button>
                     ))}
-                    {whatsappTemplates.length === 0 && (
-                      <button onClick={() => sendWhatsapp(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        WhatsApp vierge (sans modèle)
-                      </button>
-                    )}
+                    {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
+                    {whatsappTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                    <button onClick={() => sendWhatsapp(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      WhatsApp vierge (sans modèle)
+                    </button>
                   </div>
                 </>
               )}
             </div>
-            <button onClick={() => { setShowActionForm(true); }} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
+            {/* Relancer = planifier la PROCHAINE action (editeur dedie), distinct de
+                "Ajouter action" qui journalise une action realisee. */}
+            <button onClick={openNextActionEditor} className="btn-secondary btn-sm"><RotateCw className="w-3 h-3" /> Relancer</button>
             {nextStatus && (
               <button onClick={() => quickStatusChange(nextStatus)} className="btn-primary btn-sm ml-auto">
                 Passer à : {getStatusLabel(nextStatus)}

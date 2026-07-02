@@ -29,6 +29,7 @@ import { reducer, getInitialState } from '../src/context/appReducer';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
 import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots } from '../src/lib/agenda';
+import { leadMatchesSearch } from '../src/lib/utils';
 import type { AgendaEvent } from '../src/lib/agenda';
 import type { AppState, Lead, LeadAction, LeadStatus, MessageTemplate, CalendarEvent } from '../src/data/types';
 
@@ -745,6 +746,27 @@ section('Agenda grille — CREER depuis un creneau : date + heure du creneau pos
   check('date du creneau posee', s.leads[0].nextActionDate === '2026-06-24', `=${s.leads[0].nextActionDate}`);
   check('heure du creneau posee', s.leads[0].nextActionTime === '09:30', `=${s.leads[0].nextActionTime}`);
   check('type pose', s.leads[0].nextActionType === 'rdv', `=${s.leads[0].nextActionType}`);
+}
+
+// ---------------------------------------------------------------------------
+// Recherche leads (lot finitions-ux #6) — predicat pur PARTAGE Leads/Pipeline
+// ---------------------------------------------------------------------------
+
+section('Recherche leads — leadMatchesSearch : perimetre partage (nom/email/tel/bateau/marque)');
+{
+  const lead = makeLead({
+    firstName: 'Jean', lastName: 'Dupont', email: 'jd@voile.fr',
+    phone: '06 12 34 56 78', boatInterest: 'Antares 9', brand: 'Beneteau',
+  });
+  check('match nom (insensible a la casse)', leadMatchesSearch(lead, 'DUPONT') === true);
+  check('match prenom', leadMatchesSearch(lead, 'jean') === true);
+  check('match email', leadMatchesSearch(lead, 'voile.fr') === true);
+  check('match telephone (fragment)', leadMatchesSearch(lead, '34 56') === true);
+  check('match bateau recherche', leadMatchesSearch(lead, 'antares') === true);
+  check('match marque (nouveau perimetre cote Pipeline)', leadMatchesSearch(lead, 'beneteau') === true);
+  check('non-match -> false', leadMatchesSearch(lead, 'zzz') === false);
+  check('requete vide -> true (aucun filtre)', leadMatchesSearch(lead, '') === true);
+  check('requete espaces -> true (trim, aucun filtre)', leadMatchesSearch(lead, '   ') === true);
 }
 
 // ---------------------------------------------------------------------------

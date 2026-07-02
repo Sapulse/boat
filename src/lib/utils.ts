@@ -112,6 +112,24 @@ export function getLeadFullName(lead: Lead): string {
   return `${lead.firstName} ${lead.lastName}`.trim() || 'Sans nom';
 }
 
+/**
+ * Predicat de recherche libre sur un lead, PARTAGE par la liste Leads et le
+ * Pipeline (source unique pour qu'ils ne divergent plus). Matche le nom complet,
+ * l'email, le telephone, le bateau recherche et la marque. Insensible a la casse
+ * (le telephone n'a pas de casse). Requete vide/espaces -> true (aucun filtre).
+ */
+export function leadMatchesSearch(lead: Lead, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    getLeadFullName(lead).toLowerCase().includes(q) ||
+    lead.email.toLowerCase().includes(q) ||
+    lead.phone.includes(q) ||
+    lead.boatInterest.toLowerCase().includes(q) ||
+    lead.brand.toLowerCase().includes(q)
+  );
+}
+
 export function toISODate(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }

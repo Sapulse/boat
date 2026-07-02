@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Edit2, Phone, Bookmark, Upload } from 'lucide-react';
+import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
+import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
 import { buildCommunicationAction } from '../lib/communication';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
@@ -85,14 +85,7 @@ export default function LeadsPage() {
     }
 
     if (search) {
-      const q = search.toLowerCase();
-      leads = leads.filter(l =>
-        getLeadFullName(l).toLowerCase().includes(q) ||
-        l.email.toLowerCase().includes(q) ||
-        l.phone.includes(q) ||
-        l.boatInterest.toLowerCase().includes(q) ||
-        l.brand.toLowerCase().includes(q)
-      );
+      leads = leads.filter(l => leadMatchesSearch(l, search));
     }
 
     if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
@@ -334,9 +327,6 @@ export default function LeadsPage() {
                       <div className="flex items-center gap-1 justify-center transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100">
                         <button onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Voir">
                           <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Modifier">
-                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         {lead.phone && (
                           <a
