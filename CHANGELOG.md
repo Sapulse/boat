@@ -7,6 +7,30 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.20.1] — 2026-07-02 — Couche repository (Lot 3 migration)
+
+### Technique
+- **Chantier migration — Lot 3** : introduction d'une **couche d'abstraction
+  `CrmRepository`** (`src/lib/repository.ts`) entre l'application et le stockage.
+  **Refactor iso-comportement** : aucune donnée, aucune source, aucun comportement
+  ne change — seule l'indirection est ajoutée. `AppContext` route désormais **toutes**
+  les opérations de données par cette interface (plus d'appel direct au stockage ni de
+  `dispatch` inline), avec une implémentation localStorage adossée au **reducer +
+  `saveState` existants**. C'est la **couture** qui permettra, au Lot 5, de brancher
+  une implémentation « API/base » derrière le **même** contrat.
+- **`dispatch` brut retiré** de la surface du contexte (contournement fermé) ; la
+  gestion des commerciaux passe par de nouveaux hooks
+  `addCommercial`/`updateCommercial`/`toggleCommercial`. Le **reducer est inchangé**
+  → tous les effets dérivés (jalons de dates, cascade suppression, garde-fou min-1
+  modèles, `lastActionDate` non-régressif) sont préservés.
+- **Décision produit actée (D9)** : la base démarrera **vierge** (données de dev
+  jetables) ; les vraies données viendront via un **import Excel post-bascule**. En
+  conséquence le **Lot 2** (export/réimport localStorage) est **supprimé** et le
+  **Lot 6** (cutover) devient trivial. Cf. `docs/migration/`.
+- **Iso-comportement prouvé** : build + lint + 7 harnais (427 assertions) verts.
+
+---
+
 ## [3.20.0] — 2026-07-02 — Infra : schéma Prisma des 8 modèles (Lot 1 migration)
 
 ### Technique
