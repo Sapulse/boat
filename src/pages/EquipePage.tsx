@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 import { Plus, Pencil, Check, X, PowerOff, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useApp } from '../context/useApp';
-import { formatCurrency, generateId } from '../lib/utils';
+import { formatCurrency } from '../lib/utils';
 import { ACTIVE_STATUSES } from '../data/constants';
 
 export default function EquipePage() {
-  const { state, dispatch, updateLead } = useApp();
+  const { state, updateLead, addCommercial, updateCommercial, toggleCommercial } = useApp();
 
   const [newName, setNewName] = useState('');
   const [editDraft, setEditDraft] = useState<{ id: string; name: string; email: string; signature: string } | null>(null);
@@ -42,7 +42,7 @@ export default function EquipePage() {
   const handleAdd = () => {
     const name = newName.trim();
     if (!name) return;
-    dispatch({ type: 'ADD_COMMERCIAL', payload: { id: generateId(), name, active: true } });
+    addCommercial({ name, active: true });
     setNewName('');
   };
 
@@ -54,10 +54,7 @@ export default function EquipePage() {
     if (!editDraft) return;
     const name = editDraft.name.trim();
     if (!name) return;
-    dispatch({
-      type: 'UPDATE_COMMERCIAL',
-      payload: { id: editDraft.id, data: { name, email: editDraft.email.trim(), signature: editDraft.signature } },
-    });
+    updateCommercial(editDraft.id, { name, email: editDraft.email.trim(), signature: editDraft.signature });
     setEditDraft(null);
   };
 
@@ -72,7 +69,7 @@ export default function EquipePage() {
         return;
       }
     }
-    dispatch({ type: 'TOGGLE_COMMERCIAL', payload: id });
+    toggleCommercial(id);
   };
 
   const handleReassign = () => {
@@ -82,7 +79,7 @@ export default function EquipePage() {
         updateLead(l.id, { commercialId: reassignTo });
       }
     });
-    dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom });
+    toggleCommercial(reassignFrom);
     setReassignFrom(null);
     setReassignTo('');
   };
@@ -274,7 +271,7 @@ export default function EquipePage() {
             </select>
             <div className="flex justify-end gap-3">
               <button onClick={() => { setReassignFrom(null); setReassignTo(''); }} className="btn-secondary btn-sm">Annuler</button>
-              <button onClick={() => { dispatch({ type: 'TOGGLE_COMMERCIAL', payload: reassignFrom }); setReassignFrom(null); }} className="btn-ghost btn-sm text-gray-500">Désactiver sans réassigner</button>
+              <button onClick={() => { toggleCommercial(reassignFrom); setReassignFrom(null); }} className="btn-ghost btn-sm text-gray-500">Désactiver sans réassigner</button>
               <button onClick={handleReassign} disabled={!reassignTo} className="btn-primary btn-sm">Réassigner et désactiver</button>
             </div>
           </div>

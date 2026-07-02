@@ -18,6 +18,7 @@ Contexte : migration du CRM de **localStorage** (`AppState` JSON, clé
 | D6 | **`source`** | Reste une **string libre** (pas de table référentielle `sources`). |
 | D7 | **`defaultGoal`** | **Table dédiée à 1 ligne** (`default_goal`, `id = 1`), pas de table `app_config` clé/valeur générique. |
 | D8 | **`GoalMetric` (forme)** | **Aplati en 12 colonnes** sur `commercial_goals` (6 indicateurs fixes × `target`/`override`). **Pas** de table fille `goal_metrics` (indicateurs figés, jointure évitée, reflet direct de l'objet actuel). |
+| D9 | **Données au démarrage** | La base démarre **VIERGE**. Les données de dev actuelles (localStorage) sont **jetables** — rien à migrer. Les vraies données viendront **plus tard, via un IMPORT du fichier Excel du client** (opération séparée, **post-bascule**, à cadrer le moment venu). **Conséquences :** le **Lot 2** (export localStorage → réimport) est **supprimé / sans objet** ; **Q9 devient caduque** ; le **Lot 6** (cutover) devient **trivial** (activer le flag sur une base vierge, aucune migration de données). |
 
 ### Conséquences déjà actées sur le schéma (cf. `00`, §6)
 
@@ -56,27 +57,15 @@ Points à décider :
 - **Où tourne le backend** : Vercel functions (comme SAForm), edge, autre ?
   (recoupe « base partagée multi-postes » du TODO — le grand jalon d'infra).
 
-### Q9 — Stratégie d'import des données existantes (§9 de la cartographie)
+### Q9 — Stratégie d'import des données existantes — ❌ CADUQUE → voir **D9**
 
-Comment amener les données actuelles (dans le localStorage d'un ou plusieurs
-postes) dans la nouvelle base, **sans perte** :
-
-- **Source de vérité au basculement** : un **poste de référence** unique dont on
-  exporte le `crm-nautisme-data` ? Que fait-on des localStorage divergents des
-  autres postes (aujourd'hui chacun est isolé) ?
-- **Script d'import unique** qui lit l'export JSON et applique **les hydratations
-  déjà en place** (cf. `00`, §5) AVANT insertion :
-  - templates : `emailTemplates` legacy + normalisation `type`,
-  - goals : retrait `calls`, garantie des 6 metrics,
-  - acquisition : `mergeAcquisition` (repli `acquisitionVolumes`, idempotent),
-  - nulles : `calendarEvents`/`goals`/`defaultGoal` absents → vides.
-- **Idempotence & rejouabilité** de l'import (pouvoir le relancer sans doublons —
-  s'appuyer sur les clés naturelles / PK existantes).
-- **Réconciliation des ids sémantiques** : les `commercials` `'fred'`… existent-ils
-  déjà côté base (seed) ou l'import les crée-t-il ? Éviter les doublons de
-  commerciaux.
-- **Validation post-import** : compter les entités avant/après, vérifier les FK,
-  rejouer les harnais métier sur un échantillon.
+**Sans objet (décision D9, 2026-07-02) :** la base démarre **vierge**, les données
+de dev localStorage sont **jetables**. Il n'y a donc **pas** d'export/réimport du
+localStorage (Lot 2 supprimé). Les vraies données arriveront **plus tard** via un
+**import du fichier Excel du client** — opération **séparée et post-bascule**, à
+cadrer le moment venu (mapping déjà esquissé côté projet : `mapping-import-excel.md`
+au TODO). Les questions d'idempotence / réconciliation / validation seront reprises
+**à ce moment-là**, pour l'import Excel, pas pour un import localStorage.
 
 ### Q10 — Confirmation de forme (mineur) — ✅ TRANCHÉE → voir **D8**
 
@@ -90,9 +79,9 @@ postes) dans la nouvelle base, **sans perte** :
 ## Statut
 
 - Étape 0 (cartographie) : **faite** (`00-cartographie-modele.md`).
-- Décisions D1–D8 : **validées** (D8 = Q10 tranchée).
-- Questions **Q8** et **Q9** : **ouvertes**, à trancher au fil des étapes (Q8 avant
-  l'étape « couche d'accès / API » = Lot 4, Q9 avant l'étape « import des données »
-  = Lot 2). **Q10** : tranchée (→ D8).
-- Plan de migration séquencé : proposé pour validation (sera persisté en
-  `02-plan-migration.md` une fois validé).
+- Décisions D1–D9 : **validées** (D8 = Q10 tranchée ; D9 = base vierge).
+- Question **Q8** (synchro) : **ouverte**, à trancher avant le Lot 4 (API).
+- **Q9** : **caduque** (→ D9, base vierge / import Excel post-bascule). **Q10** :
+  tranchée (→ D8).
+- Lots faits : **0** (cartographie), **1** (schéma Prisma, v3.20.0), **3** (couche
+  repository, iso-comportement). **Lot 2 supprimé** (D9).

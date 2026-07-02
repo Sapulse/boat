@@ -50,31 +50,33 @@ démarrer immédiatement.
 
 ---
 
-## Lot 2 — Script d'import (offline) + résolution Q9
+## Lot 2 — ❌ SUPPRIMÉ / SANS OBJET (décision D9)
 
-- **Fait :** script autonome (hors app) qui lit un export `crm-nautisme-data`,
-  **applique les hydratations existantes** (templates `emailTemplates` + `type`,
-  goals sans `calls`, `mergeAcquisition`, nulles `?? []`) puis insère en base. Seed
-  des `commercials` sémantiques réconcilié (pas de doublon).
-- **Comment on teste :** import d'un **vrai export** dans une DB scratch → comptages
-  avant/après par entité, intégrité des FK, **idempotence** (rejouer = 0 doublon),
-  rejouer un échantillon des invariants métier (harnais) sur les données importées.
-- **Prérequis décision :** **Q9** (poste de référence, source de vérité).
-- **Non-régression :** offline, n'entre jamais dans le runtime CRM.
+La base démarre **vierge** : les données de dev localStorage sont **jetables**, il
+n'y a **rien à exporter/réimporter**. Ce lot (export localStorage → réimport) et sa
+question **Q9** sont **caducs**.
+
+> **Import Excel initial** (opération post-bascule, hors couture) : les vraies
+> données du client arriveront **plus tard**, via un **import du fichier Excel** —
+> opération **séparée**, à cadrer le moment venu (mapping esquissé :
+> `mapping-import-excel.md`). Ce n'est **pas** un lot de la couture de migration.
 
 ---
 
-## Lot 3 — Couche d'accès abstraite côté client (couture), impl localStorage
+## Lot 3 — Couche d'accès abstraite côté client (couture), impl localStorage ✅ *(fait)*
 
-- **Fait :** on introduit une **interface repository** (méthodes par entité :
-  leads, actions, goals…) et une **première implémentation adossée au
-  localStorage/reducer actuel**. `AppContext` passe par cette interface.
-  **Comportement strictement identique.**
-- **Comment on teste :** **7 harnais verts** (ils testent le vrai reducer, préservé)
-  + build + lint ; parcours manuel = app identique. **Refactor à comportement
-  constant** — brique la plus importante (point de bascule futur).
+- **Fait :** interface **`CrmRepository`** (`src/lib/repository.ts`) couvrant toute la
+  surface de données (leads, actions, commerciaux, templates, agenda, goals,
+  monthlyStats, defaultGoal + hydratation `getInitialState` / persistance `persist`) +
+  implémentation **`createLocalStorageRepository(dispatch)`** adossée au reducer et à
+  `saveState` existants. `AppContext` route **tout** via le repository (plus d'appel
+  direct au stockage) ; `dispatch` brut **retiré** de la surface du contexte (les
+  commerciaux passent par `addCommercial/updateCommercial/toggleCommercial`).
+- **Testé :** **build + lint + 7 harnais verts** (le reducer, source des effets
+  dérivés, est **inchangé** → preuve de l'iso-comportement). Persistance conservée en
+  `useEffect([state])` (timing identique) ; génération d'id inchangée (client).
 - **Non-régression :** aucune donnée ni source ne change ; seule l'indirection est
-  ajoutée.
+  ajoutée. Prépare le Lot 5 (2ᵉ impl API derrière la **même** interface).
 
 ---
 
@@ -106,16 +108,14 @@ démarrer immédiatement.
 
 ---
 
-## Lot 6 — Migration des données réelles + cutover production
+## Lot 6 — Cutover production (TRIVIAL, base vierge — décision D9)
 
-- **Fait :** exécution de l'import (Lot 2) depuis le poste de référence vers la DB
-  **prod** ; activation du flag pour les 4 utilisateurs ; le localStorage n'est plus
-  source de vérité (au mieux cache offline).
-- **Comment on teste :** validation post-import (comptages, FK, échantillon métier) ;
-  fenêtre de bascule avec **export de secours** conservé ; critère de rollback défini
-  à l'avance.
-- **Non-régression :** l'import ayant été prouvé au Lot 2, le cutover est mécanique
-  et réversible (réactiver le flag localStorage + export de secours).
+- **Fait :** activation du flag API pour les utilisateurs, **sur une base vierge**.
+  **Aucune migration de données** (D9 : rien à reprendre du localStorage).
+- **Comment on teste :** l'app démarre proprement sur la base vierge (mêmes écrans,
+  listes vides), les premières écritures atterrissent bien en base.
+- **Non-régression :** réversible (flip du flag). *(Le remplissage réel de la base =
+  import Excel, opération séparée post-bascule — voir Lot 2 supprimé.)*
 
 ---
 
@@ -132,12 +132,12 @@ démarrer immédiatement.
 
 | Lot | Impact runtime CRM | Réversibilité | Débloque |
 |---|---|---|---|
-| 1 | nul (hors bundle) | n/a | schéma |
-| 2 | nul (offline) | n/a | Q9, import prouvé |
-| 3 | refactor iso-comportement | trivial | la couture de bascule |
+| 1 ✅ | nul (hors bundle) | n/a | schéma |
+| 2 | ❌ supprimé (D9 : base vierge) | — | — |
+| 3 ✅ | refactor iso-comportement | trivial | la couture de bascule |
 | 4 | nul (flag off) | n/a | Q8, API |
 | 5 | staging derrière flag | flip du flag | bascule client |
-| 6 | cutover prod | export secours + flag | base partagée |
+| 6 | cutover base vierge (trivial) | flip du flag | base partagée |
 | 7 | — | — | multi-postes authentifié |
 
 ---
@@ -146,10 +146,9 @@ démarrer immédiatement.
 
 - Plan **validé** le 2026-07-02 (approche strangler-fig + bascule derrière feature
   flag).
-- **Lot 0** ✅ (cartographie & décisions) · **Lot 1** ✅ (schéma Prisma, v3.20.0).
-- **Q8** (synchro) et **Q9** (poste de référence / export) restent **ouvertes** —
-  tranchées au démarrage des Lots 4 et 2 respectivement. **Q10** tranchée (→ D8 :
-  `GoalMetric` aplati).
-- Prochaines étapes exécutables : **Lot 3** (couche repository côté client, iso-
-  comportement — ne dépend d'aucune décision ouverte) ou **Lot 2** (import, dès que
-  **Q9** est tranchée).
+- **Lot 0** ✅ (cartographie & décisions) · **Lot 1** ✅ (schéma Prisma, v3.20.0) ·
+  **Lot 3** ✅ (couche repository, iso-comportement). **Lot 2** ❌ supprimé (D9).
+- **Q8** (synchro) : **ouverte**, à trancher avant le Lot 4 (API). **Q9** caduque
+  (D9). **Q10** tranchée (D8).
+- Prochaine étape exécutable : **Lot 4** (backend API par entité), dès que **Q8** est
+  tranchée. *(Le remplissage réel = import Excel, post-bascule.)*

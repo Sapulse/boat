@@ -1,129 +1,63 @@
-import { useReducer, useEffect, type ReactNode } from 'react';
-import type { Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal } from '../data/types';
-import { saveState } from '../lib/storage';
-import { generateId } from '../lib/utils';
-import { reducer, getInitialState } from './appReducer';
+import { useReducer, useEffect, useMemo, type ReactNode } from 'react';
+import { reducer } from './appReducer';
 import { AppContext } from './useApp';
+import { createLocalStorageRepository, getInitialCrmState } from '../lib/repository';
 
 // Ce fichier ne contient QUE le composant AppProvider (react-refresh).
 // Le reducer + l'initialisation vivent dans appReducer.ts (module pur, teste
 // par scripts/harness-reducer.ts) ; le contexte + useApp dans useApp.ts.
+//
+// Depuis le Lot 3 (chantier migration), l'accès aux données passe par la couche
+// `CrmRepository` (src/lib/repository.ts) : AppProvider n'appelle plus le
+// stockage ni ne dispatche directement, il délègue au repository. Comportement
+// STRICTEMENT identique (impl localStorage adossée au reducer + saveState).
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, getInitialState);
+  // Init paresseuse via le bootstrap d'hydratation (sans dispatch). Le repository
+  // est ensuite construit avec `dispatch` (identité STABLE garantie par
+  // useReducer -> créé une seule fois).
+  const [state, dispatch] = useReducer(reducer, undefined, getInitialCrmState);
+  const repository = useMemo(() => createLocalStorageRepository(dispatch), [dispatch]);
 
+  // Persistance : effet réactif sur le state ENTIER (timing inchangé), déléguée
+  // au repository (plus d'appel direct à saveState).
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    repository.persist(state);
+  }, [repository, state]);
 
-  const addLead = (lead: Omit<Lead, 'id'>): string => {
-    const id = generateId();
-    dispatch({ type: 'ADD_LEAD', payload: { ...lead, id } as Lead });
-    return id;
-  };
-
-  const updateLead = (id: string, data: Partial<Lead>) => {
-    dispatch({ type: 'UPDATE_LEAD', payload: { id, data } });
-  };
-
-  const deleteLead = (id: string) => {
-    dispatch({ type: 'DELETE_LEAD', payload: id });
-  };
-
-  const updateLeadStatus = (id: string, status: LeadStatus) => {
-    dispatch({ type: 'UPDATE_LEAD_STATUS', payload: { id, status } });
-  };
-
-  const addAction = (action: Omit<LeadAction, 'id'>) => {
-    dispatch({ type: 'ADD_ACTION', payload: { ...action, id: generateId() } });
-  };
-
-  const updateAction = (id: string, data: Partial<LeadAction>) => {
-    dispatch({ type: 'UPDATE_ACTION', payload: { id, data } });
-  };
-
-  const deleteAction = (id: string) => {
-    dispatch({ type: 'DELETE_ACTION', payload: id });
-  };
-
-  const setNextAction = (id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string, nextActionEndTime?: string) => {
-    dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime } });
-  };
-
-  const getLeadActions = (leadId: string): LeadAction[] => {
-    return state.actions
-      .filter(a => a.leadId === leadId)
-      .sort((a, b) => b.date.localeCompare(a.date));
-  };
-
-  const getCommercialName = (id: string): string => {
-    return state.commercials.find(c => c.id === id)?.name ?? id;
-  };
-
-  const saveMonthlyStats = (stats: MonthlyStat[]) => {
-    dispatch({ type: 'SAVE_MONTHLY_STATS', payload: stats });
-  };
-
-  const saveGoals = (goals: CommercialGoal[]) => {
-    dispatch({ type: 'SAVE_GOALS', payload: goals });
-  };
-
-  const saveDefaultGoal = (defaultGoal: DefaultGoal) => {
-    dispatch({ type: 'SAVE_DEFAULT_GOAL', payload: defaultGoal });
-  };
-
-  const addTemplate = (template: Omit<MessageTemplate, 'id'>): string => {
-    const id = generateId();
-    dispatch({ type: 'ADD_TEMPLATE', payload: { ...template, id } });
-    return id;
-  };
-
-  const updateTemplate = (id: string, data: Partial<MessageTemplate>) => {
-    dispatch({ type: 'UPDATE_TEMPLATE', payload: { id, data } });
-  };
-
-  const deleteTemplate = (id: string) => {
-    dispatch({ type: 'DELETE_TEMPLATE', payload: id });
-  };
-
-  const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>): string => {
-    const id = generateId();
-    dispatch({ type: 'ADD_CALENDAR_EVENT', payload: { ...event, id } });
-    return id;
-  };
-
-  const updateCalendarEvent = (id: string, data: Partial<CalendarEvent>) => {
-    dispatch({ type: 'UPDATE_CALENDAR_EVENT', payload: { id, data } });
-  };
-
-  const deleteCalendarEvent = (id: string) => {
-    dispatch({ type: 'DELETE_CALENDAR_EVENT', payload: id });
-  };
+  // Sélecteurs de vue (purs sur `state`) : restent dans le provider, ce ne sont
+  // pas des opérations de stockage.
+  const getLeadActions = (leadId: string) =>
+    state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
+  const getCommercialName = (id: string) =>
+    state.commercials.find(c => c.id === id)?.name ?? id;
 
   return (
     <AppContext.Provider
       value={{
         state,
-        dispatch,
-        addLead,
-        updateLead,
-        deleteLead,
-        updateLeadStatus,
-        addAction,
-        updateAction,
-        deleteAction,
-        setNextAction,
+        addLead: repository.addLead,
+        updateLead: repository.updateLead,
+        deleteLead: repository.deleteLead,
+        updateLeadStatus: repository.updateLeadStatus,
+        addAction: repository.addAction,
+        updateAction: repository.updateAction,
+        deleteAction: repository.deleteAction,
+        setNextAction: repository.setNextAction,
+        addCommercial: repository.addCommercial,
+        updateCommercial: repository.updateCommercial,
+        toggleCommercial: repository.toggleCommercial,
         getLeadActions,
         getCommercialName,
-        saveMonthlyStats,
-        saveGoals,
-        saveDefaultGoal,
-        addTemplate,
-        updateTemplate,
-        deleteTemplate,
-        addCalendarEvent,
-        updateCalendarEvent,
-        deleteCalendarEvent,
+        saveMonthlyStats: repository.saveMonthlyStats,
+        saveGoals: repository.saveGoals,
+        saveDefaultGoal: repository.saveDefaultGoal,
+        addTemplate: repository.addTemplate,
+        updateTemplate: repository.updateTemplate,
+        deleteTemplate: repository.deleteTemplate,
+        addCalendarEvent: repository.addCalendarEvent,
+        updateCalendarEvent: repository.updateCalendarEvent,
+        deleteCalendarEvent: repository.deleteCalendarEvent,
       }}
     >
       {children}
