@@ -157,6 +157,15 @@ sans migration). À confirmer avec Nicolas/Mickaël.
   localStorage. Pré-requis : commerciaux créés, sources/types alignés, clarifier "DV"/"BO".
 - [ ] **Import de leads depuis emails** : semi-manuel d'abord, puis agent IA. *Le client
   doit fournir 2-3 mails types* pour caler le parsing.
+- [ ] **Supprimer un commercial** (pas juste le masquer/désactiver) — *évolution
+  fonctionnelle, hors chantier migration, à traiter APRÈS le Lot 5, une fois sur la base.*
+  Besoin : nettoyer les commerciaux de **test / doublons**. Aujourd'hui l'UI ne fait que
+  **désactiver** (`TOGGLE_COMMERCIAL`), il n'y a **pas de suppression** (ni action reducer,
+  ni endpoint). À **concevoir proprement** en gérant les **données liées** (leads, actions,
+  `commercial_goals` référençant le commercial — FK `RESTRICT` aujourd'hui côté schéma) :
+  soit **interdire** la suppression s'il a des leads/données, soit **réassigner d'abord**
+  (comme le fait déjà `EquipePage` pour la désactivation), soit **cascade contrôlée**
+  explicite. À cadrer le moment venu.
 - [ ] **Agenda complet type Google/Outlook** (étude de faisabilité faite, 17/06) :
   - **L1 — heures** → ✅ **FAIT en v3.8.0** (créneaux horaires sur les actions de leads,
     propre en localStorage car champ par lead).

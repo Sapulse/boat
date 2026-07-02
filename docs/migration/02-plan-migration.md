@@ -121,12 +121,34 @@ question **Q9** sont **caducs**.
 
 ## Lot 5 — Bascule client → API derrière un feature flag
 
-- **Fait :** 2e implémentation du repository (Lot 3) appelant l'API ; sélection par
-  **flag env**. Le reducer reste **cache optimiste** côté client. Rollback = flip du
-  flag.
-- **Comment on teste :** app lancée contre la DB en **staging**, checks de parité
-  (mêmes écrans, mêmes chiffres qu'en localStorage), invariants rejoués sur le chemin
-  API. Bascule réversible à chaud.
+**Partie CODE** ✅ *(fait)* :
+- 2ᵉ implémentation `createApiRepository` (`src/lib/repository.ts`) satisfaisant le MÊME
+  contrat `CrmRepository`. Mutations = **dispatch optimiste** (réutilise l'impl
+  localStorage) ; **synchro par diff réactif dans `persist`** (D10) : diff `state` vs
+  dernier état confirmé serveur → appels par entité (POST/PATCH/DELETE + PUT batch),
+  **champs dérivés inclus** (le diff voit l'état post-reducer → serveur mince préservé).
+  Appels sérialisés (FK). **Échec → `onError` + re-hydratation** (`GET /state` →
+  `SET_STATE`), pas d'annulation inverse.
+- **Hydratation** : `getInitialState` = état vide (flag on) ; `hydrate()` async
+  (`GET /api/state`) sous un **loading gate** dans `AppProvider`.
+- **Feature flag** `VITE_USE_API` : `AppProvider` choisit l'impl. **Flag OFF (défaut) =
+  localStorage à l'identique** (init sync, pas de loading, `persist=saveState`) → **zéro
+  changement commerciaux**. Prouvé : 8 harnais inchangés verts + build flag-off/flag-on.
+- **Testé sans serveur** : `scripts/harness-api-client.ts` (fetch simulé + vrai reducer)
+  — 17 assertions (hydrate, optimiste+dérivés, diff no-op, cascade, échec→re-sync).
+- **Comment on teste (flag on)** : sur **Vercel** (`VITE_USE_API=true` + `VITE_API_TOKEN`
+  en env vars), l'URL Vercel devient l'app de test adossée à l'API/Turso ; parité vs
+  localStorage. Prod GitHub Pages (commerciaux) reste **flag off**. Réversible = flip.
+
+### 🔒 Compromis token client (VITE_API_TOKEN) — STAGING UNIQUEMENT, TEMPORAIRE
+Le token d'API mis dans `VITE_API_TOKEN` est **exposé dans le bundle client (public)**.
+Toléré **en staging seulement**, sous **3 conditions cumulatives obligatoires** :
+1. **base vierge / données de test** uniquement (aucune donnée réelle client) ;
+2. **Vercel Deployment Protection activée** sur le déploiement de test (URL non publique) ;
+3. usage **documenté comme temporaire** (ce doc + commentaire ⚠️ dans le code / `.env.example`).
+
+**INTERDICTION FORMELLE de partir en prod ainsi.** La vraie réponse = **auth par
+utilisateur (Lot 7)** : le token statique partagé disparaît au profit de sessions.
 - **Non-régression :** flag off = comportement Lot 3 à l'identique ; flag on = testé
   en staging avant prod.
 
