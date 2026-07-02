@@ -17,6 +17,7 @@ Contexte : migration du CRM de **localStorage** (`AppState` JSON, clé
 | D5 | **Colonnes d'audit** | **`created_at` / `updated_at` systématiques** sur toutes les tables (utile en multi-postes : ordre, débogage, future synchro). |
 | D6 | **`source`** | Reste une **string libre** (pas de table référentielle `sources`). |
 | D7 | **`defaultGoal`** | **Table dédiée à 1 ligne** (`default_goal`, `id = 1`), pas de table `app_config` clé/valeur générique. |
+| D8 | **`GoalMetric` (forme)** | **Aplati en 12 colonnes** sur `commercial_goals` (6 indicateurs fixes × `target`/`override`). **Pas** de table fille `goal_metrics` (indicateurs figés, jointure évitée, reflet direct de l'objet actuel). |
 
 ### Conséquences déjà actées sur le schéma (cf. `00`, §6)
 
@@ -77,19 +78,21 @@ postes) dans la nouvelle base, **sans perte** :
 - **Validation post-import** : compter les entités avant/après, vérifier les FK,
   rejouer les harnais métier sur un échantillon.
 
-### Q10 — Confirmation de forme (mineur)
+### Q10 — Confirmation de forme (mineur) — ✅ TRANCHÉE → voir **D8**
 
-- `GoalMetric` aplati (12 colonnes) **confirmé** ? *(Alternative : table fille
-  `goal_metrics(goal_id, metric_name, target, override)` si on prévoit d'ajouter
-  des indicateurs sans migration de schéma. Défaut retenu : aplati.)*
+- **Résolu (2026-07-02) :** `GoalMetric` **aplati en 12 colonnes** sur
+  `commercial_goals`. Les 6 indicateurs sont fixes → pas de table fille
+  `goal_metrics`. *(L'alternative table fille reste envisageable si, un jour, on
+  veut ajouter des indicateurs sans migration de schéma — non retenu aujourd'hui.)*
 
 ---
 
 ## Statut
 
 - Étape 0 (cartographie) : **faite** (`00-cartographie-modele.md`).
-- Décisions D1–D7 : **validées**.
-- Questions Q8–Q10 : **ouvertes**, à trancher au fil des étapes (Q8 avant l'étape
-  « couche d'accès / API », Q9 avant l'étape « import des données »).
+- Décisions D1–D8 : **validées** (D8 = Q10 tranchée).
+- Questions **Q8** et **Q9** : **ouvertes**, à trancher au fil des étapes (Q8 avant
+  l'étape « couche d'accès / API » = Lot 4, Q9 avant l'étape « import des données »
+  = Lot 2). **Q10** : tranchée (→ D8).
 - Plan de migration séquencé : proposé pour validation (sera persisté en
   `02-plan-migration.md` une fois validé).

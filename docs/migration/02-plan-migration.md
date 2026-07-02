@@ -36,8 +36,8 @@ démarrer immédiatement.
   **script de parité schéma** vérifiant que chaque champ des types TS a une colonne
   (garde-fou anti-oubli). Build / lint / 7 harnais du CRM **inchangés et verts**.
 - **Non-régression :** additif pur, hors du bundle app.
-- **À confirmer au démarrage :** **Q10** (aplati vs table fille pour `GoalMetric` —
-  défaut retenu : aplati).
+- **Forme actée (D8) :** `GoalMetric` **aplati en 12 colonnes** sur
+  `commercial_goals` (pas de table fille).
 
 ---
 
@@ -138,6 +138,7 @@ démarrer immédiatement.
 - Plan **validé** le 2026-07-02 (approche strangler-fig + bascule derrière feature
   flag).
 - **Q8** (synchro) et **Q9** (poste de référence / export) restent **ouvertes** —
-  tranchées au démarrage des Lots 4 et 2 respectivement.
+  tranchées au démarrage des Lots 4 et 2 respectivement. **Q10** tranchée (→ D8 :
+  `GoalMetric` aplati).
 - Prochaine étape exécutable : **Lot 1** (schéma Prisma), démarrable dès validation
-  du go, avec confirmation de **Q10** à ce moment-là.
+  du go.
