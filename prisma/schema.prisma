@@ -1,0 +1,254 @@
+// CRM Brest Ocean Boat — schéma de base (chantier migration, Lot 1).
+//
+// Traduction FIDÈLE du modèle actuel (localStorage / AppState) vers un schéma
+// relationnel. Cf. docs/migration/00-cartographie-modele.md (source) et
+// 01-decisions.md (décisions D1–D8).
+//
+// ZÉRO impact runtime : rien ici n'est importé par src/. Le CRM tourne toujours
+// à 100 % sur localStorage. Provider Turso/libSQL (comme SAForm) ; en Prisma 7
+// l'url est HORS schéma (voir prisma.config.ts). Base LOCALE de dev uniquement
+// (file:./dev.db) — aucune base Turso de production créée à ce stade.
+//
+// Conventions (décisions validées) :
+//  - IDs en String SANS @default : l'app fournit l'id (UUID crypto.randomUUID
+//    OU id sémantique legacy 'fred'/'contact'). Jamais d'autoincrement.
+//  - Enums = String (Prisma ne gère pas les enums sur SQLite) + validation
+//    applicative, comme aujourd'hui.
+//  - Sentinelles '' CONSERVÉES : champs requis "vides" = @default("") ; champs
+//    optionnels = nullable (?) ; numériques nullables = Float?/Int?.
+//  - Dates MÉTIER conservées en String ISO ("YYYY-MM-DD" / "HH:mm") pour
+//    préserver À L'IDENTIQUE les comparaisons de chaînes du code métier.
+//  - Audit createdAt/updatedAt en DateTime, AJOUTÉS partout — sauf Lead qui
+//    porte déjà un createdAt métier (String) : Lead reçoit updatedAt seul.
+//  - Modèles PascalCase + @@map vers tables snake_pluriel ; colonnes camelCase.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Prisma 7 : url retirée du schéma. Voir prisma.config.ts (Migrate) et,
+  // plus tard (Lots 4-5), l'adaptateur runtime (libsql Turso / better-sqlite3).
+  provider = "sqlite"
+}
+
+// ============================================================
+// Commercial — pivot référentiel (référencé par 4 entités).
+// Portera l'auth au Lot 7 (email = point d'entrée) ; rien d'auth ici.
+// ============================================================
+model Commercial {
+  id        String   @id
+  name      String
+  active    Boolean  @default(true)
+  email     String?
+  signature String?
+  // Audit. L'ancien Commercial.createdAt? (string optionnel, = date de
+  // création) est fondu ici (même sémantique).
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads          Lead[]
+  actions        LeadAction[]
+  goals          CommercialGoal[]
+  calendarEvents CalendarEvent[]
+
+  @@map("commercials")
+}
+
+// ============================================================
+// Lead — entité centrale. La "prochaine action" est dénormalisée sur le lead
+// (nextAction*), conforme au modèle actuel.
+// ============================================================
+model Lead {
+  id String @id
+
+  // createdAt = donnée MÉTIER (YYYY-MM-DD, requis, backdatable, pilote les KPIs
+  // via isInMonth). Reste un String — NE PAS convertir en DateTime.
+  createdAt String
+  // Audit (seul ajout : createdAt métier ci-dessus tient lieu de date de création).
+  updatedAt DateTime @updatedAt
+
+  source        String     @default("")
+  commercialId  String
+  commercial    Commercial @relation(fields: [commercialId], references: [id])
+
+  firstName    String @default("")
+  lastName     String @default("")
+  phone        String @default("")
+  email        String @default("")
+  boatType     String @default("") // BoatType | ''
+  boatCondition String @default("") // BoatCondition | ''
+  boatInterest String @default("")
+  brand        String @default("")
+  budget       Float? // nullable
+  status       String // LeadStatus (toujours renseigné)
+  contactDate  String @default("")
+  quoteAmount  Float? // nullable
+  probability  Float? // nullable
+  currentBoat  String @default("")
+  comments     String @default("")
+  deliveryDate String @default("")
+  temperature  String // Temperature
+  priority     String // Priority
+
+  nextActionType    String  @default("") // ActionType | ''
+  nextActionDate    String  @default("")
+  nextActionTime    String? // "HH:mm" — absent = toute la journée
+  nextActionEndTime String? // "HH:mm" — donne une durée
+
+  lastActionDate String @default("")
+  lossReason     String @default("")
+  signedAt       String @default("")
+  lostAt         String @default("")
+  reportedAt     String @default("")
+
+  actions LeadAction[]
+
+  @@index([commercialId])
+  @@index([status])
+  @@map("leads")
+}
+
+// ============================================================
+// LeadAction — historique. Cascade depuis le lead (reflète DELETE_LEAD qui
+// supprime aussi les actions du lead).
+// ============================================================
+model LeadAction {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  // authorId = commercial auteur (goals.ts : a.authorId === commercialId).
+  // Pas de cascade : aucune action DELETE_COMMERCIAL n'existe (Restrict par défaut).
+  authorId String
+  author   Commercial @relation(fields: [authorId], references: [id])
+
+  type   String // ActionType
+  date   String // "YYYY-MM-DD"
+  result String @default("")
+  notes  String @default("")
+
+  newStatus      String? // LeadStatus | absent
+  nextActionType String? // ActionType | absent
+  nextActionDate String?
+
+  @@index([leadId])
+  @@index([authorId])
+  @@map("lead_actions")
+}
+
+// ============================================================
+// MessageTemplate — modèles email/sms/whatsapp. subject '' pour sms/whatsapp.
+// ============================================================
+model MessageTemplate {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  type    String // TemplateType (email | sms | whatsapp)
+  title   String
+  subject String @default("")
+  body    String
+
+  @@map("message_templates")
+}
+
+// ============================================================
+// MonthlyStat — acquisition. Clé naturelle (year, month, source). CPL NON
+// stocké (dérivé à la volée côté app).
+// ============================================================
+model MonthlyStat {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  year   Int
+  month  Int
+  source String
+  budget Float? // nullable
+  leads  Int? // nullable (volume)
+
+  @@unique([year, month, source])
+  @@map("monthly_stats")
+}
+
+// ============================================================
+// CalendarEvent — événement d'agenda libre (non lié à un lead).
+// commercialId nullable = événement "équipe" (général).
+// ============================================================
+model CalendarEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title   String
+  date    String // "YYYY-MM-DD"
+  time    String? // "HH:mm" — absent = toute la journée
+  endTime String? // "HH:mm" — donne une durée
+
+  commercialId String?
+  commercial   Commercial? @relation(fields: [commercialId], references: [id])
+
+  category String? // CalendarEventCategory
+  note     String?
+
+  @@map("calendar_events")
+}
+
+// ============================================================
+// CommercialGoal — objectifs mensuels. GoalMetric APLATI en 12 colonnes
+// (6 indicateurs × target/override, décision D8). Clé naturelle
+// (commercialId, year, month). override null = réalisé calculé auto (non stocké).
+// ============================================================
+model CommercialGoal {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  commercialId String
+  commercial   Commercial @relation(fields: [commercialId], references: [id])
+  year         Int
+  month        Int // 1..12
+
+  // Prospection
+  prospectsCreatedTarget   Float?
+  prospectsCreatedOverride Float?
+  coldCallsTarget          Float?
+  coldCallsOverride        Float?
+  // Suivi
+  followupsTarget Float?
+  followupsOverride Float?
+  meetingsTarget  Float?
+  meetingsOverride Float?
+  // Résultat
+  revenueTarget          Float?
+  revenueOverride        Float?
+  conversionRateTarget   Float?
+  conversionRateOverride Float?
+
+  @@unique([commercialId, year, month])
+  @@map("commercial_goals")
+}
+
+// ============================================================
+// DefaultGoal — objectifs PAR DÉFAUT de l'équipe (singleton 1 ligne, id=1).
+// SQLite/Prisma n'a pas de CHECK natif : l'invariant "1 seule ligne" est
+// garanti CÔTÉ APP (upsert where id=1). null = pas de défaut pour l'indicateur.
+// ============================================================
+model DefaultGoal {
+  id        Int      @id @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prospectsCreated Float?
+  coldCalls        Float?
+  followups        Float?
+  meetings         Float?
+  revenue          Float?
+  conversionRate   Float?
+
+  @@map("default_goal")
+}

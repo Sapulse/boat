@@ -15,6 +15,14 @@ dist-ssr
 # Notes internes Claude (mémoire de session) — pas du code app
 memory/
 
+# Chantier migration (Prisma) — base locale de dev + secrets, jamais commités
+# (.env.example reste suivi comme gabarit). Le schéma et les migrations LE sont.
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
