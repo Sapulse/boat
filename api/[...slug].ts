@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireToken, HttpError, body } from './_lib/http';
-import { prisma } from './_lib/prisma';
+import { requireToken, HttpError, body } from './_lib/http.js';
+import { prisma } from './_lib/prisma.js';
 import {
   getState,
   createLead, updateLead, deleteLead,
@@ -9,11 +9,11 @@ import {
   createTemplate, updateTemplate, deleteTemplate,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
-} from './_lib/store';
+} from './_lib/store.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
   CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal,
-} from '../src/data/types';
+} from '../src/data/types.js';
 
 // Fonction API UNIQUE (chantier migration, Lot 4 — regroupement). Vercel route
 // TOUT /api/* vers ce catch-all -> 1 seule fonction (limite Hobby : 12). Les URLs

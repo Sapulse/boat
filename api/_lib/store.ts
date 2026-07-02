@@ -2,12 +2,18 @@ import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
   MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric,
-} from '../../src/data/types';
-import { EMPTY_DEFAULT_GOAL } from '../../src/data/constants';
-import { HttpError } from './http';
+} from '../../src/data/types.js';
+import { HttpError } from './http.js';
 import {
   validateLeadInput, validateActionInput, validateTemplateInput, validateCalendarInput,
-} from './validate';
+} from './validate.js';
+
+// Objectifs par défaut « vides » — dupliqué de src/data/constants
+// (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
+const EMPTY_DEFAULT_GOAL: DefaultGoal = {
+  prospectsCreated: null, coldCalls: null, followups: null,
+  meetings: null, revenue: null, conversionRate: null,
+};
 
 // Accès aux données côté serveur (Lot 4). Fonctions PURES d'I/O (prennent un
 // PrismaClient) -> testables au harnais SANS HTTP ni cloud (scripts/harness-api.ts).
