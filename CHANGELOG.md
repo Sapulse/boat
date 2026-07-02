@@ -7,6 +7,35 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.22.0] — 2026-07-02 — Bascule client → API derrière un feature flag (Lot 5 migration)
+
+### Technique
+- **Chantier migration — Lot 5 (code)** : 2ᵉ implémentation de la couche d'accès
+  (`createApiRepository`) qui appelle l'**API** au lieu du localStorage, sélectionnable
+  par le **feature flag `VITE_USE_API`**. **Flag OFF (défaut) = comportement localStorage
+  strictement inchangé** (init synchrone, pas d'écran de chargement, `persist=saveState`)
+  → **aucun changement pour les commerciaux** (prod GitHub Pages intouchée). Flag ON =
+  l'app parle à l'API/Turso.
+- **Modèle optimiste (D10)** : les mutations dispatchent d'abord (cache reducer → UI
+  immédiate, réutilise l'impl localStorage) ; la **synchro se fait par diff réactif** dans
+  `persist` (diff de l'état vs dernier état confirmé serveur → appels par entité
+  POST/PATCH/DELETE + PUT batch, **champs dérivés inclus** → serveur mince préservé).
+  Appels sérialisés (FK). **Échec → notification + re-hydratation** (`GET /state` →
+  `SET_STATE`), pas d'annulation inverse.
+- **Hydratation** async (`hydrate()` → `GET /api/state`) sous un **loading gate** dans
+  `AppProvider` ; `getInitialState` renvoie un état vide en mode API. Le **reducer et
+  l'impl localStorage ne sont pas modifiés** (on ajoute une alternative).
+- **Testé sans serveur** : `scripts/harness-api-client.ts` (fetch simulé + vrai reducer)
+  — 17 assertions (hydrate, optimiste + dérivés, diff no-op, cascade, échec → re-sync).
+  build (flag off ET on) + lint + api:typecheck + **9 harnais (481 assertions)** verts.
+- **⚠️ Sécurité** : `VITE_API_TOKEN` est **exposé dans le bundle client** → **staging
+  uniquement**, sous 3 conditions cumulatives (base vierge, Vercel Deployment Protection,
+  usage temporaire documenté). **Interdit en prod** ; la vraie réponse = auth **Lot 7**.
+- **Non branché en prod** : le flag reste **off** par défaut ; le test flag-on se fait sur
+  Vercel (env vars), la bascule des commerciaux viendra au Lot 6.
+
+---
+
 ## [3.21.2] — 2026-07-02 — Lot 4 complet : API portier déployée (Vercel + Turso UE)
 
 ### Technique
