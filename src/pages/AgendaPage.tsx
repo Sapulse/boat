@@ -154,7 +154,11 @@ export default function AgendaPage() {
     setEditEvent(null);
   };
   const removeEvent = () => {
-    if (editEvent) deleteCalendarEvent(editEvent.id);
+    // Confirmation cohérente avec les autres suppressions (lead, action, modèle).
+    // Annulation -> on garde la modale ouverte.
+    if (!editEvent) return;
+    if (!confirm(`Supprimer l'événement « ${editEvent.title} » définitivement ?`)) return;
+    deleteCalendarEvent(editEvent.id);
     setEditEvent(null);
     setCreator(null);
   };

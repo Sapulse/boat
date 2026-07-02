@@ -2,11 +2,20 @@ import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Check, Users, Euro } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import { formatDate, formatCurrency, getLeadFullName } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { BOAT_TYPES, SOURCES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
+import type { Lead } from '../data/types';
+
+// Colonnes triables de la liste Clients (même mécanisme que Leads).
+type SortField = 'name' | 'commercial' | 'amount' | 'signedAt' | 'deliveryDate';
+
+// Montant signé d'un client (devis prioritaire, sinon budget). Module-level (pur)
+// pour ne pas polluer les deps du useMemo.
+const clientAmount = (l: Lead) => l.quoteAmount ?? l.budget ?? 0;
 
 export default function ClientsPage() {
   const { state, getCommercialName } = useApp();
@@ -20,6 +29,9 @@ export default function ClientsPage() {
   const [filterCommercial, setFilterCommercial] = useState(searchParams.get('commercial') ?? '');
   const [filterBoatType, setFilterBoatType] = useState('');
   const [filterSource, setFilterSource] = useState(searchParams.get('source') ?? '');
+  // Défaut = date de signature décroissante (comportement historique préservé).
+  const [sortField, setSortField] = useState<SortField>('signedAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const clients = useMemo(() => {
     let leads = state.leads.filter(l => l.status === 'signe');
@@ -39,11 +51,27 @@ export default function ClientsPage() {
     if (filterBoatType) leads = leads.filter(l => l.boatType === filterBoatType);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
 
-    return leads.sort((a, b) => (b.signedAt || b.createdAt).localeCompare(a.signedAt || a.createdAt));
-  }, [state.leads, search, filterCommercial, filterBoatType, filterSource]);
+    // Tri par colonne (même pattern que LeadsPage : switch + sens asc/desc).
+    return leads.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'name': cmp = getLeadFullName(a).localeCompare(getLeadFullName(b)); break;
+        case 'commercial': cmp = getCommercialName(a.commercialId).localeCompare(getCommercialName(b.commercialId)); break;
+        case 'amount': cmp = clientAmount(a) - clientAmount(b); break;
+        case 'signedAt': cmp = (a.signedAt || a.createdAt).localeCompare(b.signedAt || b.createdAt); break;
+        case 'deliveryDate': cmp = (a.deliveryDate || 'z').localeCompare(b.deliveryDate || 'z'); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [state.leads, search, filterCommercial, filterBoatType, filterSource, sortField, sortDir, getCommercialName]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('desc'); }
+  };
 
   const totalAmount = useMemo(
-    () => clients.reduce((sum, l) => sum + (l.quoteAmount ?? l.budget ?? 0), 0),
+    () => clients.reduce((sum, l) => sum + clientAmount(l), 0),
     [clients]
   );
 
@@ -149,15 +177,25 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Nom</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('name')}>
+                  <span className="inline-flex items-center gap-1">Nom <SortIcon field="name" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Téléphone</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Commercial</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('commercial')}>
+                  <span className="inline-flex items-center gap-1">Commercial <SortIcon field="commercial" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Bateau</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Marque</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Montant signé</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Date signature</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Date livraison</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('amount')}>
+                  <span className="inline-flex items-center gap-1 justify-end">Montant signé <SortIcon field="amount" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('signedAt')}>
+                  <span className="inline-flex items-center gap-1">Date signature <SortIcon field="signedAt" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('deliveryDate')}>
+                  <span className="inline-flex items-center gap-1">Date livraison <SortIcon field="deliveryDate" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
               </tr>
             </thead>
             <tbody>

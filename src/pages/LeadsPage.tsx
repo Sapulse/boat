@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, ChevronUp, ChevronDown, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
+import { Search, Plus, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
+import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import Modal from '../components/ui/Modal';
 import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
 import { buildCommunicationAction } from '../lib/communication';
@@ -15,7 +16,6 @@ import { activateOnKey } from '../lib/a11y';
 type SavedView = { label: string; key: string; apply: () => void };
 
 type SortField = 'name' | 'createdAt' | 'status' | 'budget' | 'lastActionDate' | 'nextActionDate';
-type SortDir = 'asc' | 'desc';
 
 // La vue "Prospects" exclut UNIQUEMENT les signés (cf. filtre plus bas) : les
 // perdus / reportés y restent visibles (comportement en prod depuis v3.0.1 —
@@ -27,13 +27,6 @@ const TERMINAL_STATUSES = ['signe', 'perdu', 'reporte'];
 
 function reasonLabel(reason: DuplicateMatch['reason']): string {
   return reason === 'both' ? 'même email et téléphone' : reason === 'email' ? 'même email' : 'même téléphone';
-}
-
-// Composant module (et non recree a chaque render de LeadsPage) : regle
-// react-hooks/static-components. L'etat de tri arrive par props.
-function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
-  if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
-  return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
 }
 
 export default function LeadsPage() {
@@ -331,7 +324,15 @@ export default function LeadsPage() {
                         {lead.phone && (
                           <a
                             href={`tel:${lead.phone}`}
-                            onClick={(e) => { e.stopPropagation(); addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' })); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Le numéro se compose (lien tel: natif) ; l'action n'est
+                              // journalisée QUE si l'utilisateur confirme (clic "Appeler"
+                              // ambigu : peut être un mauvais clic ou juste voir le numéro).
+                              if (confirm('Enregistrer un appel passé ?')) {
+                                addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }));
+                              }
+                            }}
                             className="p-1 text-gray-400 hover:text-success-600 rounded"
                             title="Appeler"
                           >
