@@ -33,3 +33,5 @@ memory/
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
