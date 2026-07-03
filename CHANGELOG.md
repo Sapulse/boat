@@ -7,6 +7,32 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.23.0] — 2026-07-03 — Synchro fiable sans perte silencieuse : outbox (correctif audit #3)
+
+### Technique
+- **Chantier migration — correctif critique #3** : refonte de la synchro du mode API
+  (flag on) autour d'une **outbox persistante** — chaque écriture devient une opération
+  explicite, mise en file locale (clé dédiée `crm-nautisme-outbox`, **`crm-nautisme-data`
+  jamais touchée**), envoyée au serveur et **retirée uniquement sur confirmation**. Plus
+  aucune perte silencieuse : une écriture affichée mais non confirmée reste en file,
+  re-tentable, et **survit au rechargement / à la fermeture d'onglet**.
+- **Worker FIFO** (une opération en vol, ordre garanti pour les dépendances) avec **retry
+  automatique** (backoff plafonné + relance au retour du réseau), **plafond de tentatives**
+  puis **retry manuel** ; **idempotence** (POST rejoué → 409 → PATCH ; DELETE rejoué → 404
+  = succès) ; **timeout** par appel. Échec définitif (refus serveur) → file bloquée +
+  action utilisateur (jamais de saut silencieux).
+- **Indicateur de synchro non-ratable** dans le header, gradué : « À jour » / « N
+  modification(s) non enregistrée(s) » / « Hors ligne » / **« Modification refusée »** (avec
+  panneau **Réessayer / Abandonner**). **`beforeunload`** si des écritures sont en attente.
+  **Écran bloquant** si l'hydratation initiale échoue (plus de démarrage sur un état vide
+  trompeur).
+- **Flag off = zéro changement, prouvé par tree-shaking** (toute l'outbox + l'UI de synchro
+  sont éliminées du bundle en flag off). Reducer et implémentation localStorage **intouchés**.
+  build + lint + api:typecheck + **11 harnais (569 assertions)** verts (dont outbox 29,
+  worker/api-client 39, indicateur 15).
+
+---
+
 ## [3.22.2] — 2026-07-02 — Sécurité : validation zod des entrées API (correctif audit #2)
 
 ### Technique

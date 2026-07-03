@@ -49,5 +49,5 @@ Complète le plan de migration ([`02-plan-migration.md`](./02-plan-migration.md)
 |---|---|
 | #1 Backup | **Atténué (natif 24 h) + planifié (externe avant go-live)** — cf. ci-dessus |
 | #2 Validation des entrées API | ✅ **Fait (v3.22.2)** — schémas zod par entité, 400 clair sans écriture, mapping 404/409, PK non renommable |
-| #3 Concurrence multi-postes (staleness + PATCH entité complète) | À traiter avant usage multi-utilisateurs |
-| #4 File de synchro non gardée à la fermeture (`beforeunload`) | À traiter avant go-live |
+| #3 Perte silencieuse dans la synchro (file non gardée, `beforeunload`, échec effaçant l'optimiste) | ✅ **Fait (v3.23.0)** — **outbox persistante** : opérations en file (clé dédiée), retrait sur confirmation seulement, retry auto+manuel, indicateur de synchro non-ratable, `beforeunload`, écran bloquant si hydratation KO. Survit au rechargement. |
+| #4 Concurrence multi-postes (staleness + PATCH entité complète) | ⏳ **Encore ouvert** — **distinct de l'outbox** (qui protège la perte LOCALE, pas l'écrasement ENTRE postes). Un poste avec un cache périmé peut écraser les modifs d'un autre (PATCH d'entité complète, pas de refetch). À traiter avant usage multi-utilisateurs simultané (pistes : refetch périodique/au focus, PATCH partiel, verrou optimiste sur `updated_at`). |
