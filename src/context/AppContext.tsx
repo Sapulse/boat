@@ -30,7 +30,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => USE_API
       ? createApiRepository({
           dispatch,
-          onError: setSyncError,
+          // Pont provisoire (étape B) : les refus définitifs alimentent le bandeau
+          // existant. Remplacé à l'étape C par le badge de synchro + panneau.
+          onSync: (info) => setSyncError(info.status === 'failed' && info.failed
+            ? `${info.failed.label} — ${info.failed.error ?? 'refusée par le serveur'}`
+            : null),
           baseUrl: import.meta.env.VITE_API_BASE_URL,
           token: import.meta.env.VITE_API_TOKEN,
         })

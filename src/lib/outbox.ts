@@ -121,13 +121,14 @@ export function createOutbox(options: OutboxOptions = {}): Outbox {
     hasPending: () => ops.length > 0,
 
     enqueue(input) {
-      // Coalescing minimal : éditions rapides du même champ -> un PATCH du même
-      // path remplace le body du DERNIER op identique, s'il n'est pas en vol
-      // (une op verrouillée a déjà sérialisé son body côté worker).
+      // Coalescing minimal : éditions rapides du même champ -> un PATCH (ou un
+      // PUT de lot : goals/stats/defaultGoal) du même path remplace le body du
+      // DERNIER op identique, s'il n'est pas en vol (une op verrouillée a déjà
+      // sérialisé son body côté worker).
       const tail = ops[ops.length - 1];
       if (
-        input.method === 'PATCH' && tail &&
-        tail.method === 'PATCH' && tail.path === input.path &&
+        (input.method === 'PATCH' || input.method === 'PUT') && tail &&
+        tail.method === input.method && tail.path === input.path &&
         tail.status === 'pending' && tail.seq !== lockedSeq
       ) {
         ops = [...ops.slice(0, -1), { ...tail, body: input.body, createdAt: new Date().toISOString() }];
