@@ -2,6 +2,8 @@ import { Menu, Plus, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 import { getAlertLevel, getLeadFullName } from '../../lib/utils';
+import { USE_API } from '../../lib/flags';
+import { SyncIndicator } from '../ui/SyncIndicator';
 
 const titles: Record<string, string> = {
   '/': 'Dashboard',
@@ -23,7 +25,7 @@ interface HeaderProps {
 export default function Header({ onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { state } = useApp();
+  const { state, sync } = useApp();
 
   const segments = location.pathname.split('/').filter(Boolean);
   let title = titles['/' + (segments[0] || '')] || 'CRM Brest Ocean Boat';
@@ -52,6 +54,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
       <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
 
       <div className="ml-auto flex items-center gap-3">
+        {/* Indicateur de synchro (mode API uniquement). USE_API = constante de
+            build -> tree-shaké (badge + import) en flag off. */}
+        {USE_API && sync && (
+          <SyncIndicator info={sync.info} onRetry={sync.retryFailed} onAbandon={sync.abandonFailed} />
+        )}
         {urgentCount > 0 && (
           <button
             onClick={() => navigate('/leads?alert=red')}

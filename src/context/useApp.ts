@@ -1,5 +1,14 @@
 import { createContext, useContext } from 'react';
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial } from '../data/types';
+import type { SyncInfo } from '../lib/repository';
+
+// État de synchro exposé à l'UI (mode API uniquement, correctif audit #3). Absent
+// (undefined) en flag off — le badge n'est jamais rendu (gated par USE_API).
+export interface AppSync {
+  info: SyncInfo;
+  retryFailed(): void;
+  abandonFailed(): Promise<void>;
+}
 
 // Module sans composant : contexte + hook d'acces. Separe de AppContext.tsx
 // (qui ne garde que le composant AppProvider) pour la regle
@@ -11,6 +20,8 @@ import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTempla
 
 export interface AppContextType {
   state: AppState;
+  // Contrôle de synchro (mode API). Undefined en flag off.
+  sync?: AppSync;
   addLead: (lead: Omit<Lead, 'id'>) => string;
   updateLead: (id: string, data: Partial<Lead>) => void;
   deleteLead: (id: string) => void;

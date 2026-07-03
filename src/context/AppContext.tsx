@@ -1,25 +1,27 @@
 import { useReducer, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { reducer } from './appReducer';
 import { AppContext } from './useApp';
-import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState } from '../lib/repository';
+import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
+import { USE_API } from '../lib/flags';
 
 // Ce fichier ne contient QUE le composant AppProvider (react-refresh).
-// Le reducer + l'initialisation vivent dans appReducer.ts (module pur, teste
-// par scripts/harness-reducer.ts) ; le contexte + useApp dans useApp.ts.
+// Le reducer + l'initialisation vivent dans appReducer.ts ; le contexte + useApp
+// dans useApp.ts. Le flag USE_API vit dans lib/flags.ts (constante de build,
+// partagée avec le Header pour le tree-shaking du badge de synchro).
 //
-// Depuis le Lot 3, l'accès aux données passe par la couche `CrmRepository`.
-// Lot 5 : une 2e implémentation "API" est sélectionnable par le feature flag
-// VITE_USE_API. FLAG OFF (défaut) = localStorage À L'IDENTIQUE (aucun écran de
-// chargement, aucune hydratation async, persist = saveState) -> zéro changement
-// pour les commerciaux. FLAG ON = l'app parle à l'API (hydratation serveur +
-// synchro optimiste par diff).
-
-// Le flag est lu UNE fois (constante de build Vite). Absent/≠ 'true' -> false.
-const USE_API = import.meta.env.VITE_USE_API === 'true';
+// FLAG OFF (défaut) = localStorage À L'IDENTIQUE : aucune hydratation async,
+// aucun écran de chargement, aucun badge de synchro, persist = saveState ->
+// zéro changement pour les commerciaux. Tout le code API ci-dessous (sous
+// USE_API, constante de build) est éliminé du bundle en flag off.
+// FLAG ON = l'app parle à l'API (hydratation serveur + outbox + indicateur).
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // Erreur de synchro (mode API) affichée en bandeau ; toujours null en flag off.
-  const [syncError, setSyncError] = useState<string | null>(null);
+  // État de synchro (mode API) : alimenté par onSync du repository. Null en flag off.
+  const [syncInfo, setSyncInfo] = useState<SyncInfo | null>(null);
+  // Échec d'hydratation (mode API) : écran bloquant + Réessayer. `hydrateNonce`
+  // relance l'hydratation.
+  const [hydrateError, setHydrateError] = useState(false);
+  const [hydrateNonce, setHydrateNonce] = useState(0);
 
   // Init paresseuse : localStorage (sync) en flag off ; état VIDE en flag on
   // (l'état réel arrive via l'hydratation serveur, sous le loading gate).
@@ -30,11 +32,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => USE_API
       ? createApiRepository({
           dispatch,
-          // Pont provisoire (étape B) : les refus définitifs alimentent le bandeau
-          // existant. Remplacé à l'étape C par le badge de synchro + panneau.
-          onSync: (info) => setSyncError(info.status === 'failed' && info.failed
-            ? `${info.failed.label} — ${info.failed.error ?? 'refusée par le serveur'}`
-            : null),
+          onSync: setSyncInfo,
           baseUrl: import.meta.env.VITE_API_BASE_URL,
           token: import.meta.env.VITE_API_TOKEN,
         })
@@ -45,10 +43,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Loading gate : prêt d'emblée en flag off ; en flag on, on attend l'hydratation.
   const [ready, setReady] = useState(!USE_API);
 
-  // Hydratation asynchrone (mode API uniquement : repository.hydrate présent).
+  // Hydratation asynchrone (mode API). En cas d'échec : ÉCRAN BLOQUANT (pas de
+  // démarrage sur un état vide trompeur) — l'outbox a déjà tenté de drainer les
+  // écritures en attente avant de lire (repository.hydrate).
   useEffect(() => {
     if (!repository.hydrate) return; // flag off : rien à faire
     let cancelled = false;
+    // setState uniquement dans les callbacks ASYNC (pas synchrone dans l'effet).
+    // Le reset (retry) est fait dans le handler du bouton « Réessayer ».
     repository.hydrate()
       .then((serverState) => {
         if (cancelled) return;
@@ -57,23 +59,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (cancelled) return;
-        setSyncError('Impossible de charger les données depuis le serveur.');
-        setReady(true); // on débloque l'UI (état vide) plutôt que rester bloqué
+        setHydrateError(true); // ne PAS débloquer sur du vide
       });
     return () => { cancelled = true; };
-  }, [repository]);
+  }, [repository, hydrateNonce]);
+
+  // Relance l'hydratation (écran d'échec) : reset dans le HANDLER, pas l'effet.
+  const retryHydrate = () => { setHydrateError(false); setReady(false); setHydrateNonce(n => n + 1); };
 
   // Persistance : effet réactif sur le state ENTIER (timing inchangé).
-  // Flag off -> saveState (localStorage). Flag on -> diff-sync vers l'API.
+  // Flag off -> saveState (localStorage). Flag on -> enqueue outbox.
   useEffect(() => {
     repository.persist(state);
   }, [repository, state]);
+
+  // Avertissement fermeture/rechargement d'onglet s'il reste des écritures non
+  // synchronisées (mode API). Message natif du navigateur (texte non
+  // personnalisable). Tree-shaké en flag off (USE_API = false constant).
+  useEffect(() => {
+    if (!USE_API) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (repository.sync?.hasPending()) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [repository]);
 
   // Sélecteurs de vue (purs sur `state`) : restent dans le provider.
   const getLeadActions = (leadId: string) =>
     state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
   const getCommercialName = (id: string) =>
     state.commercials.find(c => c.id === id)?.name ?? id;
+
+  // Écran BLOQUANT si l'hydratation a échoué (mode API) : l'app ne démarre jamais
+  // sur un état vide trompeur. Tree-shaké en flag off.
+  if (USE_API && hydrateError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6">
+        <p className="text-gray-800 font-medium">Impossible de charger les données depuis le serveur.</p>
+        <p className="text-sm text-gray-500 max-w-md">Vérifiez votre connexion. Vos éventuelles modifications non enregistrées sont conservées et repartiront à la reconnexion.</p>
+        <button onClick={retryHydrate} className="btn-primary btn-sm">Réessayer</button>
+      </div>
+    );
+  }
 
   // En flag on, tant que l'hydratation n'est pas finie : écran de chargement.
   // En flag off, `ready` est true d'emblée -> ce bloc n'est jamais atteint.
@@ -89,6 +117,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         state,
+        // Contrôle de synchro exposé au Header (mode API). Undefined -> DCE en flag off.
+        sync: USE_API && repository.sync
+          ? { info: syncInfo ?? { status: 'idle', pending: 0 }, retryFailed: repository.sync.retryFailed, abandonFailed: repository.sync.abandonFailed }
+          : undefined,
         addLead: repository.addLead,
         updateLead: repository.updateLead,
         deleteLead: repository.deleteLead,
@@ -113,13 +145,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteCalendarEvent: repository.deleteCalendarEvent,
       }}
     >
-      {/* Bandeau d'erreur de synchro (mode API) : discret, non bloquant. */}
-      {syncError && (
-        <div className="fixed top-0 inset-x-0 z-50 bg-danger-600 text-white text-xs px-4 py-2 flex items-center justify-between">
-          <span>Synchronisation : {syncError}</span>
-          <button onClick={() => setSyncError(null)} className="underline ml-4 shrink-0">Masquer</button>
-        </div>
-      )}
       {children}
     </AppContext.Provider>
   );
