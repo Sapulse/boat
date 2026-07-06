@@ -7,6 +7,29 @@ App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur Gi
 
 ---
 
+## [3.24.0] — 2026-07-06 — Code-splitting par route + nettoyage API
+
+### Technique
+- **Chargement paresseux des pages (`React.lazy`)** : les 17 pages partent chacune
+  dans leur **propre chunk**, chargé à la demande. La coquille (`AppProvider` +
+  `AppLayout`) reste dans le bundle initial ; le fallback de chargement vit **dans
+  `AppLayout` autour de l'`Outlet`** — la sidebar et le header restent affichés
+  pendant la navigation, seule la zone de contenu attend (spinner accessible
+  `role="status"`).
+- **Effet mesuré (build)** : bundle initial d'une route sans graphe (ex. Leads)
+  ramené de **~900 kB (gzip ~257)** à **~200 kB (gzip ~64)** + la page (~16 kB) ;
+  **recharts (~340 kB) isolé** dans son chunk, chargé **uniquement** sur les pages à
+  graphiques (Dashboard/Performance/Acquisition/Espace commercial) au lieu d'être
+  dans le tronc commun. Les pages sans graphe (Leads, Agenda, Pipeline, Équipe,
+  Modèles, Relances, Clients) ne le téléchargent plus.
+- **Nettoyage API** : retrait du **code mort** dans `api/_lib/http.ts` (`route`,
+  `pathId`, types `Handler`/`Methods`) devenu inutile depuis le regroupement en
+  fonction catch-all unique (`api/[...slug].ts`, v3.20+). Comportement API inchangé.
+- build + lint + api:typecheck + **11 harnais (628 assertions)** verts, inchangés
+  (le découpage ne touche aucune logique métier : reducer, outbox, worker, API intacts).
+
+---
+
 ## [3.23.0] — 2026-07-03 — Synchro fiable sans perte silencieuse : outbox (correctif audit #3)
 
 ### Technique

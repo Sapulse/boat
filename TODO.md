@@ -219,8 +219,9 @@ sans migration). À confirmer avec Nicolas/Mickaël.
 
 ## 🐛 DETTE TECHNIQUE / À SURVEILLER (non bloquant)
 
-- [ ] **Bundle monolithique ~875 kB** (gzip ~250) : code-splitting par route
-  (`React.lazy`) pour alléger le 1er chargement.
+- [x] **Bundle monolithique ~875 kB** (gzip ~250) : code-splitting par route
+  (`React.lazy`) pour alléger le 1er chargement. → **FAIT en `v3.24.0`** : bundle
+  initial ~200 kB (gzip ~64), recharts (~340 kB) isolé sur les seules pages à graphes.
 - [ ] **Agenda — reportés exclus volontairement** : `buildAgendaEvents` ne liste que les
   leads actifs (cohérence alertes/risques). Ajoutable si Ocean Boat veut voir les
   reportés à l'agenda (one-liner).
