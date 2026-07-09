@@ -60,7 +60,7 @@ const sections: NavSection[] = [
       { name: 'Objectifs par défaut', href: '/objectifs-defaut', icon: Crosshair },
       { name: 'Équipe', href: '/equipe', icon: UsersRound },
       { name: 'Modèles', href: '/templates', icon: Mail },
-      { name: 'Exports', href: '/exports', icon: Download },
+      { name: 'Import / Export', href: '/exports', icon: Download },
     ],
   },
 ];

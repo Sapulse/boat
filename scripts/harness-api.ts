@@ -26,7 +26,7 @@ import {
   getState, createLead, updateLead, deleteLead,
   createAction, createCommercial, updateCommercial,
   createTemplate, deleteTemplate, createCalendarEvent,
-  saveGoals, saveMonthlyStats, saveDefaultGoal,
+  saveGoals, saveMonthlyStats, saveDefaultGoal, bulkImport,
 } from '../api/_lib/store';
 import type { Lead, LeadAction, CommercialGoal } from '../src/data/types';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -63,6 +63,13 @@ function makeLead(over: Partial<Lead> = {}): Lead {
 }
 function makeAction(over: Partial<LeadAction> = {}): LeadAction {
   return { id: 'a1', leadId: 'l1', type: 'appel', date: '2026-06-05', result: 'OK', notes: '', authorId: 'fred', ...over };
+}
+// Lead d'import : forme envoyée à bulkImport (sans id ni commercialId, résolus serveur).
+function importLead(over: Partial<Lead> = {}): Omit<Lead, 'id' | 'commercialId'> {
+  const rest: Record<string, unknown> = { ...makeLead(over) };
+  delete rest.id;
+  delete rest.commercialId;
+  return rest as unknown as Omit<Lead, 'id' | 'commercialId'>;
 }
 function emptyMetric() { return { target: null, override: null }; }
 function makeGoal(over: Partial<CommercialGoal> = {}): CommercialGoal {
@@ -311,6 +318,64 @@ async function main() {
     check('POST id déjà existant -> 409 (P2002 mappée)', r409.statusCode === 409);
     const rBadPayload = await invoke('POST', ['leads'], { token: TOK, body: { id: 'zz', status: 'zzz' } });
     check('POST payload invalide via handler -> 400 zod', rBadPayload.statusCode === 400);
+  }
+
+  section('Import en masse (bulkImport) : atomique, idempotent, rollback');
+  {
+    const before = await getState(prisma);
+    const comBefore = before.commercials.length;
+    const leadsBefore = before.leads.length;
+    // 'Fred' (id 'fred') existe déjà (créé plus haut) : servira à tester la
+    // résolution PAR NOM d'un commercial préexistant, absent de la liste à créer.
+
+    // 1) Import valide : crée les manquants (Tom, Non attribué), résout Fred existant.
+    const rep = await bulkImport(prisma, {
+      commercials: ['Tom', 'Non attribué'],
+      leads: [
+        { ...importLead({ lastName: 'ImpA' }), commercialName: 'Tom' },
+        { ...importLead({ lastName: 'ImpB' }), commercialName: 'Non attribué' },
+        { ...importLead({ lastName: 'ImpC' }), commercialName: 'Fred' },
+      ],
+    });
+    check('compte-rendu : 2 commerciaux créés, 3 leads', rep.commercialsCreated === 2 && rep.leadsCreated === 3, JSON.stringify(rep));
+    const v = await getState(prisma);
+    check('commerciaux +2 / leads +3', v.commercials.length === comBefore + 2 && v.leads.length === leadsBefore + 3);
+    const fredId = v.commercials.find(c => c.name === 'Fred')?.id;
+    const tomId = v.commercials.find(c => c.name === 'Tom')?.id;
+    check('résolution PAR NOM : ImpC -> id de Fred existant', v.leads.some(l => l.lastName === 'ImpC' && l.commercialId === fredId));
+    check('ImpA -> commercial Tom nouvellement créé', v.leads.some(l => l.lastName === 'ImpA' && l.commercialId === tomId));
+
+    // 2) Idempotence : réimport ne recrée pas Tom.
+    const rep2 = await bulkImport(prisma, {
+      commercials: ['Tom'],
+      leads: [{ ...importLead({ lastName: 'ImpD' }), commercialName: 'Tom' }],
+    });
+    check('idempotent : 0 créé, 1 déjà présent', rep2.commercialsCreated === 0 && rep2.commercialsExisting === 1, JSON.stringify(rep2));
+    check('pas de doublon Tom (un seul)', (await getState(prisma)).commercials.filter(c => c.name === 'Tom').length === 1);
+
+    // 3) Rollback : une entité invalide -> RIEN écrit (même le lead valide du lot).
+    const b3 = await getState(prisma);
+    let rejected3 = false;
+    try {
+      await bulkImport(prisma, {
+        commercials: [],
+        leads: [
+          { ...importLead({ lastName: 'ImpOK' }), commercialName: 'Tom' },
+          { ...importLead({ lastName: 'ImpBAD', status: 'zzz' as Lead['status'] }), commercialName: 'Tom' },
+        ],
+      });
+    } catch { rejected3 = true; }
+    check('entité invalide -> rejet', rejected3);
+    check('ROLLBACK : aucun lead écrit (ni ImpOK ni ImpBAD)', (await getState(prisma)).leads.length === b3.leads.length);
+
+    // 4) Nom de commercial introuvable -> rejet + rollback.
+    const b4 = await getState(prisma);
+    let rejected4 = false;
+    try {
+      await bulkImport(prisma, { commercials: [], leads: [{ ...importLead({ lastName: 'ImpZ' }), commercialName: 'Fantome' }] });
+    } catch { rejected4 = true; }
+    check('commercial introuvable -> rejet', rejected4);
+    check('ROLLBACK : aucun lead écrit', (await getState(prisma)).leads.length === b4.leads.length);
   }
 
   await prisma.$disconnect();

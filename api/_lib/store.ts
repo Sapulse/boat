@@ -4,11 +4,12 @@ import type {
   MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
+import { randomUUID } from 'node:crypto';
 import {
   parseLeadCreate, parseLeadPatch, parseActionCreate, parseActionPatch,
   parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
   parseCalendarCreate, parseCalendarPatch,
-  parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal,
+  parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload,
 } from './validate.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
@@ -332,6 +333,69 @@ export async function saveDefaultGoal(prisma: PrismaClient, dg: DefaultGoal): Pr
   const parsed = parseDefaultGoal(dg) as DefaultGoal;
   await prisma.defaultGoal.upsert({ where: { id: 1 }, create: { id: 1, ...parsed }, update: { ...parsed } });
   return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// Import en masse (chantier import/export, Étape 3). UNE transaction atomique :
+// commerciaux manquants d'abord (FK), puis leads. Idempotent sur les commerciaux
+// (résolus PAR NOM). Toute la validation zod (schémas existants) se fait AVANT la
+// transaction -> une entité invalide = 0 écriture. Le client n'envoie ni id ni
+// commercialId : ids générés serveur, commercialId résolu depuis le nom.
+// ---------------------------------------------------------------------------
+export interface ImportPayload {
+  commercials: string[];
+  leads: Array<Omit<Lead, 'id' | 'commercialId'> & { commercialName: string }>;
+}
+export interface ImportReport {
+  commercialsCreated: number;
+  commercialsExisting: number;
+  leadsCreated: number;
+}
+
+// Même normalisation de nom que le client (casse + accents) pour un matching stable.
+const normName = (s: string): string =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
+export async function bulkImport(prisma: PrismaClient, payload: ImportPayload): Promise<ImportReport> {
+  const { commercials, leads } = parseImportPayload(payload) as unknown as ImportPayload;
+
+  // 1) Map nom -> id des commerciaux EXISTANTS (source d'idempotence).
+  const existing = await prisma.commercial.findMany({ select: { id: true, name: true } });
+  const byName = new Map<string, string>();
+  for (const c of existing) byName.set(normName(c.name), c.id);
+
+  // 2) Commerciaux à créer : noms demandés absents (dédupliqués).
+  const toCreate: { id: string; name: string; active: boolean }[] = [];
+  const requested = new Set<string>();
+  for (const name of commercials) {
+    const key = normName(name);
+    if (requested.has(key)) continue;
+    requested.add(key);
+    if (byName.has(key)) continue;
+    const c = parseCommercialCreate({ id: randomUUID(), name, active: true }) as unknown as Commercial;
+    byName.set(key, c.id);
+    toCreate.push({ id: c.id, name: c.name, active: c.active });
+  }
+
+  // 3) Leads : résolution commercialId PAR NOM + validation zod (id/commercialId ajoutés).
+  const leadData = leads.map((l, i) => {
+    const cid = byName.get(normName(l.commercialName));
+    if (!cid) throw new HttpError(400, `ligne d'import ${i + 1} : commercial « ${l.commercialName} » introuvable`);
+    // parseLeadCreate strippe la clé inconnue `commercialName`.
+    return parseLeadCreate({ ...l, id: randomUUID(), commercialId: cid }) as unknown as Lead;
+  });
+
+  // 4) Écriture ATOMIQUE : commerciaux (FK) puis leads. createMany -> 2 statements.
+  await prisma.$transaction([
+    ...(toCreate.length ? [prisma.commercial.createMany({ data: toCreate })] : []),
+    ...(leadData.length ? [prisma.lead.createMany({ data: leadData })] : []),
+  ]);
+
+  return {
+    commercialsCreated: toCreate.length,
+    commercialsExisting: requested.size - toCreate.length,
+    leadsCreated: leadData.length,
+  };
 }
 
 // Ré-exporté pour un message d'erreur homogène si besoin côté handlers.

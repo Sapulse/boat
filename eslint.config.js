@@ -8,7 +8,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // 'dist' = build Vite. 'prisma.config.ts' = outillage DB hors app (chantier
   // migration, Lot 1) : ne doit pas entrer dans le lint de l'app.
-  globalIgnores(['dist', 'prisma.config.ts']),
+  // '_import_local' = données RGPD locales + scripts jetables d'import (gitignoré,
+  // hors codebase) : jamais linté.
+  globalIgnores(['dist', 'prisma.config.ts', '_import_local']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

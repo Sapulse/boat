@@ -9,6 +9,7 @@ import { saveState } from './storage';
 import { generateId } from './utils';
 import { EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { createOutbox, OutboxFullError, type OutboxOp, type StorageLike } from './outbox';
+import type { ImportPayload, ImportReport } from './importLeads';
 
 // Couche d'accès aux données (chantier migration, Lot 3) — LA COUTURE.
 //
@@ -48,6 +49,10 @@ export interface CrmRepository {
   // retry manuel / abandon d'une op refusée, garde beforeunload. Absent en
   // mode localStorage (aucune synchro).
   sync?: RepositorySync;
+  // Import en masse (impl API uniquement, chantier import/export, Étape 3) : POST
+  // /api/import atomique HORS OUTBOX (action délibérée avec compte-rendu). Absent
+  // en mode localStorage -> l'UI d'import est désactivée en flag off.
+  bulkImport?(payload: ImportPayload): Promise<ImportReport>;
 
   // — Leads —
   addLead(lead: Omit<Lead, 'id'>): string;
@@ -426,6 +431,30 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     return fetchState();
   };
 
+  // Import en masse : appel DIRECT (hors outbox), atomique côté serveur. Timeout
+  // large (un import peut porter des centaines de leads) et message d'erreur clair
+  // (le serveur renvoie {error} ; la transaction garantit « rien à moitié »).
+  const bulkImport = async (payload: ImportPayload): Promise<ImportReport> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetchImpl(`${baseUrl}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        let detail = '';
+        try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
+        throw new Error(detail || `Import refusé (${res.status})`);
+      }
+      return await res.json() as ImportReport;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // --- Contrôles UI (badge + panneau d'échec, étape C) ---
   const sync: RepositorySync = {
     info: currentInfo,
@@ -454,6 +483,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     persist,
     hydrate,
     sync,
+    bulkImport,
 
     addLead: (lead) => { const id = base.addLead(lead); remember({ kind: 'create', entity: 'leads', id }); return id; },
     updateLead: (id, data) => { base.updateLead(id, data); remember({ kind: 'update', entity: 'leads', id }); },

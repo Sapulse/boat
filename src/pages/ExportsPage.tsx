@@ -5,6 +5,7 @@ import { computeCpl } from '../lib/acquisition';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
+import ImportPanel from '../components/import/ImportPanel';
 import type { ReactNode } from 'react';
 
 interface ExportCardProps {
@@ -148,10 +149,17 @@ export default function ExportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Exports</h1>
+        <h1 className="text-lg font-semibold text-gray-900">Import / Export</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Téléchargez vos données au format CSV (encodage UTF-8, séparateur point-virgule).
+          Importez des leads depuis un fichier CSV, ou téléchargez vos données (UTF-8, séparateur point-virgule).
         </p>
+      </div>
+
+      <ImportPanel />
+
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900">Exports</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Téléchargez vos données au format CSV.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

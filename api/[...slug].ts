@@ -9,6 +9,7 @@ import {
   createTemplate, updateTemplate, deleteTemplate,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
+  bulkImport, type ImportPayload,
 } from './_lib/store.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
@@ -78,6 +79,11 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
 
     case 'default-goal':
       if (!id && m === 'PUT') return sendJson(res, 200, await saveDefaultGoal(prisma, body<DefaultGoal>(req)));
+      break;
+
+    case 'import':
+      // Import en masse (chantier import/export) : écriture atomique, compte-rendu.
+      if (!id && m === 'POST') return sendJson(res, 201, await bulkImport(prisma, body<ImportPayload>(req)));
       break;
   }
 

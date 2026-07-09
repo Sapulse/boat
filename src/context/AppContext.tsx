@@ -3,6 +3,7 @@ import { reducer } from './appReducer';
 import { AppContext } from './useApp';
 import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
+import type { ImportPayload, ImportReport } from '../lib/importLeads';
 
 // Ce fichier ne contient QUE le composant AppProvider (react-refresh).
 // Le reducer + l'initialisation vivent dans appReducer.ts ; le contexte + useApp
@@ -91,6 +92,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getCommercialName = (id: string) =>
     state.commercials.find(c => c.id === id)?.name ?? id;
 
+  // Import en masse (mode API) : écrit via l'endpoint bulk (hors outbox) PUIS
+  // ré-hydrate l'état depuis la base (l'aperçu se vide, la base s'affiche à jour).
+  async function runBulkImport(payload: ImportPayload): Promise<ImportReport> {
+    if (!repository.bulkImport) throw new Error('Import indisponible en mode local.');
+    const report = await repository.bulkImport(payload);
+    if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
+    return report;
+  }
+
   // Écran BLOQUANT si l'hydratation a échoué (mode API) : l'app ne démarre jamais
   // sur un état vide trompeur. Tree-shaké en flag off.
   if (USE_API && hydrateError) {
@@ -143,6 +153,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addCalendarEvent: repository.addCalendarEvent,
         updateCalendarEvent: repository.updateCalendarEvent,
         deleteCalendarEvent: repository.deleteCalendarEvent,
+        importBulk: USE_API && repository.bulkImport ? runBulkImport : undefined,
       }}
     >
       {children}

@@ -35,3 +35,6 @@ memory/
 *.sw?
 .vercel
 .env*
+
+# Fichiers d'import RGPD (donnees perso reelles) — JAMAIS commites (chantier import/export)
+_import_local/

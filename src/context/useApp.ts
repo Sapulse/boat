@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial } from '../data/types';
 import type { SyncInfo } from '../lib/repository';
+import type { ImportPayload, ImportReport } from '../lib/importLeads';
 
 // État de synchro exposé à l'UI (mode API uniquement, correctif audit #3). Absent
 // (undefined) en flag off — le badge n'est jamais rendu (gated par USE_API).
@@ -44,6 +45,9 @@ export interface AppContextType {
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;
+  // Import en masse (mode API uniquement, chantier import/export). Écrit via
+  // l'endpoint bulk PUIS ré-hydrate l'état. Undefined en flag off -> UI désactivée.
+  importBulk?: (payload: ImportPayload) => Promise<ImportReport>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);

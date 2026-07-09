@@ -85,6 +85,17 @@ const leadShape = {
 const LeadCreate = z.object(leadShape);
 const LeadPatch = z.object(leadShape).omit({ id: true }).partial();
 
+// Import en masse (chantier import/export, Étape 3). Le client n'envoie NI id NI
+// commercialId (générés/résolus côté serveur) : le lead référence son commercial
+// PAR NOM. Bornes finies (garde-fou) : ≤ 200 commerciaux, ≤ 5000 leads par appel.
+const ImportLead = z.object(leadShape).omit({ id: true, commercialId: true }).extend({
+  commercialName: z.string().min(1, 'commercial requis').max(SHORT_MAX),
+});
+const ImportPayloadSchema = z.object({
+  commercials: z.array(z.string().min(1).max(SHORT_MAX)).max(200),
+  leads: z.array(ImportLead).max(5_000),
+});
+
 const actionShape = {
   id,
   leadId: id,
@@ -204,3 +215,4 @@ export const parseCalendarPatch = (d: unknown) => parse(CalendarPatch, d, 'évé
 export const parseGoalsBatch = (d: unknown) => parse(GoalsBatch, d, 'objectifs');
 export const parseMonthlyStatsBatch = (d: unknown) => parse(MonthlyStatsBatch, d, 'stats mensuelles');
 export const parseDefaultGoal = (d: unknown) => parse(DefaultGoalSchema, d, 'objectifs par défaut');
+export const parseImportPayload = (d: unknown) => parse(ImportPayloadSchema, d, 'import');
