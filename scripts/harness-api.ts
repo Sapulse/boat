@@ -28,6 +28,7 @@ import {
   createTemplate, deleteTemplate, createCalendarEvent,
   saveGoals, saveMonthlyStats, saveDefaultGoal, bulkImport, restoreBackup,
 } from '../api/_lib/store';
+import { hashPassword, signSession } from '../api/_lib/auth';
 import type { Lead, LeadAction, CommercialGoal, AppState } from '../src/data/types';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -246,78 +247,111 @@ async function main() {
   section('Routage (catch-all api/[...slug].ts) : parse req.url comme Vercel');
   {
     // Le catch-all utilise le singleton _lib/prisma : on le fait viser la MÊME
-    // base jetable (DATABASE_URL) et on active la garde par jeton, AVANT de
-    // charger le module (import dynamique) pour que le singleton lise ces vars.
-    process.env.API_SHARED_TOKEN = 'test-token';
+    // base jetable (DATABASE_URL) AVANT de charger le module. L'auth est par
+    // COOKIE de session : on pose SESSION_SECRET/APP_* et on FORGE un cookie
+    // valide (signSession) — 100 % cookie, plus aucun Bearer.
+    process.env.SESSION_SECRET = 'test-session-secret';
+    process.env.APP_USERNAME = 'contact@brest-ocean-boat.fr';
+    process.env.APP_PASSWORD_HASH = hashPassword('test-passphrase');
     process.env.DATABASE_URL = DB_URL;
     const mod = await import('../api/[...slug].ts');
     const handler = mod.default as (req: VercelRequest, res: VercelResponse) => Promise<void>;
-    const TOK = 'test-token';
+    const COOKIE = `session=${signSession('test-session-secret', Math.floor(Date.now() / 1000))}`;
 
-    type Captured = { statusCode: number; payload: unknown; ended: boolean };
+    type Captured = { statusCode: number; payload: unknown; ended: boolean; setCookie?: string };
     // On passe par req.URL (forme réelle Vercel), PAS req.query.slug : c'est le
     // mécanisme exact de prod -> plus de décalage test-vert / prod-cassée.
-    async function call(method: string, url: string, opts: { token?: string; body?: unknown } = {}): Promise<Captured> {
+    async function call(method: string, url: string, opts: { cookie?: string; body?: unknown } = {}): Promise<Captured> {
       const cap: Captured = { statusCode: 0, payload: undefined, ended: false };
       const res = {
         status(s: number) { cap.statusCode = s; return res; },
         json(d: unknown) { cap.payload = d; cap.ended = true; return res; },
         end() { cap.ended = true; return res; },
-        setHeader() { return res; },
+        setHeader(k: string, v: unknown) { if (String(k).toLowerCase() === 'set-cookie') cap.setCookie = String(v); return res; },
       };
-      const req = { method, url, headers: { authorization: opts.token ? `Bearer ${opts.token}` : undefined }, body: opts.body };
+      const req = { method, url, headers: { cookie: opts.cookie }, body: opts.body };
       await handler(req as unknown as VercelRequest, res as unknown as VercelResponse);
       return cap;
     }
-    const invoke = (method: string, slug: string[], opts: { token?: string; body?: unknown; query?: string } = {}) =>
+    const invoke = (method: string, slug: string[], opts: { cookie?: string; body?: unknown; query?: string } = {}) =>
       call(method, '/api/' + slug.join('/') + (opts.query ?? ''), opts);
 
     const r401 = await invoke('GET', ['state']);
-    check('GET /api/state SANS jeton -> 401', r401.statusCode === 401);
+    check('GET /api/state SANS cookie -> 401', r401.statusCode === 401);
 
-    const rPost = await invoke('POST', ['leads'], { token: TOK, body: makeLead({ id: 'route-1', commercialId: 'fred' }) });
+    const rPost = await invoke('POST', ['leads'], { cookie: COOKIE, body: makeLead({ id: 'route-1', commercialId: 'fred' }) });
     check('POST /api/leads -> 201', rPost.statusCode === 201);
     check('POST /api/leads renvoie le lead créé', (rPost.payload as Lead)?.id === 'route-1');
 
-    const rState = await invoke('GET', ['state'], { token: TOK });
+    const rState = await invoke('GET', ['state'], { cookie: COOKIE });
     check('GET /api/state -> 200', rState.statusCode === 200);
     check('state contient bien route-1', (rState.payload as { leads: Lead[] }).leads.some(l => l.id === 'route-1'));
 
     // Robustesse du parsing : query string ignorée, préfixe /api optionnel.
-    const rQuery = await invoke('GET', ['state'], { token: TOK, query: '?ts=123&x=y' });
+    const rQuery = await invoke('GET', ['state'], { cookie: COOKIE, query: '?ts=123&x=y' });
     check('GET /api/state?ts=123 -> 200 (query string ignorée)', rQuery.statusCode === 200);
-    const rNoApi = await call('GET', '/state', { token: TOK });
+    const rNoApi = await call('GET', '/state', { cookie: COOKIE });
     check('GET /state (sans préfixe /api) -> 200 (parsing robuste)', rNoApi.statusCode === 200);
 
-    const rPatch = await invoke('PATCH', ['leads', 'route-1'], { token: TOK, body: { status: 'devis_envoye' } });
+    const rPatch = await invoke('PATCH', ['leads', 'route-1'], { cookie: COOKIE, body: { status: 'devis_envoye' } });
     check('PATCH /api/leads/:id -> 200 + maj', rPatch.statusCode === 200 && (rPatch.payload as Lead).status === 'devis_envoye');
 
-    const rDel = await invoke('DELETE', ['leads', 'route-1'], { token: TOK });
+    const rDel = await invoke('DELETE', ['leads', 'route-1'], { cookie: COOKIE });
     check('DELETE /api/leads/:id -> 204 (vide)', rDel.statusCode === 204 && rDel.ended && rDel.payload === undefined);
 
-    const rGoals = await invoke('PUT', ['goals'], { token: TOK, body: [] });
+    const rGoals = await invoke('PUT', ['goals'], { cookie: COOKIE, body: [] });
     check('PUT /api/goals (batch) -> 200', rGoals.statusCode === 200);
 
-    const r405 = await invoke('GET', ['nope'], { token: TOK });
+    const r405 = await invoke('GET', ['nope'], { cookie: COOKIE });
     check('GET /api/nope -> 405 (route inconnue)', r405.statusCode === 405);
 
-    const r405b = await invoke('GET', ['leads'], { token: TOK });
+    const r405b = await invoke('GET', ['leads'], { cookie: COOKIE });
     check('GET /api/leads -> 405 (méthode non gérée sur route connue)', r405b.statusCode === 405);
 
-    const r405c = await invoke('DELETE', ['commercials', 'fred'], { token: TOK });
+    const r405c = await invoke('DELETE', ['commercials', 'fred'], { cookie: COOKIE });
     check('DELETE /api/commercials/:id -> 405 (non supporté)', r405c.statusCode === 405);
 
     // Corps JSON malformé (string non parsable) -> 400 propre (SyntaxError mappée).
-    const rBadJson = await invoke('POST', ['leads'], { token: TOK, body: '{oops' });
+    const rBadJson = await invoke('POST', ['leads'], { cookie: COOKIE, body: '{oops' });
     check('POST corps JSON malformé -> 400 (pas 500)', rBadJson.statusCode === 400);
 
     // Mapping erreurs Prisma via le handler (vrai chemin de prod) :
-    const r404 = await invoke('PATCH', ['leads', 'inexistant-xyz'], { token: TOK, body: { status: 'contacte' } });
+    const r404 = await invoke('PATCH', ['leads', 'inexistant-xyz'], { cookie: COOKIE, body: { status: 'contacte' } });
     check('PATCH id inexistant -> 404 (P2025 mappée)', r404.statusCode === 404);
-    const r409 = await invoke('POST', ['commercials'], { token: TOK, body: { id: 'fred', name: 'Doublon', active: true } });
+    const r409 = await invoke('POST', ['commercials'], { cookie: COOKIE, body: { id: 'fred', name: 'Doublon', active: true } });
     check('POST id déjà existant -> 409 (P2002 mappée)', r409.statusCode === 409);
-    const rBadPayload = await invoke('POST', ['leads'], { token: TOK, body: { id: 'zz', status: 'zzz' } });
+    const rBadPayload = await invoke('POST', ['leads'], { cookie: COOKIE, body: { id: 'zz', status: 'zzz' } });
     check('POST payload invalide via handler -> 400 zod', rBadPayload.statusCode === 400);
+
+    // --- Auth (Lot 7 allégé) : login / logout / session / fail-safe ---
+    const rSessNo = await invoke('GET', ['session']);
+    check('GET /api/session sans cookie -> 401', rSessNo.statusCode === 401);
+    const rSessOk = await invoke('GET', ['session'], { cookie: COOKIE });
+    check('GET /api/session avec cookie -> 200 {authenticated}', rSessOk.statusCode === 200 && (rSessOk.payload as { authenticated?: boolean }).authenticated === true);
+
+    const rLoginBadPw = await invoke('POST', ['login'], { body: { username: 'contact@brest-ocean-boat.fr', password: 'mauvais' } });
+    check('POST /api/login mauvais mdp -> 401 SANS Set-Cookie', rLoginBadPw.statusCode === 401 && !rLoginBadPw.setCookie);
+    const rLoginBadUser = await invoke('POST', ['login'], { body: { username: 'pirate@x.fr', password: 'test-passphrase' } });
+    check('POST /api/login mauvais identifiant -> 401', rLoginBadUser.statusCode === 401);
+    const rLoginOk = await invoke('POST', ['login'], { body: { username: 'contact@brest-ocean-boat.fr', password: 'test-passphrase' } });
+    check('POST /api/login bon mdp -> 200 + Set-Cookie session', rLoginOk.statusCode === 200 && /^session=/.test(rLoginOk.setCookie ?? ''));
+    // Le cookie ÉMIS par /login ouvre bien une route protégée.
+    const emitted = (rLoginOk.setCookie ?? '').split(';')[0];
+    const rWithEmitted = await invoke('GET', ['session'], { cookie: emitted });
+    check('cookie émis par /login -> route protégée OK', rWithEmitted.statusCode === 200);
+
+    const rLogout = await invoke('POST', ['logout']);
+    check('POST /api/logout -> 200 + cookie effacé (Max-Age=0)', rLogout.statusCode === 200 && /Max-Age=0/.test(rLogout.setCookie ?? ''));
+
+    const rLoginGet = await invoke('GET', ['login'], { cookie: COOKIE });
+    check('GET /api/login -> 405 (POST attendu)', rLoginGet.statusCode === 405);
+
+    // Fail-safe : sans SESSION_SECRET côté serveur -> 503 (jamais d'API ouverte).
+    const savedSecret = process.env.SESSION_SECRET;
+    delete process.env.SESSION_SECRET;
+    const r503 = await invoke('GET', ['state'], { cookie: COOKIE });
+    check('SESSION_SECRET absent -> 503', r503.statusCode === 503);
+    process.env.SESSION_SECRET = savedSecret;
   }
 
   section('Import en masse (bulkImport) : atomique, idempotent, rollback');
@@ -446,26 +480,27 @@ async function main() {
     check('version > 1 -> 400', badVer);
     check('enveloppe refusée -> base inchangée', norm(await getState(prisma)) === norm(b4));
 
-    // 5) Chemin HTTP complet (handler -> dispatch -> restoreBackup). L'env a été
-    // posé par la section Routage (API_SHARED_TOKEN + DATABASE_URL) ; cette section
-    // est la DERNIÈRE (le remplacement final ne gêne aucune autre).
+    // 5) Chemin HTTP complet (handler -> dispatch -> restoreBackup). L'env auth
+    // (SESSION_SECRET/APP_*) + DATABASE_URL a été posé par la section Routage ;
+    // cette section est la DERNIÈRE (le remplacement final ne gêne aucune autre).
     const mod = await import('../api/[...slug].ts');
     const handler = mod.default as (req: VercelRequest, res: VercelResponse) => Promise<void>;
-    async function callRestore(token: string | undefined, bdy: unknown) {
+    const COOKIE = `session=${signSession('test-session-secret', Math.floor(Date.now() / 1000))}`;
+    async function callRestore(cookie: string | undefined, bdy: unknown) {
       const cap = { statusCode: 0, payload: undefined as unknown };
       const res = {
         status(s: number) { cap.statusCode = s; return res; },
         json(dd: unknown) { cap.payload = dd; return res; },
         end() { return res; }, setHeader() { return res; },
       };
-      const req = { method: 'POST', url: '/api/restore', headers: { authorization: token ? `Bearer ${token}` : undefined }, body: bdy };
+      const req = { method: 'POST', url: '/api/restore', headers: { cookie }, body: bdy };
       await handler(req as unknown as VercelRequest, res as unknown as VercelResponse);
       return cap;
     }
-    const rHttp = await callRestore('test-token', { format: 'bob-crm-backup', version: 1, data: snap });
+    const rHttp = await callRestore(COOKIE, { format: 'bob-crm-backup', version: 1, data: snap });
     check('POST /api/restore -> 201 + compte-rendu', rHttp.statusCode === 201 && (rHttp.payload as { leads: number }).leads === 2);
     const rHttpNoTok = await callRestore(undefined, {});
-    check('POST /api/restore SANS jeton -> 401', rHttpNoTok.statusCode === 401);
+    check('POST /api/restore SANS cookie -> 401', rHttpNoTok.statusCode === 401);
   }
 
   await prisma.$disconnect();

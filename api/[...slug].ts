@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireToken, HttpError, toHttpError, body } from './_lib/http.js';
+import { HttpError, toHttpError, body } from './_lib/http.js';
+import { requireAuth, verifyPassword, signSession, buildSessionCookie, clearSessionCookie } from './_lib/auth.js';
 import { prisma } from './_lib/prisma.js';
 import {
   getState,
@@ -91,6 +92,12 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
       // Restauration d'une sauvegarde : REMPLACEMENT TOTAL atomique, id-préservant.
       if (!id && m === 'POST') return sendJson(res, 201, await restoreBackup(prisma, body<RestorePayload>(req)));
       break;
+
+    case 'session':
+      // Sonde d'authentification (le client teste au chargement). On n'arrive ici
+      // qu'après requireAuth -> session valide.
+      if (!id && m === 'GET') return sendJson(res, 200, { authenticated: true });
+      break;
   }
 
   // Route ou méthode non prise en charge (resource inconnue, méthode non gérée,
@@ -108,13 +115,49 @@ function pathSegments(url: string | undefined): string[] {
   return segs[0] === 'api' ? segs.slice(1) : segs;
 }
 
-// Point d'entrée unique : garde par jeton + parsing du chemin + dispatch, avec
-// gestion d'erreurs homogène (HttpError -> son statut, sinon 500).
+// --- Auth : compte unique partagé (Lot 7 allégé) -------------------------------
+
+// POST /api/login : vérifie identifiant + mot de passe (haché scrypt) -> pose le
+// cookie de session signé. Échec -> délai anti-brute-force puis 401 (message
+// générique). Hors garde (c'est la porte d'entrée). Env manquant -> 503.
+async function handleLogin(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const secret = process.env.SESSION_SECRET;
+  const hash = process.env.APP_PASSWORD_HASH;
+  const username = process.env.APP_USERNAME;
+  if (!secret || !hash || !username) { res.status(503).json({ error: 'Auth non configurée côté serveur' }); return; }
+  const creds = body<{ username?: unknown; password?: unknown }>(req);
+  const ok = typeof creds.username === 'string' && typeof creds.password === 'string'
+    && creds.username === username && verifyPassword(creds.password, hash);
+  if (!ok) {
+    await new Promise(r => setTimeout(r, 700)); // ralentit le brute-force (mdp partagé unique)
+    res.status(401).json({ error: 'Identifiants invalides' });
+    return;
+  }
+  res.setHeader('Set-Cookie', buildSessionCookie(signSession(secret, Math.floor(Date.now() / 1000))));
+  res.status(200).json({ ok: true });
+}
+
+// POST /api/logout : efface le cookie de session. Hors garde.
+function handleLogout(_req: VercelRequest, res: VercelResponse): void {
+  res.setHeader('Set-Cookie', clearSessionCookie());
+  res.status(200).json({ ok: true });
+}
+
+// Point d'entrée unique : /login|/logout hors garde ; TOUT le reste exige un
+// COOKIE de session valide (requireAuth). Gestion d'erreurs homogène.
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   try {
-    requireToken(req);
     const [resource, id] = pathSegments(req.url);
     if (!resource) throw new HttpError(404, 'Ressource manquante');
+    if (resource === 'login') {
+      if (req.method === 'POST') return await handleLogin(req, res);
+      throw new HttpError(405, 'Route non supportée : POST /api/login attendu');
+    }
+    if (resource === 'logout') {
+      if (req.method === 'POST') return handleLogout(req, res);
+      throw new HttpError(405, 'Route non supportée : POST /api/logout attendu');
+    }
+    requireAuth(req); // cookie de session — couvre session/state/écritures/import/restore
     await dispatch(req, res, resource, id);
   } catch (e) {
     // Statuts précis : 400 validation/JSON/FK, 404 introuvable, 409 unicité, 500 sinon.

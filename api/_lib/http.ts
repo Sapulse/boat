@@ -27,19 +27,9 @@ export function toHttpError(e: unknown): HttpError {
   return new HttpError(500, (e as Error).message);
 }
 
-/**
- * Garde d'API par JETON PARTAGÉ (Lot 4-6), en attendant l'auth réelle (Lot 7).
- * Le client enverra `Authorization: Bearer <API_SHARED_TOKEN>`. Si la variable
- * `API_SHARED_TOKEN` n'est pas définie côté serveur, l'API REFUSE tout (fail-safe :
- * jamais d'API ouverte par mégarde).
- */
-export function requireToken(req: VercelRequest): void {
-  const expected = process.env.API_SHARED_TOKEN;
-  if (!expected) throw new HttpError(503, 'API non configurée (API_SHARED_TOKEN manquant côté serveur)');
-  const header = req.headers['authorization'];
-  const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (token !== expected) throw new HttpError(401, 'Non autorisé');
-}
+// NB : l'ancienne garde par JETON PARTAGÉ (requireToken / API_SHARED_TOKEN,
+// Lots 4-6) a été REMPLACÉE par l'auth à cookie de session (Lot 7 allégé,
+// `_lib/auth.ts` -> requireAuth). Plus aucun jeton statique côté serveur ni client.
 
 /** Corps JSON de la requête (Vercel le parse déjà ; on tolère une string). */
 export function body<T>(req: VercelRequest): T {
