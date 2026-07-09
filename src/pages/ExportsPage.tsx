@@ -1,11 +1,13 @@
 import { Download, Check, Users, UserCheck, BarChart3, Megaphone, Database } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { formatDate, formatCurrency, toISODate } from '../lib/utils';
+import { formatDate, formatCurrency } from '../lib/utils';
 import { computeCpl } from '../lib/acquisition';
-import { exportCSV, downloadJSON } from '../lib/csv';
+import { exportCSV } from '../lib/csv';
+import { downloadBackup } from '../lib/backup';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
 import ImportPanel from '../components/import/ImportPanel';
+import RestorePanel from '../components/import/RestorePanel';
 import type { ReactNode } from 'react';
 
 interface ExportCardProps {
@@ -171,16 +173,8 @@ export default function ExportsPage() {
   };
 
   // Sauvegarde complète : tout l'état dans une enveloppe versionnée (ids réels
-  // préservés -> restaurable, cf. Étape 5). Lecture seule.
-  const exportBackup = () => {
-    downloadJSON(`bob-crm-sauvegarde-${toISODate(new Date())}.json`, {
-      format: 'bob-crm-backup',
-      version: 1,
-      appVersion: __APP_VERSION__,
-      exportedAt: new Date().toISOString(),
-      data: state,
-    });
-  };
+  // préservés -> restaurable, cf. RestorePanel). Lecture seule.
+  const exportBackup = () => downloadBackup(state, __APP_VERSION__);
 
   const activeCount = state.leads.filter(l => ACTIVE_STATUSES.includes(l.status)).length;
   const clientCount = state.leads.filter(l => l.status === 'signe').length;
@@ -207,6 +201,8 @@ export default function ExportsPage() {
         actions={state.actions.length}
         onExport={exportBackup}
       />
+
+      <RestorePanel />
 
       <div>
         <h2 className="text-sm font-semibold text-gray-900">Exports CSV</h2>

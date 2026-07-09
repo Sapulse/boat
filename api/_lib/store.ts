@@ -9,7 +9,7 @@ import {
   parseLeadCreate, parseLeadPatch, parseActionCreate, parseActionPatch,
   parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
   parseCalendarCreate, parseCalendarPatch,
-  parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload,
+  parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
 } from './validate.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
@@ -395,6 +395,58 @@ export async function bulkImport(prisma: PrismaClient, payload: ImportPayload): 
     commercialsCreated: toCreate.length,
     commercialsExisting: requested.size - toCreate.length,
     leadsCreated: leadData.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
+// REMPLACEMENT TOTAL, ATOMIQUE, id-préservant. UNE transaction : (1) valider
+// l'enveloppe + chaque entité AVANT (fichier invalide -> 400, base intacte) ;
+// (2) vider toutes les tables ordre FK-safe (enfants d'abord) ; (3) recréer avec
+// les ids d'origine, ordre FK (commerciaux -> leads -> actions -> reste). Erreur
+// en cours -> rollback complet. Distinct de bulkImport : ids conservés, tout
+// l'AppState, sémantique de remplacement.
+// ---------------------------------------------------------------------------
+export interface RestorePayload {
+  format: string;
+  version: number;
+  data: AppState;
+}
+export interface RestoreReport {
+  commercials: number; leads: number; actions: number;
+  templates: number; calendarEvents: number; goals: number; monthlyStats: number;
+}
+
+export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
+  // Valide l'enveloppe + toutes les entités (ids inclus) AVANT toute écriture.
+  // Les objets renvoyés sont nettoyés (clés inconnues + colonnes d'audit strippées).
+  const { data: d } = parseRestorePayload(payload) as unknown as { data: AppState };
+
+  await prisma.$transaction([
+    // (2) Purge FK-safe : enfants d'abord.
+    prisma.leadAction.deleteMany(),
+    prisma.commercialGoal.deleteMany(),
+    prisma.calendarEvent.deleteMany(),
+    prisma.lead.deleteMany(),
+    prisma.commercial.deleteMany(),
+    prisma.messageTemplate.deleteMany(),
+    prisma.monthlyStat.deleteMany(),
+    prisma.defaultGoal.deleteMany(),
+    // (3) Recréation ordre FK : commerciaux -> leads -> actions -> reste.
+    ...(d.commercials.length ? [prisma.commercial.createMany({ data: d.commercials })] : []),
+    ...(d.leads.length ? [prisma.lead.createMany({ data: d.leads })] : []),
+    ...(d.actions.length ? [prisma.leadAction.createMany({ data: d.actions })] : []),
+    ...(d.templates.length ? [prisma.messageTemplate.createMany({ data: d.templates })] : []),
+    ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
+    ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
+    ...(d.monthlyStats.length ? [prisma.monthlyStat.createMany({ data: d.monthlyStats })] : []),
+    prisma.defaultGoal.create({ data: { id: 1, ...d.defaultGoal } }),
+  ]);
+
+  return {
+    commercials: d.commercials.length, leads: d.leads.length, actions: d.actions.length,
+    templates: d.templates.length, calendarEvents: d.calendarEvents.length,
+    goals: d.goals.length, monthlyStats: d.monthlyStats.length,
   };
 }
 

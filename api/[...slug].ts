@@ -10,6 +10,7 @@ import {
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
   bulkImport, type ImportPayload,
+  restoreBackup, type RestorePayload,
 } from './_lib/store.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
@@ -84,6 +85,11 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
     case 'import':
       // Import en masse (chantier import/export) : écriture atomique, compte-rendu.
       if (!id && m === 'POST') return sendJson(res, 201, await bulkImport(prisma, body<ImportPayload>(req)));
+      break;
+
+    case 'restore':
+      // Restauration d'une sauvegarde : REMPLACEMENT TOTAL atomique, id-préservant.
+      if (!id && m === 'POST') return sendJson(res, 201, await restoreBackup(prisma, body<RestorePayload>(req)));
       break;
   }
 

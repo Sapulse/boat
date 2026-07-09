@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial } from '../data/types';
 import type { SyncInfo } from '../lib/repository';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
+import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
 // État de synchro exposé à l'UI (mode API uniquement, correctif audit #3). Absent
 // (undefined) en flag off — le badge n'est jamais rendu (gated par USE_API).
@@ -48,6 +49,9 @@ export interface AppContextType {
   // Import en masse (mode API uniquement, chantier import/export). Écrit via
   // l'endpoint bulk PUIS ré-hydrate l'état. Undefined en flag off -> UI désactivée.
   importBulk?: (payload: ImportPayload) => Promise<ImportReport>;
+  // Restauration d'une sauvegarde (mode API uniquement, Étape 5). REMPLACE tout
+  // PUIS ré-hydrate. Undefined en flag off -> UI désactivée.
+  restoreBackup?: (payload: BackupEnvelope) => Promise<RestoreReport>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);

@@ -216,3 +216,25 @@ export const parseGoalsBatch = (d: unknown) => parse(GoalsBatch, d, 'objectifs')
 export const parseMonthlyStatsBatch = (d: unknown) => parse(MonthlyStatsBatch, d, 'stats mensuelles');
 export const parseDefaultGoal = (d: unknown) => parse(DefaultGoalSchema, d, 'objectifs par défaut');
 export const parseImportPayload = (d: unknown) => parse(ImportPayloadSchema, d, 'import');
+
+// Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
+// Enveloppe versionnée { format, version, data: AppState } : format/version stricts
+// (rejet clair si non reconnu) + CHAQUE entité validée par son schéma (ids inclus,
+// préservés). Bornes finies (garde-fou). Champs d'enveloppe inconnus (appVersion,
+// exportedAt) strippés/ignorés.
+const RESTORE_MAX = 10_000;
+const RestoreEnvelopeSchema = z.object({
+  format: z.literal('bob-crm-backup'),
+  version: z.literal(1),
+  data: z.object({
+    leads: z.array(z.object(leadShape)).max(RESTORE_MAX),
+    actions: z.array(z.object(actionShape)).max(RESTORE_MAX),
+    commercials: z.array(z.object(commercialShape)).max(RESTORE_MAX),
+    templates: z.array(z.object(templateShape)).max(RESTORE_MAX),
+    calendarEvents: z.array(z.object(calendarShape)).max(RESTORE_MAX),
+    goals: z.array(Goal).max(RESTORE_MAX),
+    monthlyStats: z.array(MonthlyStat).max(RESTORE_MAX),
+    defaultGoal: DefaultGoalSchema,
+  }),
+});
+export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');

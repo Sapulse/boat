@@ -4,6 +4,7 @@ import { AppContext } from './useApp';
 import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
+import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
 // Ce fichier ne contient QUE le composant AppProvider (react-refresh).
 // Le reducer + l'initialisation vivent dans appReducer.ts ; le contexte + useApp
@@ -101,6 +102,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return report;
   }
 
+  // Restauration (mode API) : REMPLACE tout en base PUIS ré-hydrate l'écran.
+  async function runRestore(payload: BackupEnvelope): Promise<RestoreReport> {
+    if (!repository.restore) throw new Error('Restauration indisponible en mode local.');
+    const report = await repository.restore(payload);
+    if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
+    return report;
+  }
+
   // Écran BLOQUANT si l'hydratation a échoué (mode API) : l'app ne démarre jamais
   // sur un état vide trompeur. Tree-shaké en flag off.
   if (USE_API && hydrateError) {
@@ -154,6 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateCalendarEvent: repository.updateCalendarEvent,
         deleteCalendarEvent: repository.deleteCalendarEvent,
         importBulk: USE_API && repository.bulkImport ? runBulkImport : undefined,
+        restoreBackup: USE_API && repository.restore ? runRestore : undefined,
       }}
     >
       {children}

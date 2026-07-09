@@ -26,9 +26,9 @@ import {
   getState, createLead, updateLead, deleteLead,
   createAction, createCommercial, updateCommercial,
   createTemplate, deleteTemplate, createCalendarEvent,
-  saveGoals, saveMonthlyStats, saveDefaultGoal, bulkImport,
+  saveGoals, saveMonthlyStats, saveDefaultGoal, bulkImport, restoreBackup,
 } from '../api/_lib/store';
-import type { Lead, LeadAction, CommercialGoal } from '../src/data/types';
+import type { Lead, LeadAction, CommercialGoal, AppState } from '../src/data/types';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const DB_FILE = path.resolve('.harness-api.db');
@@ -376,6 +376,96 @@ async function main() {
     } catch { rejected4 = true; }
     check('commercial introuvable -> rejet', rejected4);
     check('ROLLBACK : aucun lead écrit', (await getState(prisma)).leads.length === b4.leads.length);
+  }
+
+  section('Restauration (restoreBackup) : remplacement total, id-préservant, rollback');
+  {
+    // Normalisation ordre-indépendante (tri par id) pour comparer deux AppState.
+    const norm = (s: AppState) => JSON.stringify({
+      leads: [...s.leads].sort((a, b) => a.id.localeCompare(b.id)),
+      actions: [...s.actions].sort((a, b) => a.id.localeCompare(b.id)),
+      commercials: [...s.commercials].sort((a, b) => a.id.localeCompare(b.id)),
+      templates: [...s.templates].sort((a, b) => a.id.localeCompare(b.id)),
+      calendarEvents: [...s.calendarEvents].sort((a, b) => a.id.localeCompare(b.id)),
+      goals: [...s.goals].sort((a, b) => a.id.localeCompare(b.id)),
+      monthlyStats: [...s.monthlyStats].sort((a, b) => a.id.localeCompare(b.id)),
+      defaultGoal: s.defaultGoal,
+    });
+
+    const snap: AppState = {
+      commercials: [
+        { id: 'com-a', name: 'Alice', active: true },
+        { id: 'com-b', name: 'Bob', active: false },
+      ],
+      leads: [
+        makeLead({ id: 'ld-1', commercialId: 'com-a' }),
+        makeLead({ id: 'ld-2', commercialId: 'com-b', status: 'signe' }),
+      ],
+      actions: [makeAction({ id: 'ac-1', leadId: 'ld-1', authorId: 'com-a' })],
+      templates: [{ id: 'tp-1', type: 'email', title: 'T', subject: 'S', body: 'B' }],
+      calendarEvents: [{ id: 'ev-1', title: 'Réunion', date: '2026-06-10', category: 'reunion' }],
+      goals: [makeGoal({ id: 'gl-1', commercialId: 'com-a' })],
+      monthlyStats: [{ id: 'ms-1', year: 2026, month: 3, source: 'LBC', budget: 100, leads: 5 }],
+      defaultGoal: { prospectsCreated: 7, coldCalls: null, followups: null, meetings: null, revenue: null, conversionRate: null },
+    };
+
+    // 1) Restauration : la base (peuplée par les sections précédentes) est REMPLACÉE.
+    const rep = await restoreBackup(prisma, { format: 'bob-crm-backup', version: 1, data: snap });
+    check('compte-rendu par entité', rep.leads === 2 && rep.commercials === 2 && rep.actions === 1 && rep.goals === 1);
+    const s1 = await getState(prisma);
+    check('base REMPLACÉE (exactement le snapshot)',
+      s1.leads.length === 2 && s1.commercials.length === 2 && s1.actions.length === 1 &&
+      s1.templates.length === 1 && s1.calendarEvents.length === 1 && s1.monthlyStats.length === 1 && s1.goals.length === 1);
+    check('ids PRÉSERVÉS + relations (action -> lead + author)',
+      s1.actions[0].leadId === 'ld-1' && s1.actions[0].authorId === 'com-a' &&
+      s1.leads.some(l => l.id === 'ld-1' && l.commercialId === 'com-a'));
+    check('commercial INACTIF restauré tel quel', s1.commercials.some(c => c.id === 'com-b' && c.active === false));
+    check('defaultGoal restauré', s1.defaultGoal.prospectsCreated === 7);
+
+    // 2) Round-trip : restore(getState) reproduit l'état à l'identique.
+    const before = await getState(prisma);
+    await restoreBackup(prisma, { format: 'bob-crm-backup', version: 1, data: before });
+    check('round-trip identique (getState -> restore -> getState)', norm(await getState(prisma)) === norm(before));
+
+    // 3) Fichier invalide -> rejet + ROLLBACK (base INCHANGÉE) : le test critique.
+    const b3 = await getState(prisma);
+    let rej3 = false;
+    try {
+      await restoreBackup(prisma, { format: 'bob-crm-backup', version: 1, data: { ...snap, leads: [makeLead({ id: 'bad', commercialId: 'com-a', status: 'zzz' as Lead['status'] })] } });
+    } catch { rej3 = true; }
+    check('entité invalide -> rejet', rej3);
+    check('ROLLBACK : base strictement inchangée', norm(await getState(prisma)) === norm(b3));
+
+    // 4) Enveloppe : mauvais format / version -> 400, aucune écriture.
+    const b4 = await getState(prisma);
+    let badFmt = false;
+    try { await restoreBackup(prisma, { format: 'autre', version: 1, data: snap }); } catch (e) { badFmt = (e as { status?: number }).status === 400; }
+    check('format inconnu -> 400', badFmt);
+    let badVer = false;
+    try { await restoreBackup(prisma, { format: 'bob-crm-backup', version: 2, data: snap }); } catch (e) { badVer = (e as { status?: number }).status === 400; }
+    check('version > 1 -> 400', badVer);
+    check('enveloppe refusée -> base inchangée', norm(await getState(prisma)) === norm(b4));
+
+    // 5) Chemin HTTP complet (handler -> dispatch -> restoreBackup). L'env a été
+    // posé par la section Routage (API_SHARED_TOKEN + DATABASE_URL) ; cette section
+    // est la DERNIÈRE (le remplacement final ne gêne aucune autre).
+    const mod = await import('../api/[...slug].ts');
+    const handler = mod.default as (req: VercelRequest, res: VercelResponse) => Promise<void>;
+    async function callRestore(token: string | undefined, bdy: unknown) {
+      const cap = { statusCode: 0, payload: undefined as unknown };
+      const res = {
+        status(s: number) { cap.statusCode = s; return res; },
+        json(dd: unknown) { cap.payload = dd; return res; },
+        end() { return res; }, setHeader() { return res; },
+      };
+      const req = { method: 'POST', url: '/api/restore', headers: { authorization: token ? `Bearer ${token}` : undefined }, body: bdy };
+      await handler(req as unknown as VercelRequest, res as unknown as VercelResponse);
+      return cap;
+    }
+    const rHttp = await callRestore('test-token', { format: 'bob-crm-backup', version: 1, data: snap });
+    check('POST /api/restore -> 201 + compte-rendu', rHttp.statusCode === 201 && (rHttp.payload as { leads: number }).leads === 2);
+    const rHttpNoTok = await callRestore(undefined, {});
+    check('POST /api/restore SANS jeton -> 401', rHttpNoTok.statusCode === 401);
   }
 
   await prisma.$disconnect();

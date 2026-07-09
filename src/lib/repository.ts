@@ -10,6 +10,7 @@ import { generateId } from './utils';
 import { EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { createOutbox, OutboxFullError, type OutboxOp, type StorageLike } from './outbox';
 import type { ImportPayload, ImportReport } from './importLeads';
+import type { BackupEnvelope, RestoreReport } from './backup';
 
 // Couche d'accès aux données (chantier migration, Lot 3) — LA COUTURE.
 //
@@ -53,6 +54,9 @@ export interface CrmRepository {
   // /api/import atomique HORS OUTBOX (action délibérée avec compte-rendu). Absent
   // en mode localStorage -> l'UI d'import est désactivée en flag off.
   bulkImport?(payload: ImportPayload): Promise<ImportReport>;
+  // Restauration d'une sauvegarde (impl API uniquement, Étape 5) : POST
+  // /api/restore, REMPLACEMENT TOTAL atomique HORS OUTBOX. Absent en localStorage.
+  restore?(payload: BackupEnvelope): Promise<RestoreReport>;
 
   // — Leads —
   addLead(lead: Omit<Lead, 'id'>): string;
@@ -455,6 +459,29 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     }
   };
 
+  // Restauration : appel DIRECT (hors outbox), REMPLACEMENT TOTAL atomique côté
+  // serveur. Timeout large ; message d'erreur clair (transaction -> « rien à moitié »).
+  const restore = async (payload: BackupEnvelope): Promise<RestoreReport> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetchImpl(`${baseUrl}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        let detail = '';
+        try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
+        throw new Error(detail || `Restauration refusée (${res.status})`);
+      }
+      return await res.json() as RestoreReport;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // --- Contrôles UI (badge + panneau d'échec, étape C) ---
   const sync: RepositorySync = {
     info: currentInfo,
@@ -484,6 +511,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     hydrate,
     sync,
     bulkImport,
+    restore,
 
     addLead: (lead) => { const id = base.addLead(lead); remember({ kind: 'create', entity: 'leads', id }); return id; },
     updateLead: (id, data) => { base.updateLead(id, data); remember({ kind: 'update', entity: 'leads', id }); },
