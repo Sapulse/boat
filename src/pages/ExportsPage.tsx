@@ -1,8 +1,8 @@
-import { Download, Check, Users, UserCheck, BarChart3, Megaphone } from 'lucide-react';
+import { Download, Check, Users, UserCheck, BarChart3, Megaphone, Database } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { formatDate, formatCurrency } from '../lib/utils';
+import { formatDate, formatCurrency, toISODate } from '../lib/utils';
 import { computeCpl } from '../lib/acquisition';
-import { exportCSV } from '../lib/csv';
+import { exportCSV, downloadJSON } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { ACTIVE_STATUSES, MONTHS } from '../data/constants';
 import ImportPanel from '../components/import/ImportPanel';
@@ -38,6 +38,33 @@ function ExportCard({ icon, title, description, onExport, count, countLabel }: E
       <button onClick={trigger} disabled={done} className="btn-primary btn-sm w-full justify-center disabled:opacity-70">
         {done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
         {done ? 'Exporté ✓' : 'Exporter CSV'}
+      </button>
+    </div>
+  );
+}
+
+// Carte de SAUVEGARDE COMPLÈTE (JSON) — distincte des exports CSV par vue :
+// un seul fichier réimportable contenant tout l'état. Lecture seule.
+function BackupCard({ leads, commercials, actions, onExport }: { leads: number; commercials: number; actions: number; onExport: () => void }) {
+  const { done, trigger } = useExportFeedback(onExport);
+  return (
+    <div className="card p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="p-3 rounded-xl bg-primary-50 text-primary-600 shrink-0">
+        <Database className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-gray-900">Sauvegarde complète (JSON)</h3>
+        <p className="text-xs text-gray-500 mt-1">
+          Télécharge toute la base (leads, commerciaux, actions, modèles, agenda, objectifs, stats)
+          dans un seul fichier JSON réimportable — un filet de sauvegarde en plus du backup Turso.
+        </p>
+        <p className="text-xs text-primary-600 font-medium mt-2">
+          {leads} leads · {commercials} commerciaux · {actions} actions
+        </p>
+      </div>
+      <button onClick={trigger} disabled={done} className="btn-primary btn-sm shrink-0 justify-center disabled:opacity-70">
+        {done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+        {done ? 'Téléchargé ✓' : 'Télécharger la sauvegarde'}
       </button>
     </div>
   );
@@ -143,6 +170,18 @@ export default function ExportsPage() {
     exportCSV('acquisition.csv', headers, rows);
   };
 
+  // Sauvegarde complète : tout l'état dans une enveloppe versionnée (ids réels
+  // préservés -> restaurable, cf. Étape 5). Lecture seule.
+  const exportBackup = () => {
+    downloadJSON(`bob-crm-sauvegarde-${toISODate(new Date())}.json`, {
+      format: 'bob-crm-backup',
+      version: 1,
+      appVersion: __APP_VERSION__,
+      exportedAt: new Date().toISOString(),
+      data: state,
+    });
+  };
+
   const activeCount = state.leads.filter(l => ACTIVE_STATUSES.includes(l.status)).length;
   const clientCount = state.leads.filter(l => l.status === 'signe').length;
 
@@ -158,8 +197,20 @@ export default function ExportsPage() {
       <ImportPanel />
 
       <div>
-        <h2 className="text-sm font-semibold text-gray-900">Exports</h2>
-        <p className="text-xs text-gray-500 mt-0.5">Téléchargez vos données au format CSV.</p>
+        <h2 className="text-sm font-semibold text-gray-900">Sauvegarde</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Un fichier JSON complet et réimportable de toute la base.</p>
+      </div>
+
+      <BackupCard
+        leads={state.leads.length}
+        commercials={state.commercials.length}
+        actions={state.actions.length}
+        onExport={exportBackup}
+      />
+
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900">Exports CSV</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Téléchargez une vue au format CSV (lecture Excel).</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

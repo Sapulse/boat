@@ -23,7 +23,21 @@ export function exportCSV(filename: string, headers: string[], rows: string[][])
     headers.map(escape).join(';'),
     ...rows.map(row => row.map(escape).join(';')),
   ];
-  const blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  triggerDownload(filename, new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+}
+
+/**
+ * Telechargement d'un objet en JSON (sauvegarde complete). Serialisation indentee
+ * (lisible + diffable). Lecture seule : ne touche a rien. Meme mecanique de
+ * telechargement que exportCSV (Blob + ancre).
+ */
+export function downloadJSON(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8;' });
+  triggerDownload(filename, blob);
+}
+
+/** Declenche le telechargement d'un Blob via une ancre ephemere. */
+function triggerDownload(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
