@@ -57,6 +57,11 @@ export interface CrmRepository {
   // Restauration d'une sauvegarde (impl API uniquement, Étape 5) : POST
   // /api/restore, REMPLACEMENT TOTAL atomique HORS OUTBOX. Absent en localStorage.
   restore?(payload: BackupEnvelope): Promise<RestoreReport>;
+  // Auth compte unique partagé (impl API uniquement, Lot 7 allégé). Absent en
+  // localStorage (aucun login en flag off).
+  checkSession?(): Promise<boolean>;
+  login?(username: string, password: string): Promise<void>;
+  logout?(): Promise<void>;
 
   // — Leads —
   addLead(lead: Omit<Lead, 'id'>): string;
@@ -237,7 +242,7 @@ export interface ApiRepositoryOptions {
   /** Notifié quand l'état de synchro change (badge UI, étape C). */
   onSync?: (info: SyncInfo) => void;
   baseUrl?: string;                 // défaut '/api' (même origine sur Vercel)
-  token?: string;                   // ⚠️ exposé dans le bundle (staging only, cf. Lot 7)
+  onUnauthorized?: () => void;      // 401 (session expirée) -> l'app redemande le login
   fetchImpl?: typeof fetch;         // injectable pour le harnais (défaut : fetch global)
   storage?: StorageLike;            // stockage de l'outbox (défaut : localStorage)
   retryDelaysMs?: number[];         // backoff (défaut 2/5/15/30 s), injectable au harnais
@@ -265,9 +270,14 @@ class SendError extends Error {
  */
 export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   const {
-    dispatch, onSync, baseUrl = '/api', token, fetchImpl = fetch,
+    dispatch, onSync, baseUrl = '/api', onUnauthorized, fetchImpl = fetch,
     storage, retryDelaysMs = [2_000, 5_000, 15_000, 30_000], maxAttempts = 5, timeoutMs = 15_000,
   } = opts;
+  // Auth par COOKIE de session (Lot 7 allégé) : le cookie HttpOnly est envoyé
+  // automatiquement (même origine). Un 401 = session expirée -> onUnauthorized
+  // (l'app réaffiche le login). Plus AUCUN token dans le bundle.
+  const CREDS: RequestCredentials = 'same-origin';
+  const on401 = (status: number) => { if (status === 401) onUnauthorized?.(); };
   const base = createLocalStorageRepository(dispatch); // mutations = dispatch optimiste
 
   let inFlight = false;
@@ -331,10 +341,10 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   async function send(op: OutboxOp): Promise<void> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const headers = { 'Content-Type': 'application/json' };
     try {
       const res = await fetchImpl(baseUrl + op.path, {
-        method: op.method, headers, signal: controller.signal,
+        method: op.method, headers, credentials: CREDS, signal: controller.signal,
         body: op.body === undefined ? undefined : JSON.stringify(op.body),
       });
       if (res.ok) return;
@@ -342,12 +352,14 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       if (res.status === 409 && op.method === 'POST' && op.entityId) {
         // déjà créé -> on convertit en mise à jour (même payload).
         const res2 = await fetchImpl(`${baseUrl}/${op.entity}/${op.entityId}`, {
-          method: 'PATCH', headers, signal: controller.signal, body: JSON.stringify(op.body),
+          method: 'PATCH', headers, credentials: CREDS, signal: controller.signal, body: JSON.stringify(op.body),
         });
         if (res2.ok) return;
+        on401(res2.status);
         throw new SendError(res2.status, `PATCH /${op.entity}/${op.entityId} -> ${res2.status}`);
       }
       if (res.status === 404 && op.method === 'DELETE') return; // déjà supprimé
+      on401(res.status); // session expirée -> l'app réaffiche le login
       let detail = '';
       try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
       throw new SendError(res.status, detail || `${op.method} ${op.path} -> ${res.status}`);
@@ -396,10 +408,8 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetchImpl(`${baseUrl}/state`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: controller.signal,
-      });
-      if (!res.ok) throw new SendError(res.status, `GET /state -> ${res.status}`);
+      const res = await fetchImpl(`${baseUrl}/state`, { credentials: CREDS, signal: controller.signal });
+      if (!res.ok) { on401(res.status); throw new SendError(res.status, `GET /state -> ${res.status}`); }
       return await res.json() as AppState;
     } finally {
       clearTimeout(timer);
@@ -444,11 +454,13 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     try {
       const res = await fetchImpl(`${baseUrl}/import`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: CREDS,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
       if (!res.ok) {
+        on401(res.status);
         let detail = '';
         try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
         throw new Error(detail || `Import refusé (${res.status})`);
@@ -467,11 +479,13 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     try {
       const res = await fetchImpl(`${baseUrl}/restore`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: CREDS,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
       if (!res.ok) {
+        on401(res.status);
         let detail = '';
         try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
         throw new Error(detail || `Restauration refusée (${res.status})`);
@@ -480,6 +494,30 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     } finally {
       clearTimeout(timer);
     }
+  };
+
+  // --- Auth (compte unique partagé, Lot 7 allégé) ---
+  const checkSession = async (): Promise<boolean> => {
+    try {
+      const res = await fetchImpl(`${baseUrl}/session`, { credentials: CREDS });
+      return res.ok;
+    } catch { return false; }
+  };
+  const login = async (username: string, password: string): Promise<void> => {
+    const res = await fetchImpl(`${baseUrl}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: CREDS,
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
+      throw new Error(detail || (res.status === 401 ? 'Identifiants invalides' : `Connexion refusée (${res.status})`));
+    }
+  };
+  const logout = async (): Promise<void> => {
+    try { await fetchImpl(`${baseUrl}/logout`, { method: 'POST', credentials: CREDS }); } catch { /* best-effort */ }
   };
 
   // --- Contrôles UI (badge + panneau d'échec, étape C) ---
@@ -512,6 +550,9 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     sync,
     bulkImport,
     restore,
+    checkSession,
+    login,
+    logout,
 
     addLead: (lead) => { const id = base.addLead(lead); remember({ kind: 'create', entity: 'leads', id }); return id; },
     updateLead: (id, data) => { base.updateLead(id, data); remember({ kind: 'update', entity: 'leads', id }); },

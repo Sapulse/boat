@@ -3,6 +3,7 @@ import { reducer } from './appReducer';
 import { AppContext } from './useApp';
 import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
+import LoginScreen from '../components/auth/LoginScreen';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
 import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
@@ -24,6 +25,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // relance l'hydratation.
   const [hydrateError, setHydrateError] = useState(false);
   const [hydrateNonce, setHydrateNonce] = useState(0);
+  // Loading gate : prêt d'emblée en flag off ; en flag on, on attend l'hydratation.
+  const [ready, setReady] = useState(!USE_API);
+  // Auth (Lot 7 allégé, flag on) : null = vérification de session en cours ;
+  // true = session OK ; false = login requis. Flag off -> toujours true (tree-shaké).
+  const [authed, setAuthed] = useState<boolean | null>(USE_API ? null : true);
 
   // Init paresseuse : localStorage (sync) en flag off ; état VIDE en flag on
   // (l'état réel arrive via l'hydratation serveur, sous le loading gate).
@@ -36,23 +42,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
           dispatch,
           onSync: setSyncInfo,
           baseUrl: import.meta.env.VITE_API_BASE_URL,
-          token: import.meta.env.VITE_API_TOKEN,
+          // 401 (session expirée) -> on redemande le login et on bloque l'app.
+          onUnauthorized: () => { setAuthed(false); setReady(false); },
         })
       : createLocalStorageRepository(dispatch),
     [dispatch],
   );
 
-  // Loading gate : prêt d'emblée en flag off ; en flag on, on attend l'hydratation.
-  const [ready, setReady] = useState(!USE_API);
-
-  // Hydratation asynchrone (mode API). En cas d'échec : ÉCRAN BLOQUANT (pas de
-  // démarrage sur un état vide trompeur) — l'outbox a déjà tenté de drainer les
-  // écritures en attente avant de lire (repository.hydrate).
+  // Vérif de session au montage (flag on) : décide login vs hydratation. Absent
+  // en flag off (checkSession undefined) -> authed déjà true.
   useEffect(() => {
-    if (!repository.hydrate) return; // flag off : rien à faire
+    if (!USE_API || !repository.checkSession) return;
     let cancelled = false;
-    // setState uniquement dans les callbacks ASYNC (pas synchrone dans l'effet).
-    // Le reset (retry) est fait dans le handler du bouton « Réessayer ».
+    repository.checkSession().then(ok => { if (!cancelled) setAuthed(ok); });
+    return () => { cancelled = true; };
+  }, [repository]);
+
+  // Hydratation asynchrone (mode API) — SEULEMENT une fois authentifié. En cas
+  // d'échec : ÉCRAN BLOQUANT (pas de démarrage sur un état vide trompeur) —
+  // l'outbox a déjà tenté de drainer les écritures avant de lire.
+  useEffect(() => {
+    if (!repository.hydrate || authed !== true) return; // flag off / non authentifié : rien
+    let cancelled = false;
     repository.hydrate()
       .then((serverState) => {
         if (cancelled) return;
@@ -64,10 +75,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHydrateError(true); // ne PAS débloquer sur du vide
       });
     return () => { cancelled = true; };
-  }, [repository, hydrateNonce]);
+  }, [repository, hydrateNonce, authed]);
 
   // Relance l'hydratation (écran d'échec) : reset dans le HANDLER, pas l'effet.
   const retryHydrate = () => { setHydrateError(false); setReady(false); setHydrateNonce(n => n + 1); };
+
+  // Connexion (écran de login) : au succès, la session est posée (cookie) -> on
+  // autorise, ce qui déclenche l'hydratation.
+  const handleLogin = async (username: string, password: string) => {
+    if (!repository.login) return;
+    await repository.login(username, password);
+    setHydrateError(false);
+    setReady(false);
+    setAuthed(true);
+  };
 
   // Persistance : effet réactif sur le state ENTIER (timing inchangé).
   // Flag off -> saveState (localStorage). Flag on -> enqueue outbox.
@@ -111,6 +132,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const report = await repository.restore(payload);
     if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
     return report;
+  }
+
+  // Gate d'AUTH (Lot 7 allégé, flag on) — AVANT toute hydratation. Tree-shaké en
+  // flag off (USE_API constant false) : les commerciaux localStorage n'ont aucun login.
+  if (USE_API && authed === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500 text-sm">
+        Vérification de l'accès…
+      </div>
+    );
+  }
+  if (USE_API && authed === false) {
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   // Écran BLOQUANT si l'hydratation a échoué (mode API) : l'app ne démarre jamais

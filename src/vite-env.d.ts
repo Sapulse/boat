@@ -9,5 +9,6 @@ declare const __APP_VERSION__: string;
 interface ImportMetaEnv {
   readonly VITE_USE_API?: string;       // 'true' -> mode API
   readonly VITE_API_BASE_URL?: string;  // defaut '/api' (meme origine sur Vercel)
-  readonly VITE_API_TOKEN?: string;     // ⚠️ expose dans le bundle (staging only, cf. Lot 7)
+  // VITE_API_TOKEN RETIRE (Lot 7 allege) : plus aucun secret dans le bundle ;
+  // l'auth passe par un cookie de session (login).
 }

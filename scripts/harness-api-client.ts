@@ -107,7 +107,6 @@ function makeRepo(srv: ReturnType<typeof makeServer>, storage: StorageLike, over
     dispatch,
     fetchImpl: srv.fetchImpl,
     baseUrl: '/api',
-    token: 't',
     storage,
     retryDelaysMs: [5, 5, 5],
     maxAttempts: over.maxAttempts ?? 3,
