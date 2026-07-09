@@ -10,7 +10,7 @@ import { buildCommunicationAction } from '../lib/communication';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES } from '../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES, QUOTE_STATUSES, NO_COMMERCIAL_FILTER } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 
 type SavedView = { label: string; key: string; apply: () => void };
@@ -36,6 +36,9 @@ export default function LeadsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<{ fresh: ParsedContact[]; duplicates: DuplicateMatch[] } | null>(null);
+  // Rattachement des contacts importés (obligatoire) : commercial cible + source.
+  const [importCommercialId, setImportCommercialId] = useState(() => state.commercials.find(c => c.active)?.id ?? '');
+  const [importSource, setImportSource] = useState('Recommandation');
 
   const [search, setSearch] = useState('');
   // Filtres initialisables par l'URL : les liens KPI du Dashboard propagent
@@ -55,7 +58,14 @@ export default function LeadsPage() {
   const [viewMode, setViewMode] = useState<'prospects' | 'all'>(
     TERMINAL_STATUSES.includes(searchParams.get('status') ?? '') ? 'all' : 'prospects'
   );
-  const [activeView, setActiveView] = useState(searchParams.get('view') === 'inactifs' ? 'inactifs' : '');
+  const [activeView, setActiveView] = useState(() => {
+    const v = searchParams.get('view');
+    return v === 'inactifs' || v === 'devis-en-cours' ? v : '';
+  });
+
+  // Commerciaux valides + présence de leads orphelins (pour l'option de filtre).
+  const validCommercialIds = useMemo(() => new Set(state.commercials.map(c => c.id)), [state.commercials]);
+  const hasOrphanLeads = useMemo(() => state.leads.some(l => !validCommercialIds.has(l.commercialId)), [state.leads, validCommercialIds]);
 
   const clearAllFilters = () => {
     setFilterCommercial(''); setFilterStatus(''); setFilterBoatType(''); setFilterCondition('');
@@ -81,7 +91,8 @@ export default function LeadsPage() {
       leads = leads.filter(l => leadMatchesSearch(l, search));
     }
 
-    if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
+    if (filterCommercial === NO_COMMERCIAL_FILTER) leads = leads.filter(l => !validCommercialIds.has(l.commercialId));
+    else if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
     if (filterStatus) leads = leads.filter(l => l.status === filterStatus);
     if (filterBoatType) leads = leads.filter(l => l.boatType === filterBoatType);
     if (filterCondition) leads = leads.filter(l => l.boatCondition === filterCondition);
@@ -93,6 +104,7 @@ export default function LeadsPage() {
       const cutoff = isoDateDaysAgo(Number(filterPeriod));
       leads = leads.filter(l => l.createdAt >= cutoff);
     }
+    if (activeView === 'devis-en-cours') leads = leads.filter(l => QUOTE_STATUSES.includes(l.status));
     if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
     // Vue "Inactifs >7j" : predicat partage avec le KPI Dashboard "Sans action
     // >7j" (isInactiveOverWeek) — correspondance compteur <-> liste exacte.
@@ -112,7 +124,7 @@ export default function LeadsPage() {
     });
 
     return leads;
-  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, filterPeriod, sortField, sortDir, viewMode, activeView]);
+  }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, filterPeriod, sortField, sortDir, viewMode, activeView, validCommercialIds]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -151,7 +163,8 @@ export default function LeadsPage() {
   };
 
   const runImport = (contacts: ParsedContact[]) => {
-    contacts.forEach(c => addLead(createLeadFromContact(c)));
+    if (!importCommercialId) return; // garde : commercial obligatoire
+    contacts.forEach(c => addLead(createLeadFromContact(c, importCommercialId, importSource)));
     setImportResult(null);
   };
 
@@ -202,7 +215,8 @@ export default function LeadsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
           <select className="select text-xs" value={filterCommercial} onChange={e => setFilterCommercial(e.target.value)}>
             <option value="">Commercial</option>
-            {state.commercials.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {state.commercials.map(c => <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (inactif)'}</option>)}
+            {hasOrphanLeads && <option value={NO_COMMERCIAL_FILTER}>— sans commercial</option>}
           </select>
           <select className="select text-xs" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">Statut</option>
@@ -355,6 +369,24 @@ export default function LeadsPage() {
       <Modal open={!!importResult} onClose={() => setImportResult(null)} title="Import de contacts (.vcf)" size="lg">
         {importResult && (
           <div className="space-y-4">
+            {/* Rattachement obligatoire : les contacts importés reçoivent ce
+                commercial + cette source (plus d'orphelins). */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="vcf-commercial" className="label">Commercial (obligatoire)</label>
+                <select id="vcf-commercial" className="select" value={importCommercialId} onChange={e => setImportCommercialId(e.target.value)}>
+                  <option value="">— choisir —</option>
+                  {state.commercials.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="vcf-source" className="label">Source</label>
+                <select id="vcf-source" className="select" value={importSource} onChange={e => setImportSource(e.target.value)}>
+                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div className="flex gap-4">
               <div className="flex-1 rounded-lg bg-success-50 border border-success-100 p-3">
                 <p className="text-2xl font-bold text-success-700">{importResult.fresh.length}</p>
@@ -384,11 +416,14 @@ export default function LeadsPage() {
               <p className="text-sm text-gray-500">Aucun contact valide trouvé dans le fichier.</p>
             )}
 
+            {!importCommercialId && (
+              <p className="text-xs text-warning-700">Choisissez un commercial pour activer l'import.</p>
+            )}
             <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
               <button onClick={() => setImportResult(null)} className="btn-secondary btn-sm">Annuler</button>
               <button
                 onClick={() => runImport([...importResult.fresh, ...importResult.duplicates.map(d => d.contact)])}
-                disabled={importResult.fresh.length + importResult.duplicates.length === 0}
+                disabled={!importCommercialId || importResult.fresh.length + importResult.duplicates.length === 0}
                 className="btn-ghost btn-sm text-gray-600 disabled:opacity-50"
                 title="Crée aussi les doublons (choix explicite)"
               >
@@ -396,7 +431,7 @@ export default function LeadsPage() {
               </button>
               <button
                 onClick={() => runImport(importResult.fresh)}
-                disabled={importResult.fresh.length === 0}
+                disabled={!importCommercialId || importResult.fresh.length === 0}
                 className="btn-primary btn-sm disabled:opacity-50"
               >
                 Importer les nouveaux ({importResult.fresh.length})

@@ -12,7 +12,7 @@ import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
-import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES } from '../data/constants';
+import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES, QUOTE_STATUSES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 import { useIsCompact, shortLabel } from '../lib/useIsCompact';
 
@@ -55,16 +55,27 @@ export default function DashboardPage() {
     const sansProchAction = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
 
     const totalQuotes = leads
-      .filter(l => ['devis_envoye', 'negociation', 'en_conclusion'].includes(l.status))
+      .filter(l => QUOTE_STATUSES.includes(l.status))
       .reduce((sum, l) => sum + (l.quoteAmount ?? 0), 0);
     const totalSigned = signed.reduce((sum, l) => sum + (l.quoteAmount ?? l.budget ?? 0), 0);
 
-    const byCommercial = state.commercials.filter(c => c.active).map(c => ({
-      name: c.name,
-      actifs: active.filter(l => l.commercialId === c.id).length,
-      signes: signed.filter(l => l.commercialId === c.id).length,
-      montant: signed.filter(l => l.commercialId === c.id).reduce((s, l) => s + (l.quoteAmount ?? l.budget ?? 0), 0),
-    }));
+    // Détail par commercial : TOUS les commerciaux ayant des leads (actifs OU
+    // désactivés) + un regroupement « — » pour les leads sans commercial valide,
+    // afin que la somme des lignes == le total affiché.
+    const commercialNameById = new Map(state.commercials.map(c => [c.id, c.name]));
+    const groups = new Map<string, { id: string; name: string; actifs: number; signes: number; montant: number }>();
+    for (const l of leads) {
+      const known = commercialNameById.has(l.commercialId);
+      const key = known ? l.commercialId : '__orphan__';
+      let g = groups.get(key);
+      if (!g) {
+        g = { id: known ? l.commercialId : '', name: known ? (commercialNameById.get(l.commercialId) ?? '—') : '—', actifs: 0, signes: 0, montant: 0 };
+        groups.set(key, g);
+      }
+      if (ACTIVE_STATUSES.includes(l.status)) g.actifs++;
+      if (l.status === 'signe') { g.signes++; g.montant += (l.quoteAmount ?? l.budget ?? 0); }
+    }
+    const byCommercial = [...groups.values()].sort((a, b) => b.signes - a.signes || b.actifs - a.actifs || a.name.localeCompare(b.name));
 
     const byStatus = LEAD_STATUSES.map(s => ({
       name: s.label,
@@ -91,13 +102,13 @@ export default function DashboardPage() {
 
   // Les KPI sont calcules avec les filtres actifs (commercial / source /
   // periode) : les liens les propagent pour que la liste ouverte corresponde
-  // exactement au compteur clique. /clients ne recoit pas la periode (pas de
-  // filtre equivalent sur cette page).
+  // exactement au compteur clique (y compris la periode vers /clients, qui a
+  // desormais un filtre periode equivalent).
   const buildLink = (path: string, extra?: Record<string, string>) => {
     const params = new URLSearchParams(extra);
     if (filterCommercial) params.set('commercial', filterCommercial);
     if (filterSource) params.set('source', filterSource);
-    if (filterPeriod && path === '/leads') params.set('period', filterPeriod);
+    if (filterPeriod && (path === '/leads' || path === '/clients')) params.set('period', filterPeriod);
     const qs = params.toString();
     return qs ? `${path}?${qs}` : path;
   };
@@ -144,7 +155,7 @@ export default function DashboardPage() {
         <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { alert: 'red' }))}>
           <KpiCard title="Urgences" value={stats.urgent} icon={<AlertTriangle className="w-5 h-5" />} color="text-danger-600" />
         </div>
-        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { status: 'devis_envoye' }))}>
+        <div className="cursor-pointer" onClick={() => navigate(buildLink('/leads', { view: 'devis-en-cours' }))}>
           <KpiCard title="Volume devis" value={formatCurrency(stats.totalQuotes)} icon={<FileText className="w-5 h-5" />} color="text-purple-600" />
         </div>
         <div className="cursor-pointer" onClick={() => navigate(buildLink('/clients'))}>
@@ -324,7 +335,7 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {stats.byCommercial.map(c => (
-                <tr key={c.name} tabIndex={0} className="border-b border-gray-100 cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/performance?commercial=${state.commercials.find(co => co.name === c.name)?.id || ''}`)} onKeyDown={activateOnKey(() => navigate(`/performance?commercial=${state.commercials.find(co => co.name === c.name)?.id || ''}`))}>
+                <tr key={c.id || c.name} tabIndex={0} className="border-b border-gray-100 cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/performance?commercial=${c.id}`)} onKeyDown={activateOnKey(() => navigate(`/performance?commercial=${c.id}`))}>
                   <td className="px-4 py-2.5 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-2.5 text-right text-gray-600">{c.actifs}</td>
                   <td className="px-4 py-2.5 text-right text-success-600 font-medium">{c.signes}</td>

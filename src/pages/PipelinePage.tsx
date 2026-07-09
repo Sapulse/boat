@@ -18,7 +18,7 @@ import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { formatCurrency, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn } from '../lib/utils';
-import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES } from '../data/constants';
+import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, NO_COMMERCIAL_FILTER } from '../data/constants';
 import type { Lead, LeadStatus } from '../data/types';
 
 const PRIMARY_STATUSES: LeadStatus[] = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion'];
@@ -178,19 +178,23 @@ export default function PipelinePage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
   );
 
+  const validCommercialIds = useMemo(() => new Set(state.commercials.map(c => c.id)), [state.commercials]);
+  const hasOrphanLeads = useMemo(() => state.leads.some(l => !validCommercialIds.has(l.commercialId)), [state.leads, validCommercialIds]);
+
   const filteredLeads = useMemo(() => {
     let leads = [...state.leads];
     if (search) {
       leads = leads.filter(l => leadMatchesSearch(l, search));
     }
-    if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
+    if (filterCommercial === NO_COMMERCIAL_FILTER) leads = leads.filter(l => !validCommercialIds.has(l.commercialId));
+    else if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
     if (filterBoatType) leads = leads.filter(l => l.boatType === filterBoatType);
     if (filterCondition) leads = leads.filter(l => l.boatCondition === filterCondition);
     if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
     if (filterAlert) leads = leads.filter(l => getAlertLevel(l) === filterAlert);
     return leads;
-  }, [state.leads, search, filterCommercial, filterSource, filterBoatType, filterCondition, filterTemp, filterAlert]);
+  }, [state.leads, search, filterCommercial, filterSource, filterBoatType, filterCondition, filterTemp, filterAlert, validCommercialIds]);
 
   const allStatuses = [...PRIMARY_STATUSES, ...SECONDARY_STATUSES];
 
@@ -256,7 +260,8 @@ export default function PipelinePage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             <select className="select text-xs" value={filterCommercial} onChange={e => setFilterCommercial(e.target.value)}>
               <option value="">Commercial</option>
-              {state.commercials.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {state.commercials.map(c => <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (inactif)'}</option>)}
+              {hasOrphanLeads && <option value={NO_COMMERCIAL_FILTER}>— sans commercial</option>}
             </select>
             <select className="select text-xs" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
               <option value="">Source</option>

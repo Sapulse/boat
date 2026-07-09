@@ -270,11 +270,15 @@ export function splitNewVsDuplicates(
  * completer par le commercial. commercialId reste vide : PAS de rattachement
  * automatique (evite les faux rattachements).
  */
-export function createLeadFromContact(contact: ParsedContact): Omit<Lead, 'id'> {
+// commercialId + source fournis par l'appelant (modale d'import) : un lead vCard
+// n'est plus créé orphelin (commercial OBLIGATOIRE côté API, et évite de fausser
+// listes/stats en flag off). Défauts posés dans l'UI (1er commercial actif +
+// source cohérente).
+export function createLeadFromContact(contact: ParsedContact, commercialId: string, source: string): Omit<Lead, 'id'> {
   return {
     createdAt: toISODate(new Date()),
-    source: '',
-    commercialId: '',
+    source,
+    commercialId,
     firstName: contact.firstName,
     lastName: contact.lastName,
     phone: contact.phone,

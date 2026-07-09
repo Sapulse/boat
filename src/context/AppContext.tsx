@@ -90,8 +90,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Sélecteurs de vue (purs sur `state`) : restent dans le provider.
   const getLeadActions = (leadId: string) =>
     state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
+  // Repli « — » quand aucun commercial ne correspond (id vide ou obsolète) : on
+  // n'affiche JAMAIS une UUID brute. NB : distinct du VRAI commercial « Non
+  // attribué » (créé à l'import) qui, lui, a un id + nom réels et est trouvé ici.
   const getCommercialName = (id: string) =>
-    state.commercials.find(c => c.id === id)?.name ?? id;
+    state.commercials.find(c => c.id === id)?.name ?? '—';
 
   // Import en masse (mode API) : écrit via l'endpoint bulk (hors outbox) PUIS
   // ré-hydrate l'état depuis la base (l'aperçu se vide, la base s'affiche à jour).

@@ -47,6 +47,14 @@ export const ACTIVE_STATUSES: LeadStatus[] = [
   'en_conclusion',
 ];
 
+// Statuts « devis en cours » (un devis existe) — source unique pour le KPI
+// Dashboard « Volume devis » ET son drill-down (vue Leads), qu'ils concordent.
+export const QUOTE_STATUSES: LeadStatus[] = ['devis_envoye', 'negociation', 'en_conclusion'];
+
+// Sentinelle du filtre Commercial pour les leads SANS commercial valide (id vide
+// ou obsolète). Ne peut pas collisionner avec un id réel (jamais un id de lead).
+export const NO_COMMERCIAL_FILTER = '__none__';
+
 export const BOAT_TYPES: BoatType[] = ['Moteur', 'Voile', 'Semi-rigide'];
 
 export const BOAT_CONDITIONS: BoatCondition[] = ['Neuf', 'BO', 'DV'];

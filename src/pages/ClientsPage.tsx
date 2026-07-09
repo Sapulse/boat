@@ -3,10 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Check, Users, Euro } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { SortIcon, type SortDir } from '../components/ui/SortIcon';
-import { formatDate, formatCurrency, getLeadFullName } from '../lib/utils';
+import { formatDate, formatCurrency, getLeadFullName, isoDateDaysAgo } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
-import { BOAT_TYPES, SOURCES } from '../data/constants';
+import { BOAT_TYPES, SOURCES, NO_COMMERCIAL_FILTER } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 import type { Lead } from '../data/types';
 
@@ -29,6 +29,12 @@ export default function ClientsPage() {
   const [filterCommercial, setFilterCommercial] = useState(searchParams.get('commercial') ?? '');
   const [filterBoatType, setFilterBoatType] = useState('');
   const [filterSource, setFilterSource] = useState(searchParams.get('source') ?? '');
+  // Période initialisable par l'URL (lien KPI « Volume signé » du Dashboard) pour
+  // que la liste concorde avec le montant affiché (même fenêtre sur createdAt).
+  const [filterPeriod, setFilterPeriod] = useState(searchParams.get('period') ?? '');
+
+  const validCommercialIds = useMemo(() => new Set(state.commercials.map(c => c.id)), [state.commercials]);
+  const hasOrphanLeads = useMemo(() => state.leads.some(l => l.status === 'signe' && !validCommercialIds.has(l.commercialId)), [state.leads, validCommercialIds]);
   // Défaut = date de signature décroissante (comportement historique préservé).
   const [sortField, setSortField] = useState<SortField>('signedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -47,9 +53,14 @@ export default function ClientsPage() {
       );
     }
 
-    if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
+    if (filterCommercial === NO_COMMERCIAL_FILTER) leads = leads.filter(l => !validCommercialIds.has(l.commercialId));
+    else if (filterCommercial) leads = leads.filter(l => l.commercialId === filterCommercial);
     if (filterBoatType) leads = leads.filter(l => l.boatType === filterBoatType);
     if (filterSource) leads = leads.filter(l => l.source === filterSource);
+    if (filterPeriod) {
+      const cutoff = isoDateDaysAgo(Number(filterPeriod));
+      leads = leads.filter(l => l.createdAt >= cutoff);
+    }
 
     // Tri par colonne (même pattern que LeadsPage : switch + sens asc/desc).
     return leads.sort((a, b) => {
@@ -63,7 +74,7 @@ export default function ClientsPage() {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [state.leads, search, filterCommercial, filterBoatType, filterSource, sortField, sortDir, getCommercialName]);
+  }, [state.leads, search, filterCommercial, filterBoatType, filterSource, filterPeriod, validCommercialIds, sortField, sortDir, getCommercialName]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -121,8 +132,21 @@ export default function ClientsPage() {
         >
           <option value="">Tous les commerciaux</option>
           {state.commercials.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (inactif)'}</option>
           ))}
+          {hasOrphanLeads && <option value={NO_COMMERCIAL_FILTER}>— sans commercial</option>}
+        </select>
+
+        <select
+          className="select w-auto text-sm"
+          value={filterPeriod}
+          onChange={e => setFilterPeriod(e.target.value)}
+        >
+          <option value="">Toute période</option>
+          <option value="7">7 derniers jours</option>
+          <option value="30">30 derniers jours</option>
+          <option value="90">3 derniers mois</option>
+          <option value="365">12 derniers mois</option>
         </select>
 
         <select
