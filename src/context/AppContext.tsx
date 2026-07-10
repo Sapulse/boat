@@ -112,6 +112,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [repository]);
 
+  // Ré-hydratation BEST-EFFORT (2.2 + 3.A) : au retour réseau (`online`) ou quand
+  // l'onglet redevient visible (`visibilitychange`), on relit la base pour rester
+  // synchro avec les autres postes (un lead supprimé ailleurs disparaît ici).
+  // Échec SILENCIEUX (on garde l'état courant, jamais d'écran bloquant). Throttle
+  // 5 s anti-spam. `hydrate()` draine l'outbox AVANT de lire -> les écritures
+  // locales en attente partent d'abord (pas d'écrasement). Tree-shaké en flag off.
+  useEffect(() => {
+    if (!USE_API || authed !== true || !repository.hydrate) return;
+    const hydrate = repository.hydrate;
+    let last = Date.now(); // pas de refresh juste après l'hydratation initiale
+    let running = false;
+    const refresh = async () => {
+      const now = Date.now();
+      if (running || now - last < 5_000) return;
+      running = true; last = now;
+      try { dispatch({ type: 'SET_STATE', payload: await hydrate() }); }
+      catch { /* best-effort : on conserve l'état courant */ }
+      finally { running = false; }
+    };
+    const onOnline = () => { void refresh(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [repository, authed]);
+
   // Sélecteurs de vue (purs sur `state`) : restent dans le provider.
   const getLeadActions = (leadId: string) =>
     state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
