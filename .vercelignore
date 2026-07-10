@@ -1,0 +1,15 @@
+# Ne JAMAIS uploader les fichiers d'environnement locaux au déploiement Vercel.
+# Le build Vercel doit s'appuyer UNIQUEMENT sur les env vars du projet Vercel
+# (où VITE_USE_API est ABSENT -> build flag OFF, aucun token dans le bundle).
+# .env.local local contient VITE_USE_API=true + VITE_API_TOKEN : il ferait basculer
+# le build en flag on avec le token exposé. On l'exclut donc explicitement.
+.env
+.env.local
+.env.*.local
+
+# Données perso réelles (RGPD) : jamais envoyées à Vercel.
+_import_local/
+
+# Scratch / base de dev locale.
+*.db
+*.db-journal
