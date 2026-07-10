@@ -192,6 +192,15 @@ export interface RepositorySync {
   retryFailed(): void;
   /** Abandonne l'op refusée, vide le reste de la file puis réaligne l'écran sur le serveur. */
   abandonFailed(): Promise<void>;
+  /**
+   * Re-hydratation multi-postes (correctif audit #3, v2) : réaligne l'écran sur
+   * le serveur, mais SEULEMENT s'il n'y a AUCUNE écriture en attente / en vol /
+   * capturée non enfilée — et RE-VÉRIFIE ces gardes APRÈS le fetch, juste avant
+   * d'appliquer. Une écriture partie PENDANT la lecture n'est JAMAIS écrasée
+   * (c'était le bug de la v1). Échec réseau : silencieux (garde l'état courant,
+   * aucun écran bloquant). Déclenché par AppProvider (focus onglet / retour réseau).
+   */
+  refresh(): Promise<void>;
 }
 
 // --- Intentions captées à la source (décision Q1) ---
@@ -543,6 +552,19 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       try { await drain(); } catch { return; } // file pas vidable : le badge continue d'informer
       const state = await fetchState();
       dispatch({ type: 'SET_STATE', payload: state });
+    },
+    async refresh() {
+      // GARDE 1 (AVANT lecture) : aucune écriture en attente / en vol / capturée
+      // (intention non encore enfilée). Sinon on ne touche à rien.
+      if (box.hasPending() || inFlight || intents.length > 0) return;
+      let server: AppState;
+      try { server = await fetchState(); }
+      catch { return; } // échec SILENCIEUX : on garde l'état courant, jamais d'écran bloquant
+      // GARDE 2 (APRÈS lecture, AVANT d'appliquer) — LE correctif de la v1 : une
+      // écriture a pu démarrer PENDANT le fetch. On JETTE alors la lecture pour ne
+      // pas l'écraser. Aucun await entre ce contrôle et le dispatch -> atomique.
+      if (box.hasPending() || inFlight || intents.length > 0) return;
+      dispatch({ type: 'SET_STATE', payload: server });
     },
   };
 

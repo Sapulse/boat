@@ -79,6 +79,9 @@ function makeServer(serverState: AppState) {
     networkDown: false,
     hang: false,
     respondWith: null as ((method: string, path: string) => { status: number; json?: unknown } | null) | null,
+    // Hook appelé PENDANT le traitement d'un GET /state (avant de répondre) :
+    // permet de simuler une écriture qui démarre au milieu d'une lecture (test de course).
+    onGet: null as (null | (() => void | Promise<void>)),
     fetchImpl: (async (url: string | URL, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
       const path = String(url);
@@ -92,7 +95,10 @@ function makeServer(serverState: AppState) {
       received.push({ method, path, body });
       const custom = srv.respondWith?.(method, path);
       if (custom) return { ok: custom.status < 400, status: custom.status, json: async () => custom.json ?? { error: 'refusé' } } as Response;
-      if (method === 'GET') return { ok: true, status: 200, json: async () => serverState } as Response;
+      if (method === 'GET') {
+        if (srv.onGet) await srv.onGet();
+        return { ok: true, status: 200, json: async () => serverState } as Response;
+      }
       return { ok: true, status: 200, json: async () => body } as Response;
     }) as typeof fetch,
   };
@@ -365,6 +371,68 @@ async function main() {
     const patches = srv.received.filter(r => r.method === 'PATCH' && r.path === `/api/leads/${leadId}`);
     check('2 updates même tick -> 1 seul PATCH', patches.length === 1, `=${patches.length}`);
     check('le PATCH porte les DEUX changements', (patches[0]?.body as Lead)?.status === 'qualifie' && (patches[0]?.body as Lead)?.temperature === 'chaud');
+  }
+
+  section('Re-hydratation v2 (refresh) — double-garde outbox (correctif #3, anti-bug v1)');
+  {
+    // (c) SYNCHRO OK quand l'outbox est VIDE : refresh applique l'état serveur.
+    const storage = makeStorage();
+    const srvLead = { ...makeLead({ firstName: 'Serveur' }), id: 'srv1' } as Lead;
+    const srv = makeServer({ ...getEmptyState(), leads: [srvLead] });
+    const { repo, cache } = makeRepo(srv, storage);
+    await repo.sync!.refresh();
+    check('(c) outbox vide : refresh applique l\'état serveur', cache().leads.length === 1 && cache().leads[0].id === 'srv1');
+    check('(c) un GET /state a bien eu lieu', srv.received.some(r => r.method === 'GET'));
+  }
+  {
+    // (a) ÉCRITURE EN ATTENTE jamais écrasée : op pending -> refresh ne lit/applique PAS (garde 1).
+    const storage = makeStorage();
+    const srvLead = { ...makeLead({ firstName: 'Serveur' }), id: 'srv1' } as Lead;
+    const srv = makeServer({ ...getEmptyState(), leads: [srvLead] });
+    const { repo, cache, persist } = makeRepo(srv, storage);
+    srv.networkDown = true;                 // l'envoi de l'op échoue -> op reste PENDING
+    const localId = repo.addLead(makeLead({ firstName: 'Local' }));
+    persist();
+    await wait(30);
+    srv.networkDown = false;
+    srv.received.length = 0;                 // on oublie les tentatives d'envoi
+    await repo.sync!.refresh();
+    check('(a) op en attente : AUCUN GET /state (garde 1)', !srv.received.some(r => r.method === 'GET'));
+    check('(a) l\'écriture locale est INTACTE (pas d\'écrasement)', cache().leads.some(l => l.id === localId));
+    check('(a) l\'état serveur n\'a PAS été appliqué', !cache().leads.some(l => l.id === 'srv1'));
+  }
+  {
+    // (a-RACE) LE test clé : une écriture DÉMARRE PENDANT le fetch -> jamais écrasée (garde 2).
+    // Pendant le GET, on enfile une écriture ET on fait PENDRE son envoi -> à la
+    // reprise du refresh, hasPending/inFlight sont vrais -> la lecture est JETÉE.
+    const storage = makeStorage();
+    const srvLead = { ...makeLead({ firstName: 'Serveur' }), id: 'srv1' } as Lead;
+    const srv = makeServer({ ...getEmptyState(), leads: [srvLead] });
+    const { repo, cache, persist } = makeRepo(srv, storage);
+    let raced = false;
+    srv.onGet = () => {
+      if (raced) return;
+      raced = true;
+      srv.hang = true;                       // l'envoi (POST) de l'écriture va PENDRE -> op en vol
+      repo.addLead(makeLead({ firstName: 'Course' }));
+      persist();                             // kick -> pump -> POST qui pend -> inFlight reste vrai
+    };
+    await repo.sync!.refresh();
+    check('(a-RACE) écriture pendant le fetch : état serveur NON appliqué (garde 2)', !cache().leads.some(l => l.id === 'srv1'));
+    check('(a-RACE) l\'écriture de course est PRÉSERVÉE', cache().leads.some(l => l.firstName === 'Course'));
+    srv.hang = false;                        // laisse l'op se draîner proprement (évite un timer pendant)
+    await wait(30);
+  }
+  {
+    // Échec réseau : refresh est SILENCIEUX (ne throw pas), garde l'état courant.
+    const storage = makeStorage();
+    const srv = makeServer({ ...getEmptyState(), leads: [{ ...makeLead(), id: 'srv1' } as Lead] });
+    const { repo, cache } = makeRepo(srv, storage);
+    srv.networkDown = true;
+    let threw = false;
+    try { await repo.sync!.refresh(); } catch { threw = true; }
+    check('échec réseau : refresh NE throw PAS (silencieux)', !threw);
+    check('échec réseau : l\'état serveur n\'est PAS appliqué', !cache().leads.some(l => l.id === 'srv1'));
   }
 
   console.log(`\n${'='.repeat(50)}`);
