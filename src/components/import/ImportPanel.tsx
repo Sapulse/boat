@@ -6,6 +6,7 @@ import { toISODate, formatCurrency } from '../../lib/utils';
 import { exportCSV } from '../../lib/csv';
 import Modal from '../ui/Modal';
 import { parseImportCsv, buildPreview, toImportPayload, type ImportPreview, type ImportReport } from '../../lib/importLeads';
+import { countImportOverlap } from '../../lib/duplicateLeads';
 
 // Panneau d'IMPORT (chantier import/export). Étape 2 : lecture + aperçu. Étape 3 :
 // écriture via l'endpoint bulk (importBulk du contexte, mode API uniquement) —
@@ -89,6 +90,9 @@ export default function ImportPanel() {
   };
 
   const warningCount = preview ? preview.leads.reduce((n, l) => n + l.warnings.length, 0) : 0;
+  // Recouvrement NON bloquant : combien de leads du fichier ont déjà un email/tél
+  // en base (doublons légitimes possibles -> on informe, on ne bloque pas).
+  const overlapCount = preview ? countImportOverlap(preview.leads.map(l => l.lead), state.leads) : 0;
 
   return (
     <div className="card p-6 space-y-5">
@@ -259,6 +263,9 @@ export default function ImportPanel() {
                 <span>
                   La base contient déjà <strong>{state.leads.length} leads</strong>. L'import va
                   {' '}<strong>AJOUTER</strong> {preview.stats.valid} leads — il ne remplace rien.
+                  {overlapCount > 0 && (
+                    <> Dont <strong>{overlapCount}</strong> avec un email/téléphone <strong>déjà présent</strong> en base (doublons possibles).</>
+                  )}
                 </span>
               </div>
             )}

@@ -4,6 +4,7 @@ import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTI
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 import { useSubmitLock } from '../../hooks/useSubmitLock';
+import { findDuplicateLeads } from '../../lib/duplicateLeads';
 
 interface LeadFormProps {
   lead?: Lead;
@@ -45,10 +46,23 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
   const [sourceError, setSourceError] = useState(false);
   // Verrou anti-double-soumission (correctif #2) : un double-clic ne crée pas 2 leads.
   const { locked, guard } = useSubmitLock();
+  // Avertissement doublon NON bloquant à la création (correctif #2) : leads
+  // existants au même email/tél. L'utilisateur peut « créer quand même ».
+  const [dupWarn, setDupWarn] = useState<Lead[] | null>(null);
 
   const update = (field: string, value: string | number | null) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
+
+  const buildPayload = (): Omit<Lead, 'id'> => ({
+    ...form,
+    createdAt: lead?.createdAt ?? toISODate(new Date()),
+    lastActionDate: lead?.lastActionDate ?? '',
+    signedAt: lead?.signedAt ?? '',
+    lostAt: lead?.lostAt ?? '',
+    reportedAt: lead?.reportedAt ?? '',
+  } as Omit<Lead, 'id'>);
+  const doSave = () => guard(() => onSave(buildPayload()));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,15 +70,31 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
       setSourceError(true);
       return;
     }
-    guard(() => onSave({
-      ...form,
-      createdAt: lead?.createdAt ?? toISODate(new Date()),
-      lastActionDate: lead?.lastActionDate ?? '',
-      signedAt: lead?.signedAt ?? '',
-      lostAt: lead?.lostAt ?? '',
-      reportedAt: lead?.reportedAt ?? '',
-    } as Omit<Lead, 'id'>));
+    // À la CRÉATION seulement : prévenir si un lead au même email/tél existe déjà.
+    if (!lead) {
+      const dups = findDuplicateLeads(state.leads, { email: form.email, phone: form.phone });
+      if (dups.length > 0) { setDupWarn(dups); return; }
+    }
+    doSave();
   };
+  const confirmDespiteDup = () => { setDupWarn(null); doSave(); };
+
+  // Bannière d'avertissement (rendue dans les 2 formulaires, rapide et complet).
+  const dupBanner = dupWarn && dupWarn.length > 0 ? (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+      <p className="font-medium text-amber-800">
+        {dupWarn.length > 1 ? 'Des leads existent déjà' : 'Un lead existe déjà'} avec cet email ou ce téléphone :
+      </p>
+      <p className="text-amber-700 mt-0.5">
+        {dupWarn.slice(0, 3).map(l => `${l.firstName} ${l.lastName}`.trim()).join(', ')}
+        {dupWarn.length > 3 ? ` +${dupWarn.length - 3}` : ''}
+      </p>
+      <div className="flex gap-2 mt-2">
+        <button type="button" onClick={confirmDespiteDup} className="btn-primary btn-sm" disabled={locked}>Créer quand même</button>
+        <button type="button" onClick={() => setDupWarn(null)} className="btn-secondary btn-sm">Annuler</button>
+      </div>
+    </div>
+  ) : null;
 
   if (quickMode) {
     return (
@@ -141,6 +171,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
           <textarea className="input min-h-[80px]" value={form.comments} onChange={e => update('comments', e.target.value)} />
         </div>
 
+        {dupBanner}
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
           <button type="submit" className="btn-primary" disabled={locked}>
@@ -333,6 +364,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
         <textarea className="input min-h-[80px]" value={form.comments} onChange={e => update('comments', e.target.value)} />
       </div>
 
+      {dupBanner}
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
         <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
         <button type="submit" className="btn-primary" disabled={locked}>
