@@ -4,6 +4,7 @@ import { AppContext } from './useApp';
 import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
 import LoginScreen from '../components/auth/LoginScreen';
+import { retryWithBackoff } from '../lib/retry';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
 import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
@@ -63,8 +64,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // l'outbox a déjà tenté de drainer les écritures avant de lire.
   useEffect(() => {
     if (!repository.hydrate || authed !== true) return; // flag off / non authentifié : rien
+    const hydrate = repository.hydrate;
     let cancelled = false;
-    repository.hydrate()
+    // Retry auto avec backoff (2.1) : un aléa réseau transitoire se répare tout
+    // seul ; on n'affiche l'écran bloquant qu'APRÈS épuisement des reprises.
+    retryWithBackoff(() => hydrate(), [1_000, 3_000, 6_000])
       .then((serverState) => {
         if (cancelled) return;
         dispatch({ type: 'SET_STATE', payload: serverState });
