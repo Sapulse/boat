@@ -303,6 +303,35 @@ async function main() {
     check('DELETE->404 traité comme succès (déjà supprimé)', outboxSize(storage) === 0);
   }
 
+  section('404 sur PATCH : op OBSOLÈTE retirée (file NON bloquée, correctif 4.1)');
+  {
+    const srv = makeServer(getEmptyState());
+    const storage = makeStorage();
+    const { repo, cache, syncEvents, persist } = makeRepo(srv, storage);
+    repo.addCommercial({ name: 'Fred', active: true });
+    const fredId = cache().commercials[0].id;
+    const leadId = repo.addLead(makeLead({ commercialId: fredId }));
+    persist();
+    await wait(30);
+    check('lead créé + confirmé (file vide)', outboxSize(storage) === 0);
+
+    // Le serveur renvoie 404 sur le PATCH (entité « disparue » côté serveur).
+    srv.respondWith = (m) => (m === 'PATCH' ? { status: 404 } : null);
+    repo.updateLead(leadId, { status: 'perdu' });
+    persist();
+    await wait(30);
+    check('PATCH->404 traité comme succès : op RETIRÉE (pas failed)', outboxSize(storage) === 0);
+    check('AUCUN événement failed (file non bloquée)', !syncEvents.some(e => e.status === 'failed'));
+
+    // File NON bloquée : l'op SUIVANTE (serveur OK) part bien.
+    srv.respondWith = null;
+    const before = srv.received.length;
+    repo.updateLead(leadId, { status: 'contacte' });
+    persist();
+    await wait(30);
+    check('op suivante ENVOYÉE (file non bloquée)', srv.received.length > before && outboxSize(storage) === 0);
+  }
+
   section('Timeout (requête qui pend) : abort -> échec transitoire -> retry livre');
   {
     const srv = makeServer(getEmptyState());

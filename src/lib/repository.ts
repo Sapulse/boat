@@ -358,7 +358,11 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
         on401(res2.status);
         throw new SendError(res2.status, `PATCH /${op.entity}/${op.entityId} -> ${res2.status}`);
       }
-      if (res.status === 404 && op.method === 'DELETE') return; // déjà supprimé
+      // Cible disparue (404) sur DELETE ou PATCH -> l'op est OBSOLÈTE (l'entité
+      // n'existe plus) : on la CONFIRME (retrait de la file) au lieu de la marquer
+      // 'failed', ce qui BLOQUERAIT toute la file FIFO derrière. Un update/suppression
+      // sur une entité absente n'a aucun sens ; le 404 (P2025) est autoritatif.
+      if (res.status === 404 && (op.method === 'DELETE' || op.method === 'PATCH')) return;
       on401(res.status); // session expirée -> l'app réaffiche le login
       let detail = '';
       try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
