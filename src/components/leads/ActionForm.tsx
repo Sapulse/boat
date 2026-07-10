@@ -3,6 +3,7 @@ import type { LeadAction, ActionType, LeadStatus } from '../../data/types';
 import { ACTION_TYPES, LEAD_STATUSES } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
+import { useSubmitLock } from '../../hooks/useSubmitLock';
 
 interface ActionFormProps {
   leadId: string;
@@ -28,9 +29,12 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
     nextActionDate: action?.nextActionDate ?? '',
   });
 
+  // Verrou anti-double-soumission (correctif #2) : pas de double action créée.
+  const { locked, guard } = useSubmitLock();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
+    guard(() => onSave({
       leadId,
       type: form.type,
       date: form.date,
@@ -40,7 +44,7 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
       newStatus: form.newStatus || undefined,
       nextActionType: form.nextActionType || undefined,
       nextActionDate: form.nextActionDate || undefined,
-    });
+    }));
   };
 
   return (
@@ -102,7 +106,7 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
 
       <div className="flex justify-end gap-3 pt-2">
         <button type="button" onClick={onCancel} className="btn-secondary btn-sm">Annuler</button>
-        <button type="submit" className="btn-primary btn-sm">{isEdit ? 'Enregistrer' : "Ajouter l'action"}</button>
+        <button type="submit" className="btn-primary btn-sm" disabled={locked}>{isEdit ? 'Enregistrer' : "Ajouter l'action"}</button>
       </div>
     </form>
   );

@@ -3,6 +3,7 @@ import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
+import { useSubmitLock } from '../../hooks/useSubmitLock';
 
 interface LeadFormProps {
   lead?: Lead;
@@ -42,6 +43,8 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
   // Source desormais OBLIGATOIRE a la creation (au moins en saisie manuelle).
   // Validation unique dans handleSubmit -> couvre les 2 rendus (rapide/complet).
   const [sourceError, setSourceError] = useState(false);
+  // Verrou anti-double-soumission (correctif #2) : un double-clic ne crée pas 2 leads.
+  const { locked, guard } = useSubmitLock();
 
   const update = (field: string, value: string | number | null) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -53,14 +56,14 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
       setSourceError(true);
       return;
     }
-    onSave({
+    guard(() => onSave({
       ...form,
       createdAt: lead?.createdAt ?? toISODate(new Date()),
       lastActionDate: lead?.lastActionDate ?? '',
       signedAt: lead?.signedAt ?? '',
       lostAt: lead?.lostAt ?? '',
       reportedAt: lead?.reportedAt ?? '',
-    } as Omit<Lead, 'id'>);
+    } as Omit<Lead, 'id'>));
   };
 
   if (quickMode) {
@@ -140,7 +143,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
-          <button type="submit" className="btn-primary">
+          <button type="submit" className="btn-primary" disabled={locked}>
             {lead ? 'Enregistrer' : 'Créer le lead'}
           </button>
         </div>
@@ -332,7 +335,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
 
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
         <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="btn-primary" disabled={locked}>
           {lead ? 'Enregistrer' : 'Créer le lead'}
         </button>
       </div>

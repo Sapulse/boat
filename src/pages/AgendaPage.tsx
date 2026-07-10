@@ -14,6 +14,7 @@ import {
   pointerWithin, rectIntersection, type CollisionDetection, type DragEndEvent,
 } from '@dnd-kit/core';
 import { useApp } from '../context/useApp';
+import { useSubmitLock } from '../hooks/useSubmitLock';
 import Modal from '../components/ui/Modal';
 import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo, AGENDA_HOUR_START, AGENDA_SLOT_MIN, AGENDA_SCROLL_TO_HOUR } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
@@ -941,10 +942,12 @@ function CalendarEventModal({ existing, initialDate, initialTime, commercials, o
 
   const endTimeInvalid = !!endTime && !isEndAfterStart(time, endTime);
   const canSave = !!title.trim() && !!date && !endTimeInvalid;
+  // Verrou anti-double-soumission (correctif #2) : pas de double événement créé.
+  const { locked, guard } = useSubmitLock();
 
   const submit = () => {
     if (!canSave) return;
-    onSave({
+    guard(() => onSave({
       title: title.trim(),
       date,
       time: time || undefined,
@@ -952,7 +955,7 @@ function CalendarEventModal({ existing, initialDate, initialTime, commercials, o
       commercialId: commercialId || undefined,
       category,
       note: note.trim() || undefined,
-    });
+    }));
   };
 
   return (
@@ -1003,7 +1006,7 @@ function CalendarEventModal({ existing, initialDate, initialTime, commercials, o
             </button>
           )}
           <button onClick={onClose} className="btn-secondary btn-sm ml-auto">Annuler</button>
-          <button onClick={submit} disabled={!canSave} className="btn-primary btn-sm disabled:opacity-50">
+          <button onClick={submit} disabled={!canSave || locked} className="btn-primary btn-sm disabled:opacity-50">
             {existing ? 'Enregistrer' : 'Créer'}
           </button>
         </div>

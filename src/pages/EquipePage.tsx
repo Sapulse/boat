@@ -4,9 +4,11 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { useApp } from '../context/useApp';
 import { formatCurrency } from '../lib/utils';
 import { ACTIVE_STATUSES } from '../data/constants';
+import { useSubmitLock } from '../hooks/useSubmitLock';
 
 export default function EquipePage() {
   const { state, updateLead, addCommercial, updateCommercial, toggleCommercial } = useApp();
+  const { locked, guard } = useSubmitLock();
 
   const [newName, setNewName] = useState('');
   const [editDraft, setEditDraft] = useState<{ id: string; name: string; email: string; signature: string } | null>(null);
@@ -42,8 +44,7 @@ export default function EquipePage() {
   const handleAdd = () => {
     const name = newName.trim();
     if (!name) return;
-    addCommercial({ name, active: true });
-    setNewName('');
+    guard(() => { addCommercial({ name, active: true }); setNewName(''); });
   };
 
   const openEdit = (id: string, name: string, email?: string, signature?: string) => {
@@ -102,7 +103,7 @@ export default function EquipePage() {
           />
           <button
             onClick={handleAdd}
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || locked}
             className="btn-primary btn-sm"
           >
             <Plus className="w-4 h-4" />
