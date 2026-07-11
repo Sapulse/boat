@@ -100,6 +100,7 @@ export default function EquipePage() {
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            autoFocus
           />
           <button
             onClick={handleAdd}

@@ -18,6 +18,7 @@ import { buildWhatsApp } from '../lib/whatsapp';
 import { buildCommunicationAction } from '../lib/communication';
 import { generateVCard } from '../lib/vcard';
 import { isEndAfterStart } from '../lib/agenda';
+import { useAutoReveal } from '../hooks/useAutoReveal';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
 export default function LeadDetailPage() {
@@ -29,6 +30,11 @@ export default function LeadDetailPage() {
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingNextAction, setEditingNextAction] = useState(false);
   const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string; endTime: string }>({ type: '', date: '', time: '', endTime: '' });
+  // Confort de navigation (A1) : à l'ouverture d'un formulaire inline, on défile
+  // jusqu'à lui (dans <main>) + focus le 1er champ. Un ref par bloc inline.
+  const addActionRef = useAutoReveal<HTMLDivElement>(showActionForm);
+  const editActionRef = useAutoReveal<HTMLDivElement>(editingActionId !== null);
+  const nextActionRef = useAutoReveal<HTMLDivElement>(editingNextAction);
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showSmsMenu, setShowSmsMenu] = useState(false);
   const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
@@ -407,7 +413,7 @@ export default function LeadDetailPage() {
               <button onClick={() => setShowActionForm(true)} className="btn-primary btn-sm"><Plus className="w-3 h-3" /> Action</button>
             </div>
             {showActionForm && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div ref={addActionRef} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <ActionForm leadId={lead.id} onSave={(action) => { addAction(action); setShowActionForm(false); }} onCancel={() => setShowActionForm(false)} />
               </div>
             )}
@@ -415,7 +421,7 @@ export default function LeadDetailPage() {
               <div className="space-y-3">
                 {actions.map(action => (
                   editingActionId === action.id ? (
-                    <div key={action.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div key={action.id} ref={editActionRef} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <ActionForm
                         leadId={lead.id}
                         action={action}
@@ -464,7 +470,7 @@ export default function LeadDetailPage() {
               <ExternalLink className="w-4 h-4 text-primary-600" /> Prochaine action
             </h3>
             {editingNextAction ? (
-              <div className="space-y-3">
+              <div ref={nextActionRef} className="space-y-3">
                 <div>
                   <label className="label">Type</label>
                   <select className="select" value={nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, type: e.target.value as ActionType | '' }))}>

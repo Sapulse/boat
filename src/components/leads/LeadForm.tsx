@@ -102,7 +102,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="label">Prénom *</label>
-            <input className="input" value={form.firstName} onChange={e => update('firstName', e.target.value)} required />
+            <input className="input" value={form.firstName} onChange={e => update('firstName', e.target.value)} required autoFocus />
           </div>
           <div>
             <label className="label">Nom *</label>
@@ -192,6 +192,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
             value={form.firstName}
             onChange={e => update('firstName', e.target.value)}
             required
+            autoFocus
           />
         </div>
         <div>
