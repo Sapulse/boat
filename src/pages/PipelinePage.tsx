@@ -16,9 +16,11 @@ import {
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { useToast } from '../context/useToast';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
+import StatusConfirmModal, { type StatusConfirmExtras } from '../components/leads/StatusConfirmModal';
 import { formatCurrency, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn } from '../lib/utils';
-import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, NO_COMMERCIAL_FILTER } from '../data/constants';
+import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, NO_COMMERCIAL_FILTER, statusRequiresConfirmation } from '../data/constants';
 import type { Lead, LeadStatus } from '../data/types';
 
 const PRIMARY_STATUSES: LeadStatus[] = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion'];
@@ -158,7 +160,12 @@ function Column({ status, leads, collapsed, onToggle }: { status: LeadStatus; le
 
 export default function PipelinePage() {
   const { state, updateLeadStatus } = useApp();
+  const toast = useToast();
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  // Drop sur une colonne sensible (Signé) : la bascule attend la confirmation
+  // (B1). On stocke l'id (pas l'objet) pour relire le lead frais au rendu.
+  const [pendingDrop, setPendingDrop] = useState<{ leadId: string; status: LeadStatus } | null>(null);
+  const pendingLead = pendingDrop ? state.leads.find(l => l.id === pendingDrop.leadId) : undefined;
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterCommercial, setFilterCommercial] = useState('');
@@ -222,8 +229,23 @@ export default function PipelinePage() {
 
     const currentLead = state.leads.find(l => l.id === active.id);
     if (currentLead && currentLead.status !== newStatus) {
+      if (statusRequiresConfirmation(newStatus)) {
+        // La carte reste dans sa colonne d'origine tant que la vente n'est pas
+        // confirmée (annuler = aucun changement).
+        setPendingDrop({ leadId: currentLead.id, status: newStatus });
+        return;
+      }
       updateLeadStatus(currentLead.id, newStatus);
     }
+  };
+
+  const confirmPendingDrop = (extras: StatusConfirmExtras) => {
+    if (!pendingDrop) return;
+    updateLeadStatus(pendingDrop.leadId, pendingDrop.status, extras);
+    setPendingDrop(null);
+    toast.success(extras.quoteAmount !== undefined
+      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
+      : 'Statut mis à jour');
   };
 
   // Drag annule (Echap, perte du pointeur) : sans ce handler, l'overlay
@@ -308,6 +330,15 @@ export default function PipelinePage() {
           {activeLead && <LeadCard lead={activeLead} overlay />}
         </DragOverlay>
       </DndContext>
+
+      {pendingDrop && pendingLead && (
+        <StatusConfirmModal
+          lead={pendingLead}
+          status={pendingDrop.status}
+          onConfirm={confirmPendingDrop}
+          onCancel={() => setPendingDrop(null)}
+        />
+      )}
     </div>
   );
 }

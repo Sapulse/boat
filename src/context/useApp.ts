@@ -27,7 +27,7 @@ export interface AppContextType {
   addLead: (lead: Omit<Lead, 'id'>) => string;
   updateLead: (id: string, data: Partial<Lead>) => void;
   deleteLead: (id: string) => void;
-  updateLeadStatus: (id: string, status: LeadStatus) => void;
+  updateLeadStatus: (id: string, status: LeadStatus, extras?: { quoteAmount?: number }) => void;
   addAction: (action: Omit<LeadAction, 'id'>) => void;
   updateAction: (id: string, data: Partial<LeadAction>) => void;
   deleteAction: (id: string) => void;

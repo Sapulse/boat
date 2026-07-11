@@ -387,6 +387,39 @@ section('Isolation SET_NEXT_ACTION — ne touche que nextActionType/nextActionDa
 }
 
 // ---------------------------------------------------------------------------
+// B1 — UPDATE_LEAD_STATUS avec montant (confirmation de signature)
+// ---------------------------------------------------------------------------
+
+section('B1 — bascule signe AVEC quoteAmount : montant ecrit + jalon pose (atomique)');
+{
+  const lead = makeLead({ status: 'negociation', quoteAmount: null, budget: 50000 });
+  const state = makeState({ leads: [lead] });
+  const s = reducer(state, { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'signe', quoteAmount: 62000 } });
+  check('statut passe a signe', s.leads[0].status === 'signe');
+  check('quoteAmount ecrit (62000)', s.leads[0].quoteAmount === 62000, `=${s.leads[0].quoteAmount}`);
+  check('signedAt pose', !!s.leads[0].signedAt);
+}
+
+section('B1 — bascule SANS quoteAmount : montant existant PRESERVE (non ecrase par undefined)');
+{
+  const lead = makeLead({ status: 'negociation', quoteAmount: 45000 });
+  const state = makeState({ leads: [lead] });
+  const s = reducer(state, { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'en_conclusion' } });
+  check('statut change', s.leads[0].status === 'en_conclusion');
+  check('quoteAmount intact (45000)', s.leads[0].quoteAmount === 45000, `=${s.leads[0].quoteAmount}`);
+}
+
+section('B1 — quoteAmount ne fuit pas sur les autres leads ; re-signature ecrase le montant');
+{
+  const lead = makeLead({ status: 'negociation', quoteAmount: 45000 });
+  const other = makeLead({ id: 'lead-2', quoteAmount: 10000 });
+  const state = makeState({ leads: [lead, other] });
+  const s = reducer(state, { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'signe', quoteAmount: 48000 } });
+  check('montant corrige (48000)', s.leads[0].quoteAmount === 48000);
+  check('autre lead meme reference (montant intact)', s.leads[1] === other && s.leads[1].quoteAmount === 10000);
+}
+
+// ---------------------------------------------------------------------------
 // Templates — ADD / UPDATE / DELETE confines a state.templates + garde min-1
 // ---------------------------------------------------------------------------
 

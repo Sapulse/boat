@@ -7,7 +7,10 @@ import { useSubmitLock } from '../../hooks/useSubmitLock';
 
 interface ActionFormProps {
   leadId: string;
-  onSave: (action: Omit<LeadAction, 'id'>) => void;
+  // extras (B1) : quand l'action bascule le lead en Signé, le montant de la
+  // vente est saisi ICI (champ inline) et remonte au parent qui l'écrit sur le
+  // lead — le formulaire ne dispatch rien lui-même.
+  onSave: (action: Omit<LeadAction, 'id'>, extras?: { quoteAmount?: number }) => void;
   onCancel: () => void;
   // Si fournie -> mode edition : le formulaire est pre-rempli et le bloc
   // "Changer statut / Prochaine action" (declencheurs d'effets de bord propres a
@@ -18,6 +21,7 @@ interface ActionFormProps {
 export default function ActionForm({ leadId, onSave, onCancel, action }: ActionFormProps) {
   const { state } = useApp();
   const isEdit = !!action;
+  const lead = state.leads.find(l => l.id === leadId);
   const [form, setForm] = useState({
     type: action?.type ?? 'appel' as ActionType,
     date: action?.date ?? toISODate(new Date()),
@@ -28,12 +32,19 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
     nextActionType: (action?.nextActionType ?? '') as ActionType | '',
     nextActionDate: action?.nextActionDate ?? '',
   });
+  // Montant de la vente (B1) : requis seulement si newStatus === 'signe'.
+  // Pré-rempli devis ?? budget — cas nominal : rien à retaper.
+  const [saleAmount, setSaleAmount] = useState(String(lead?.quoteAmount ?? lead?.budget ?? ''));
+  const parsedAmount = Number(saleAmount);
+  const signing = form.newStatus === 'signe';
+  const amountValid = saleAmount.trim() !== '' && Number.isFinite(parsedAmount) && parsedAmount > 0;
 
   // Verrou anti-double-soumission (correctif #2) : pas de double action créée.
   const { locked, guard } = useSubmitLock();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (signing && !amountValid) return; // ceinture : l'input required/min bloque déjà
     guard(() => onSave({
       leadId,
       type: form.type,
@@ -44,7 +55,7 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
       newStatus: form.newStatus || undefined,
       nextActionType: form.nextActionType || undefined,
       nextActionDate: form.nextActionDate || undefined,
-    }));
+    }, signing ? { quoteAmount: parsedAmount } : undefined));
   };
 
   return (
@@ -101,6 +112,25 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
             <label className="label">Date prochaine action</label>
             <input className="input" type="date" value={form.nextActionDate} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} />
           </div>
+          {signing && (
+            <div className="md:col-span-3">
+              <label htmlFor="action-sale-amount" className="label">Montant de la vente (€) *</label>
+              <input
+                id="action-sale-amount"
+                className="input"
+                type="number"
+                min={1}
+                step="any"
+                inputMode="decimal"
+                value={saleAmount}
+                onChange={e => setSaleAmount(e.target.value)}
+                required
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Pré-rempli avec le devis/budget — ce montant alimente le chiffre d'affaires.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

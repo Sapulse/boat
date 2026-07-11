@@ -11,7 +11,8 @@ import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/Status
 import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
 import ActionForm from '../components/leads/ActionForm';
-import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel } from '../data/constants';
+import StatusConfirmModal, { type StatusConfirmExtras } from '../components/leads/StatusConfirmModal';
+import { ACTION_TYPES, getNextStatus, getPriorityInfo, getStatusLabel, statusRequiresConfirmation } from '../data/constants';
 import { formatDate, formatCurrency, getAlertLevel, getLeadFullName, daysSince, cn, isLeadActive, getLeadRisks, toISODate, hasPlannedNextAction } from '../lib/utils';
 import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/email';
 import { buildSms } from '../lib/sms';
@@ -31,6 +32,8 @@ export default function LeadDetailPage() {
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingNextAction, setEditingNextAction] = useState(false);
+  // Bascule de statut en attente de confirmation (B1 : Signé exige un montant).
+  const [pendingStatus, setPendingStatus] = useState<LeadStatus | null>(null);
   const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string; endTime: string }>({ type: '', date: '', time: '', endTime: '' });
   // Confort de navigation (A1) : à l'ouverture d'un formulaire inline, on défile
   // jusqu'à lui (dans <main>) + focus le 1er champ. Un ref par bloc inline.
@@ -73,7 +76,21 @@ export default function LeadDetailPage() {
   };
 
   const quickStatusChange = (status: LeadStatus) => {
+    // Statut sensible (Signé) : pas de bascule directe — confirmation + montant.
+    if (statusRequiresConfirmation(status)) {
+      setPendingStatus(status);
+      return;
+    }
     updateLeadStatus(lead.id, status);
+  };
+
+  const confirmPendingStatus = (extras: StatusConfirmExtras) => {
+    if (!pendingStatus) return;
+    updateLeadStatus(lead.id, pendingStatus, extras);
+    setPendingStatus(null);
+    toast.success(extras.quoteAmount !== undefined
+      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
+      : 'Statut mis à jour');
   };
 
   // Export du contact au format vCard 3.0 (.vcf) : genere la carte (helper pur)
@@ -421,7 +438,21 @@ export default function LeadDetailPage() {
             </div>
             {showActionForm && (
               <div ref={addActionRef} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <ActionForm leadId={lead.id} onSave={(action) => { addAction(action); setShowActionForm(false); toast.success('Action ajoutée'); }} onCancel={() => setShowActionForm(false)} />
+                <ActionForm
+                  leadId={lead.id}
+                  onSave={(action, extras) => {
+                    addAction(action);
+                    // Signature via le formulaire d'action (B1) : le montant
+                    // saisi inline est écrit sur le lead (updateLead séparé —
+                    // ADD_ACTION pose déjà statut + jalons à la date de l'action).
+                    if (extras?.quoteAmount !== undefined) updateLead(lead.id, { quoteAmount: extras.quoteAmount });
+                    setShowActionForm(false);
+                    toast.success(extras?.quoteAmount !== undefined
+                      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
+                      : 'Action ajoutée');
+                  }}
+                  onCancel={() => setShowActionForm(false)}
+                />
               </div>
             )}
             {actions.length > 0 ? (
@@ -584,6 +615,15 @@ export default function LeadDetailPage() {
       <Modal open={editMode} onClose={() => setEditMode(false)} title="Modifier le lead" size="xl">
         <LeadForm lead={lead} onSave={handleSave} onCancel={() => setEditMode(false)} />
       </Modal>
+
+      {pendingStatus && (
+        <StatusConfirmModal
+          lead={lead}
+          status={pendingStatus}
+          onConfirm={confirmPendingStatus}
+          onCancel={() => setPendingStatus(null)}
+        />
+      )}
     </div>
   );
 }

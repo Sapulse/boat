@@ -67,7 +67,9 @@ export interface CrmRepository {
   addLead(lead: Omit<Lead, 'id'>): string;
   updateLead(id: string, data: Partial<Lead>): void;
   deleteLead(id: string): void;
-  updateLeadStatus(id: string, status: LeadStatus): void;
+  // extras.quoteAmount (B1) : montant de la vente écrit dans la même bascule
+  // (confirmation de signature) — voir UPDATE_LEAD_STATUS dans appReducer.
+  updateLeadStatus(id: string, status: LeadStatus, extras?: { quoteAmount?: number }): void;
 
   // — Actions —
   addAction(action: Omit<LeadAction, 'id'>): void;
@@ -114,7 +116,7 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     },
     updateLead: (id, data) => dispatch({ type: 'UPDATE_LEAD', payload: { id, data } }),
     deleteLead: (id) => dispatch({ type: 'DELETE_LEAD', payload: id }),
-    updateLeadStatus: (id, status) => dispatch({ type: 'UPDATE_LEAD_STATUS', payload: { id, status } }),
+    updateLeadStatus: (id, status, extras) => dispatch({ type: 'UPDATE_LEAD_STATUS', payload: { id, status, ...extras } }),
 
     addAction: (action) => dispatch({ type: 'ADD_ACTION', payload: { ...action, id: generateId() } }),
     updateAction: (id, data) => dispatch({ type: 'UPDATE_ACTION', payload: { id, data } }),
@@ -583,7 +585,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     addLead: (lead) => { const id = base.addLead(lead); remember({ kind: 'create', entity: 'leads', id }); return id; },
     updateLead: (id, data) => { base.updateLead(id, data); remember({ kind: 'update', entity: 'leads', id }); },
     deleteLead: (id) => { base.deleteLead(id); remember({ kind: 'delete', entity: 'leads', id }); },
-    updateLeadStatus: (id, status) => { base.updateLeadStatus(id, status); remember({ kind: 'update', entity: 'leads', id }); },
+    updateLeadStatus: (id, status, extras) => { base.updateLeadStatus(id, status, extras); remember({ kind: 'update', entity: 'leads', id }); },
     setNextAction: (id, t, d, time, end) => { base.setNextAction(id, t, d, time, end); remember({ kind: 'update', entity: 'leads', id }); },
 
     // ADD_ACTION a un SIDE-EFFECT sur le lead (lastActionDate, statut, prochaine

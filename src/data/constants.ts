@@ -312,3 +312,11 @@ export function getNextStatus(current: LeadStatus): LeadStatus | null {
   if (idx === -1 || idx >= STATUS_ORDER.length - 1) return null;
   return STATUS_ORDER[idx + 1];
 }
+
+// Statuts terminaux sensibles (lot frictions UX, B1) : la bascule RAPIDE (bouton
+// "Passer à", drag & drop pipeline) doit passer par une confirmation — Signé
+// engage le CA (montant obligatoire). Le formulaire complet d'édition, lui,
+// expose déjà les champs et n'est pas concerné.
+export function statusRequiresConfirmation(status: LeadStatus): boolean {
+  return status === 'signe';
+}
