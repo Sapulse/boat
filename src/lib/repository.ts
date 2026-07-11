@@ -67,9 +67,9 @@ export interface CrmRepository {
   addLead(lead: Omit<Lead, 'id'>): string;
   updateLead(id: string, data: Partial<Lead>): void;
   deleteLead(id: string): void;
-  // extras.quoteAmount (B1) : montant de la vente écrit dans la même bascule
-  // (confirmation de signature) — voir UPDATE_LEAD_STATUS dans appReducer.
-  updateLeadStatus(id: string, status: LeadStatus, extras?: { quoteAmount?: number }): void;
+  // extras (B1/B2) : montant de la vente / motif de perte écrits dans la même
+  // bascule (confirmations) — voir UPDATE_LEAD_STATUS dans appReducer.
+  updateLeadStatus(id: string, status: LeadStatus, extras?: { quoteAmount?: number; lossReason?: string }): void;
 
   // — Actions —
   addAction(action: Omit<LeadAction, 'id'>): void;

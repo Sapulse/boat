@@ -313,10 +313,20 @@ export function getNextStatus(current: LeadStatus): LeadStatus | null {
   return STATUS_ORDER[idx + 1];
 }
 
-// Statuts terminaux sensibles (lot frictions UX, B1) : la bascule RAPIDE (bouton
-// "Passer à", drag & drop pipeline) doit passer par une confirmation — Signé
-// engage le CA (montant obligatoire). Le formulaire complet d'édition, lui,
-// expose déjà les champs et n'est pas concerné.
+// Statuts terminaux sensibles (lot frictions UX, B1/B2) : la bascule RAPIDE
+// (bouton "Passer à", drag & drop pipeline) doit passer par une confirmation —
+// Signé engage le CA (montant obligatoire), Perdu exige un motif. Le formulaire
+// complet d'édition, lui, expose déjà les champs et n'est pas concerné.
 export function statusRequiresConfirmation(status: LeadStatus): boolean {
-  return status === 'signe';
+  return status === 'signe' || status === 'perdu';
 }
+
+// Motifs de perte (B2) : liste FERMÉE pour rester agrégeable en stat ("pourquoi
+// on perd") — "Autre" ouvre un champ libre. Alignés sur les motifs du seed.
+export const LOSS_REASONS = [
+  'Budget insuffisant',
+  'Parti chez un concurrent',
+  'Projet reporté',
+  'Ne répond plus',
+  'Autre',
+] as const;

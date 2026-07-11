@@ -88,9 +88,9 @@ export default function LeadDetailPage() {
     if (!pendingStatus) return;
     updateLeadStatus(lead.id, pendingStatus, extras);
     setPendingStatus(null);
-    toast.success(extras.quoteAmount !== undefined
-      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
-      : 'Statut mis à jour');
+    if (extras.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
+    else if (extras.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);
+    else toast.success('Statut mis à jour');
   };
 
   // Export du contact au format vCard 3.0 (.vcf) : genere la carte (helper pur)
@@ -442,14 +442,16 @@ export default function LeadDetailPage() {
                   leadId={lead.id}
                   onSave={(action, extras) => {
                     addAction(action);
-                    // Signature via le formulaire d'action (B1) : le montant
-                    // saisi inline est écrit sur le lead (updateLead séparé —
-                    // ADD_ACTION pose déjà statut + jalons à la date de l'action).
+                    // Signature/perte via le formulaire d'action (B1/B2) : la
+                    // donnée saisie inline est écrite sur le lead (updateLead
+                    // séparé — ADD_ACTION pose déjà statut + jalons à la date
+                    // de l'action).
                     if (extras?.quoteAmount !== undefined) updateLead(lead.id, { quoteAmount: extras.quoteAmount });
+                    if (extras?.lossReason) updateLead(lead.id, { lossReason: extras.lossReason });
                     setShowActionForm(false);
-                    toast.success(extras?.quoteAmount !== undefined
-                      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
-                      : 'Action ajoutée');
+                    if (extras?.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
+                    else if (extras?.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);
+                    else toast.success('Action ajoutée');
                   }}
                   onCancel={() => setShowActionForm(false)}
                 />

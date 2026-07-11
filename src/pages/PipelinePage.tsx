@@ -243,9 +243,9 @@ export default function PipelinePage() {
     if (!pendingDrop) return;
     updateLeadStatus(pendingDrop.leadId, pendingDrop.status, extras);
     setPendingDrop(null);
-    toast.success(extras.quoteAmount !== undefined
-      ? `Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`
-      : 'Statut mis à jour');
+    if (extras.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
+    else if (extras.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);
+    else toast.success('Statut mis à jour');
   };
 
   // Drag annule (Echap, perte du pointeur) : sans ce handler, l'overlay

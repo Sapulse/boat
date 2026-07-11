@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import type { LeadAction, ActionType, LeadStatus } from '../../data/types';
-import { ACTION_TYPES, LEAD_STATUSES } from '../../data/constants';
+import { ACTION_TYPES, LEAD_STATUSES, LOSS_REASONS } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 import { useSubmitLock } from '../../hooks/useSubmitLock';
 
 interface ActionFormProps {
   leadId: string;
-  // extras (B1) : quand l'action bascule le lead en Signé, le montant de la
-  // vente est saisi ICI (champ inline) et remonte au parent qui l'écrit sur le
-  // lead — le formulaire ne dispatch rien lui-même.
-  onSave: (action: Omit<LeadAction, 'id'>, extras?: { quoteAmount?: number }) => void;
+  // extras (B1/B2) : quand l'action bascule le lead en Signé (montant) ou en
+  // Perdu (motif), la donnée est saisie ICI (champ inline) et remonte au parent
+  // qui l'écrit sur le lead — le formulaire ne dispatch rien lui-même.
+  onSave: (action: Omit<LeadAction, 'id'>, extras?: { quoteAmount?: number; lossReason?: string }) => void;
   onCancel: () => void;
   // Si fournie -> mode edition : le formulaire est pre-rempli et le bloc
   // "Changer statut / Prochaine action" (declencheurs d'effets de bord propres a
@@ -38,6 +38,13 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
   const parsedAmount = Number(saleAmount);
   const signing = form.newStatus === 'signe';
   const amountValid = saleAmount.trim() !== '' && Number.isFinite(parsedAmount) && parsedAmount > 0;
+  // Motif de perte (B2) : requis seulement si newStatus === 'perdu' ; liste
+  // fermée, "Autre" ouvre un champ libre requis.
+  const [lossReason, setLossReason] = useState('');
+  const [lossCustom, setLossCustom] = useState('');
+  const losing = form.newStatus === 'perdu';
+  const lossOther = lossReason === 'Autre';
+  const lossValid = lossReason !== '' && (!lossOther || lossCustom.trim() !== '');
 
   // Verrou anti-double-soumission (correctif #2) : pas de double action créée.
   const { locked, guard } = useSubmitLock();
@@ -45,6 +52,12 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (signing && !amountValid) return; // ceinture : l'input required/min bloque déjà
+    if (losing && !lossValid) return;    // idem : select/input required
+    const extras = signing
+      ? { quoteAmount: parsedAmount }
+      : losing
+        ? { lossReason: lossOther ? lossCustom.trim() : lossReason }
+        : undefined;
     guard(() => onSave({
       leadId,
       type: form.type,
@@ -55,7 +68,7 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
       newStatus: form.newStatus || undefined,
       nextActionType: form.nextActionType || undefined,
       nextActionDate: form.nextActionDate || undefined,
-    }, signing ? { quoteAmount: parsedAmount } : undefined));
+    }, extras));
   };
 
   return (
@@ -130,6 +143,36 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
                 Pré-rempli avec le devis/budget — ce montant alimente le chiffre d'affaires.
               </p>
             </div>
+          )}
+          {losing && (
+            <>
+              <div className={lossOther ? '' : 'md:col-span-3'}>
+                <label htmlFor="action-loss-reason" className="label">Motif de la perte *</label>
+                <select
+                  id="action-loss-reason"
+                  className="select"
+                  value={lossReason}
+                  onChange={e => setLossReason(e.target.value)}
+                  required
+                >
+                  <option value="">— Choisir un motif —</option>
+                  {LOSS_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              {lossOther && (
+                <div className="md:col-span-2">
+                  <label htmlFor="action-loss-custom" className="label">Précisez le motif *</label>
+                  <input
+                    id="action-loss-custom"
+                    className="input"
+                    value={lossCustom}
+                    onChange={e => setLossCustom(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

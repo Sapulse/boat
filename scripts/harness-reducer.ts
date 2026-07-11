@@ -420,6 +420,30 @@ section('B1 — quoteAmount ne fuit pas sur les autres leads ; re-signature ecra
 }
 
 // ---------------------------------------------------------------------------
+// B2 — UPDATE_LEAD_STATUS avec motif de perte (confirmation Perdu)
+// ---------------------------------------------------------------------------
+
+section('B2 — bascule perdu AVEC lossReason : motif ecrit + jalon lostAt pose (atomique)');
+{
+  const lead = makeLead({ status: 'negociation', lossReason: '' });
+  const state = makeState({ leads: [lead] });
+  const s = reducer(state, { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'perdu', lossReason: 'Parti chez un concurrent' } });
+  check('statut passe a perdu', s.leads[0].status === 'perdu');
+  check('lossReason ecrit', s.leads[0].lossReason === 'Parti chez un concurrent', `=${s.leads[0].lossReason}`);
+  check('lostAt pose', !!s.leads[0].lostAt);
+  check('quoteAmount non touche', s.leads[0].quoteAmount === lead.quoteAmount);
+}
+
+section('B2 — bascule SANS lossReason : motif existant PRESERVE (non ecrase par undefined)');
+{
+  const lead = makeLead({ status: 'perdu', lossReason: 'Budget insuffisant', lostAt: '2026-06-01' });
+  const state = makeState({ leads: [lead] });
+  const s = reducer(state, { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'contacte' } });
+  check('statut change (reactivation)', s.leads[0].status === 'contacte');
+  check('lossReason intact', s.leads[0].lossReason === 'Budget insuffisant', `=${s.leads[0].lossReason}`);
+}
+
+// ---------------------------------------------------------------------------
 // Templates — ADD / UPDATE / DELETE confines a state.templates + garde min-1
 // ---------------------------------------------------------------------------
 

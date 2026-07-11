@@ -13,10 +13,11 @@ export type Action =
   | { type: 'ADD_LEAD'; payload: Lead }
   | { type: 'UPDATE_LEAD'; payload: { id: string; data: Partial<Lead> } }
   | { type: 'DELETE_LEAD'; payload: string }
-  // quoteAmount optionnel (B1) : la confirmation de signature écrit le montant
-  // de la vente DANS la même dispatch que la bascule -> atomique (une seule op
-  // outbox, pas d'état intermédiaire "signé sans montant").
-  | { type: 'UPDATE_LEAD_STATUS'; payload: { id: string; status: LeadStatus; quoteAmount?: number } }
+  // quoteAmount / lossReason optionnels (B1/B2) : la confirmation de signature
+  // (montant) ou de perte (motif) écrit la donnée DANS la même dispatch que la
+  // bascule -> atomique (une seule op outbox, pas d'état intermédiaire "signé
+  // sans montant" / "perdu sans motif").
+  | { type: 'UPDATE_LEAD_STATUS'; payload: { id: string; status: LeadStatus; quoteAmount?: number; lossReason?: string } }
   | { type: 'ADD_ACTION'; payload: LeadAction }
   | { type: 'UPDATE_ACTION'; payload: { id: string; data: Partial<LeadAction> } }
   | { type: 'DELETE_ACTION'; payload: string }
@@ -194,9 +195,10 @@ export function reducer(state: AppState, action: Action): AppState {
             ? {
                 ...l,
                 status: action.payload.status,
-                // Absent (undefined) = ne pas toucher au montant existant ; la
-                // clause conditionnelle évite d'écraser quoteAmount avec undefined.
+                // Absent (undefined) = ne pas toucher à la valeur existante ; les
+                // clauses conditionnelles évitent d'écraser avec undefined.
                 ...(action.payload.quoteAmount !== undefined ? { quoteAmount: action.payload.quoteAmount } : {}),
+                ...(action.payload.lossReason !== undefined ? { lossReason: action.payload.lossReason } : {}),
                 ...statusMilestoneDates(l, action.payload.status, toISODate(new Date())),
               }
             : l
