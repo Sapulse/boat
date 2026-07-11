@@ -5,7 +5,7 @@ import { createLocalStorageRepository, createApiRepository, getInitialCrmState, 
 import { USE_API } from '../lib/flags';
 import LoginScreen from '../components/auth/LoginScreen';
 import { retryWithBackoff } from '../lib/retry';
-import { isEditing } from '../lib/refreshGuard';
+import { isEditing, shouldRefreshNow } from '../lib/refreshGuard';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
 import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
@@ -113,40 +113,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [repository]);
 
-  // Re-hydratation multi-postes (correctif audit #3, v2) — réalignement sur le
-  // serveur au retour d'onglet (focus) / de réseau (online), SOUS garde-fous
-  // stricts (ce qui manquait à la v1 revertée) :
+  // Re-hydratation multi-postes (correctif audit #3, v2 + POLLING live) —
+  // réalignement AUTOMATIQUE sur le serveur, SOUS garde-fous stricts (ce qui
+  // manquait à la v1 revertée) :
   //  - les gardes OUTBOX (jamais si écriture en attente/en vol/capturée, + double
   //    vérification autour du fetch) vivent DANS repository.sync.refresh ;
-  //  - ICI : jamais si onglet caché, jamais en SAISIE active (isEditing),
-  //    debounce (800 ms) + throttle (10 s) pour ne pas spammer le serveur.
-  // Échec silencieux (aucun écran bloquant). Tree-shaké en flag off (USE_API).
+  //  - ICI (shouldRefreshNow) : jamais si onglet caché, jamais en SAISIE active,
+  //    et espacement minimal (3 s) partagé entre poll + événements -> pas de
+  //    double déclenchement.
+  // Déclencheurs : POLL toutes les 5 s (setTimeout récursif, EN PAUSE quand
+  // l'onglet est caché), + retour d'onglet (focus, refresh immédiat) + retour
+  // réseau (online, debouncé). Échec silencieux. Tree-shaké en flag off (USE_API).
   useEffect(() => {
     if (!USE_API || !repository.sync) return;
     const doRefresh = repository.sync.refresh;
     const DEBOUNCE_MS = 800;
-    const MIN_INTERVAL_MS = 10_000;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const MIN_SPACING_MS = 3_000; // déduplique un focus/online juste après un poll
+    const POLL_MS = 5_000;        // cadence du rafraîchissement automatique
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let lastRun = 0;
-    const trigger = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (document.visibilityState !== 'visible') return;
-        const hasOpenDialog = !!document.querySelector('[role="dialog"]');
-        if (isEditing(document.activeElement, hasOpenDialog)) return;
-        const now = Date.now();
-        if (now - lastRun < MIN_INTERVAL_MS) return;
-        lastRun = now;
-        void doRefresh();
-      }, DEBOUNCE_MS);
+
+    // Décision + exécution gardée, partagée par le poll ET les événements.
+    const maybeRefresh = () => {
+      const hasOpenDialog = !!document.querySelector('[role="dialog"]');
+      const editing = isEditing(document.activeElement, hasOpenDialog);
+      const visible = document.visibilityState === 'visible';
+      if (!shouldRefreshNow({ visible, editing, now: Date.now(), lastRun, minSpacingMs: MIN_SPACING_MS })) return;
+      lastRun = Date.now();
+      void doRefresh();
     };
-    const onVisible = () => { if (document.visibilityState === 'visible') trigger(); };
-    window.addEventListener('online', trigger);
-    document.addEventListener('visibilitychange', onVisible);
+
+    // Moteur de polling : setTimeout récursif, ré-armé UNIQUEMENT si l'onglet est
+    // visible -> se met en pause tout seul en arrière-plan (zéro requête).
+    const scheduleNext = () => {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(() => {
+        maybeRefresh();
+        if (document.visibilityState === 'visible') scheduleNext();
+      }, POLL_MS);
+    };
+    const startPolling = () => { if (document.visibilityState === 'visible') scheduleNext(); };
+
+    // Événements réseau : debounce pour coalescer les rafales.
+    const onOnline = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(maybeRefresh, DEBOUNCE_MS);
+    };
+    // Retour/passage d'onglet : refresh immédiat + reprise du poll ; caché -> pause.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { maybeRefresh(); startPolling(); }
+      else clearTimeout(pollTimer);
+    };
+
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+    startPolling(); // démarre la boucle si l'onglet est déjà visible au montage
+
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener('online', trigger);
-      document.removeEventListener('visibilitychange', onVisible);
+      clearTimeout(debounceTimer);
+      clearTimeout(pollTimer);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [repository]);
 

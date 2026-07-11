@@ -7,7 +7,7 @@
  * en contexte de saisie (modale ouverte OU champ éditable focalisé) -> ce que
  * l'utilisateur tape n'est jamais écrasé par un réalignement serveur.
  */
-import { isEditing } from '../src/lib/refreshGuard';
+import { isEditing, shouldRefreshNow } from '../src/lib/refreshGuard';
 
 let passed = 0;
 let failed = 0;
@@ -35,6 +35,19 @@ function main() {
   check('lien focalisé (A) -> false', isEditing({ tagName: 'A' }, false) === false);
   check('DIV non éditable focalisé -> false', isEditing({ tagName: 'DIV', isContentEditable: false }, false) === false);
   check('activeElement undefined -> false', isEditing(undefined, false) === false);
+
+  section('shouldRefreshNow (POLLING) : visible + pas de saisie + espacement min');
+  const SP = 3000; // min-spacing (comme AppContext)
+  const base = { visible: true, editing: false, now: 100000, lastRun: 0, minSpacingMs: SP };
+  check('visible + pas de saisie + espacé -> true', shouldRefreshNow(base) === true);
+  check('onglet caché -> false (pause arrière-plan)', shouldRefreshNow({ ...base, visible: false }) === false);
+  check('saisie active -> false (frappe protégée)', shouldRefreshNow({ ...base, editing: true }) === false);
+
+  section('shouldRefreshNow : espacement minimal (déduplique focus+poll)');
+  check('dans le min-spacing (2999 ms) -> false', shouldRefreshNow({ ...base, now: 2999, lastRun: 0 }) === false);
+  check('pile au min-spacing (3000 ms) -> true', shouldRefreshNow({ ...base, now: 3000, lastRun: 0 }) === true);
+  check('poll 5 s passe le min-spacing 3 s -> true', shouldRefreshNow({ ...base, now: 5000, lastRun: 0 }) === true);
+  check('focus 1 s après un poll -> false (pas de double)', shouldRefreshNow({ ...base, now: 6000, lastRun: 5000 }) === false);
 
   console.log(`\n${'='.repeat(50)}`);
   console.log(`Harnais refresh-guard : ${passed} OK, ${failed} KO (${passed + failed} assertions)`);

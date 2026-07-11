@@ -18,3 +18,26 @@ export function isEditing(
   const tag = active.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable === true;
 }
+
+/**
+ * Décide si une re-hydratation doit se déclencher MAINTENANT — partagé par le
+ * polling (timer 5 s) ET les événements (focus/online). PURE (tout injecté) ->
+ * testable au harnais. Ne couvre PAS les gardes outbox (écriture en attente/en
+ * vol), qui vivent dans `repository.sync.refresh` (double-garde autour du fetch).
+ *
+ * Déclenche seulement si : onglet visible, aucune saisie active, et un espacement
+ * minimal écoulé depuis le dernier refresh (déduplique un focus/online qui tombe
+ * juste après un poll — pas de double déclenchement).
+ */
+export function shouldRefreshNow(g: {
+  visible: boolean;
+  editing: boolean;
+  now: number;
+  lastRun: number;
+  minSpacingMs: number;
+}): boolean {
+  if (!g.visible) return false;
+  if (g.editing) return false;
+  if (g.now - g.lastRun < g.minSpacingMs) return false;
+  return true;
+}
