@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import logo from '../../assets/logo.png';
+import { loginErrorMessage } from '../../lib/loginErrors';
 
 // Écran de connexion (Lot 7 allégé — compte unique partagé). Rendu par AppProvider
 // UNIQUEMENT en flag on, tant que la session n'est pas établie. Aucun secret ici :
@@ -19,7 +20,9 @@ export default function LoginScreen({ onLogin }: { onLogin: (username: string, p
     try {
       await onLogin(username, password);
     } catch (err) {
-      setError((err as Error).message);
+      // Message humain (B4) — le détail technique part en console, pas à l'écran.
+      console.warn('[login]', err);
+      setError(loginErrorMessage(err));
     } finally {
       setBusy(false);
     }

@@ -7,6 +7,7 @@ import type { Action } from '../context/appReducer';
 import { getInitialState as loadInitialState } from '../context/appReducer';
 import { saveState } from './storage';
 import { generateId } from './utils';
+import { LoginError } from './loginErrors';
 import { EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { createOutbox, OutboxFullError, type OutboxOp, type StorageLike } from './outbox';
 import type { ImportPayload, ImportReport } from './importLeads';
@@ -528,7 +529,9 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     if (!res.ok) {
       let detail = '';
       try { detail = ((await res.json()) as { error?: string }).error ?? ''; } catch { /* corps non-JSON */ }
-      throw new Error(detail || (res.status === 401 ? 'Identifiants invalides' : `Connexion refusée (${res.status})`));
+      // Erreur typée avec statut (B4) : l'écran de login mappe vers un message
+      // humain (loginErrorMessage) ; le détail serveur reste pour la console.
+      throw new LoginError(res.status, detail || `Connexion refusée (${res.status})`);
     }
   };
   const logout = async (): Promise<void> => {
