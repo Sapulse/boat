@@ -10,6 +10,7 @@
  */
 import { createInterface, type Interface } from 'node:readline';
 import { hashPassword } from '../api/_lib/auth';
+import { checkPasswordStrength } from '../api/_lib/passwordPolicy';
 
 // Saisie masquée : on n'écrit sur la sortie que la question, jamais les frappes.
 function promptHidden(question: string): Promise<string> {
@@ -30,8 +31,16 @@ async function main() {
   const pw = await promptHidden('Mot de passe partagé (saisie masquée) : ');
   const pw2 = await promptHidden('Confirmer : ');
   if (pw !== pw2) { console.error('❌ Les mots de passe ne correspondent pas.'); process.exit(1); }
-  if (pw.length < 12) { console.error('❌ Trop court : 12 caractères minimum (une passphrase forte est recommandée).'); process.exit(1); }
-  console.log('\n✅ Colle cette valeur dans Vercel → Settings → Environment Variables → APP_PASSWORD_HASH (Production) :\n');
+  // Garde d'entropie (durcissement auth) : le mot de passe partagé est la SEULE
+  // barrière → on refuse de hacher un secret faible. Astuce : `openssl rand -base64 24`.
+  const verdict = checkPasswordStrength(pw);
+  if (!verdict.ok) {
+    console.error(`❌ ${verdict.reason}`);
+    console.error('   Astuce : génère un secret fort avec  openssl rand -base64 24');
+    process.exit(1);
+  }
+  console.log(`\n✅ Mot de passe accepté (~${verdict.bits} bits d'entropie estimée).`);
+  console.log('Colle cette valeur dans Vercel → Settings → Environment Variables → APP_PASSWORD_HASH (Production) :\n');
   console.log(hashPassword(pw));
   console.log('\n(Le mot de passe n\'a pas été stocké ni transmis. Pense aussi à définir APP_USERNAME et SESSION_SECRET.)');
 }
