@@ -6,6 +6,7 @@ import {
   AlertTriangle, Flame, ExternalLink, ShieldAlert, RotateCw, ChevronDown, Contact,
 } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { useToast } from '../context/useToast';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
@@ -25,6 +26,7 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, setNextAction, getLeadActions, getCommercialName, updateLeadStatus } = useApp();
+  const toast = useToast();
   const [editMode, setEditMode] = useState(false);
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
@@ -59,11 +61,13 @@ export default function LeadDetailPage() {
   const handleSave = (data: Omit<Lead, 'id'>) => {
     updateLead(lead.id, data);
     setEditMode(false);
+    toast.success('Lead mis à jour');
   };
 
   const handleDelete = () => {
     if (confirm('Supprimer ce lead definitivement ?')) {
       deleteLead(lead.id);
+      toast.info('Lead supprimé');
       navigate('/leads');
     }
   };
@@ -155,18 +159,21 @@ export default function LeadDetailPage() {
       : undefined;
     setNextAction(lead.id, nextActionDraft.type, date, time, endTime);
     setEditingNextAction(false);
+    toast.success(nextActionDraft.type ? 'Prochaine action planifiée' : 'Prochaine action effacée');
   };
   // Fin saisie mais incoherente (sans debut, ou <= debut) -> blocage + message.
   const endTimeInvalid = !!nextActionDraft.endTime && !isEndAfterStart(nextActionDraft.time, nextActionDraft.endTime);
   const clearNextAction = () => {
     setNextAction(lead.id, '', '');
     setEditingNextAction(false);
+    toast.info('Prochaine action effacée');
   };
 
   // --- Historique (Amelioration 2) : suppression confirmee, sans effet sur le lead ---
   const handleDeleteAction = (actionId: string) => {
     if (confirm("Supprimer cette action de l'historique ? (sans effet sur le statut ni les dates du lead)")) {
       deleteAction(actionId);
+      toast.info('Action supprimée');
     }
   };
 
@@ -414,7 +421,7 @@ export default function LeadDetailPage() {
             </div>
             {showActionForm && (
               <div ref={addActionRef} className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <ActionForm leadId={lead.id} onSave={(action) => { addAction(action); setShowActionForm(false); }} onCancel={() => setShowActionForm(false)} />
+                <ActionForm leadId={lead.id} onSave={(action) => { addAction(action); setShowActionForm(false); toast.success('Action ajoutée'); }} onCancel={() => setShowActionForm(false)} />
               </div>
             )}
             {actions.length > 0 ? (
@@ -425,7 +432,7 @@ export default function LeadDetailPage() {
                       <ActionForm
                         leadId={lead.id}
                         action={action}
-                        onSave={(data) => { updateAction(action.id, data); setEditingActionId(null); }}
+                        onSave={(data) => { updateAction(action.id, data); setEditingActionId(null); toast.success('Action modifiée'); }}
                         onCancel={() => setEditingActionId(null)}
                       />
                     </div>

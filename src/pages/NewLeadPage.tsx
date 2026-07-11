@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { useToast } from '../context/useToast';
 import LeadForm from '../components/leads/LeadForm';
 import type { Lead } from '../data/types';
 import { cn } from '../lib/utils';
@@ -9,10 +10,12 @@ import { cn } from '../lib/utils';
 export default function NewLeadPage() {
   const navigate = useNavigate();
   const { addLead } = useApp();
+  const toast = useToast();
   const [isQuickMode, setIsQuickMode] = useState(true);
 
   const handleSave = (data: Omit<Lead, 'id'>) => {
     const id = addLead(data);
+    toast.success('Lead créé');
     navigate(`/leads/${id}`);
   };
 

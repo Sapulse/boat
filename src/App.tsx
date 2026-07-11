@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/layout/AppLayout';
 
 // Code-splitting par route (React.lazy) : chaque page part dans son propre chunk,
@@ -30,6 +31,9 @@ export default function App() {
   return (
     <HashRouter>
       <AppProvider>
+        {/* Toasts (confort B3) : provider dans la coquille (bundle initial, léger)
+            pour que toutes les pages lazy y aient accès via useToast. */}
+        <ToastProvider>
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
@@ -54,6 +58,7 @@ export default function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+        </ToastProvider>
       </AppProvider>
     </HashRouter>
   );

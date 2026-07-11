@@ -2,12 +2,14 @@ import { useState, useMemo } from 'react';
 import { Plus, Pencil, Check, X, PowerOff, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useApp } from '../context/useApp';
+import { useToast } from '../context/useToast';
 import { formatCurrency } from '../lib/utils';
 import { ACTIVE_STATUSES } from '../data/constants';
 import { useSubmitLock } from '../hooks/useSubmitLock';
 
 export default function EquipePage() {
   const { state, updateLead, addCommercial, updateCommercial, toggleCommercial } = useApp();
+  const toast = useToast();
   const { locked, guard } = useSubmitLock();
 
   const [newName, setNewName] = useState('');
@@ -44,7 +46,7 @@ export default function EquipePage() {
   const handleAdd = () => {
     const name = newName.trim();
     if (!name) return;
-    guard(() => { addCommercial({ name, active: true }); setNewName(''); });
+    guard(() => { addCommercial({ name, active: true }); setNewName(''); toast.success('Commercial ajouté'); });
   };
 
   const openEdit = (id: string, name: string, email?: string, signature?: string) => {
