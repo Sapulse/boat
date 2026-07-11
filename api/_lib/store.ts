@@ -450,5 +450,40 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
   };
 }
 
+// ============================================================
+// Rate-limit du login (durcissement auth, commit 2) — accès à la table isolée
+// login_attempts. Le cœur pur (fenêtrage, décision) vit dans loginRateLimit.ts.
+// ============================================================
+
+/**
+ * Incrémente ATOMIQUEMENT le compteur de la clé (ip|fenêtre) et renvoie sa
+ * nouvelle valeur. `INSERT … ON CONFLICT DO UPDATE … RETURNING` = une seule
+ * instruction SQLite (writer unique) -> N requêtes parallèles obtiennent des
+ * comptes distincts, sans lecture-puis-écriture concurrente. Paramétré (pas
+ * d'interpolation) -> pas d'injection.
+ */
+export async function bumpLoginAttempt(prisma: PrismaClient, key: string, windowStart: number): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ count: number | bigint }>>`
+    INSERT INTO login_attempts ("key", "count", "windowStart")
+    VALUES (${key}, 1, ${windowStart})
+    ON CONFLICT("key") DO UPDATE SET "count" = "count" + 1
+    RETURNING "count"
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** Réinitialise le compteur d'une fenêtre (appelé sur login RÉUSSI : l'utilisateur
+ *  légitime n'est pas pénalisé par ses fautes de frappe de la même fenêtre).
+ *  Correspondance EXACTE sur la clé (pas de LIKE sur une IP d'en-tête falsifiable). */
+export async function clearLoginAttempt(prisma: PrismaClient, key: string): Promise<void> {
+  await prisma.$executeRaw`DELETE FROM login_attempts WHERE "key" = ${key}`;
+}
+
+/** Purge best-effort des fenêtres passées (borne la taille de la table). Filtre
+ *  sur la colonne entière windowStart -> aucune surface d'injection. */
+export async function purgeOldLoginAttempts(prisma: PrismaClient, cutoffSec: number): Promise<void> {
+  await prisma.$executeRaw`DELETE FROM login_attempts WHERE "windowStart" < ${cutoffSec}`;
+}
+
 // Ré-exporté pour un message d'erreur homogène si besoin côté handlers.
 export { HttpError };

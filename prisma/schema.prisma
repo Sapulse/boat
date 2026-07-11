@@ -252,3 +252,18 @@ model DefaultGoal {
 
   @@map("default_goal")
 }
+
+// ============================================================
+// LoginAttempt — compteur de tentatives de login par IP et par fenêtre
+// (durcissement auth, commit 2). Table ISOLÉE : aucune relation, aucune FK vers
+// les données métier. Purement additive. `key` = "<ip>:<bucket-15min>",
+// incrémentée par upsert atomique (cf. api/_lib/loginRateLimit.ts). Les lignes
+// de fenêtres passées sont purgées au fil de l'eau (windowStart).
+// ============================================================
+model LoginAttempt {
+  key         String @id
+  count       Int    @default(0)
+  windowStart Int
+
+  @@map("login_attempts")
+}

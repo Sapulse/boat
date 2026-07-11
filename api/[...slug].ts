@@ -12,7 +12,12 @@ import {
   saveGoals, saveMonthlyStats, saveDefaultGoal,
   bulkImport, type ImportPayload,
   restoreBackup, type RestorePayload,
+  bumpLoginAttempt, clearLoginAttempt, purgeOldLoginAttempts,
 } from './_lib/store.js';
+import {
+  clientIp, windowBucket, windowStartSec, attemptKey, isRateLimited,
+  RATE_LIMIT_WINDOW_SEC,
+} from './_lib/loginRateLimit.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
   CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal,
@@ -125,6 +130,27 @@ async function handleLogin(req: VercelRequest, res: VercelResponse): Promise<voi
   const hash = process.env.APP_PASSWORD_HASH;
   const username = process.env.APP_USERNAME;
   if (!secret || !hash || !username) { res.status(503).json({ error: 'Auth non configurée côté serveur' }); return; }
+
+  // Rate-limit par IP (durcissement) : compteur ATOMIQUE en base -> les requêtes
+  // parallèles ne contournent plus le délai anti-brute-force. On incrémente
+  // d'ABORD ; au-delà du plafond, on refuse (429) sans même vérifier le mot de
+  // passe. Fail-open : si la base est injoignable, on loggue et on continue —
+  // le mot de passe fort reste la barrière (cf. commit 1), on ne bloque pas
+  // tout le monde sur un hoquet Turso.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const bucket = windowBucket(nowSec);
+  const key = attemptKey(clientIp(req.headers), bucket);
+  try {
+    const count = await bumpLoginAttempt(prisma, key, windowStartSec(bucket));
+    void purgeOldLoginAttempts(prisma, nowSec - RATE_LIMIT_WINDOW_SEC).catch(() => {}); // best-effort
+    if (isRateLimited(count)) {
+      res.status(429).json({ error: 'Trop de tentatives de connexion — réessayez dans quelques minutes.' });
+      return;
+    }
+  } catch (e) {
+    console.warn('[login] rate-limit indisponible, fail-open :', e);
+  }
+
   const creds = body<{ username?: unknown; password?: unknown }>(req);
   const ok = typeof creds.username === 'string' && typeof creds.password === 'string'
     && creds.username === username && verifyPassword(creds.password, hash);
@@ -133,7 +159,10 @@ async function handleLogin(req: VercelRequest, res: VercelResponse): Promise<voi
     res.status(401).json({ error: 'Identifiants invalides' });
     return;
   }
-  res.setHeader('Set-Cookie', buildSessionCookie(signSession(secret, Math.floor(Date.now() / 1000))));
+  // Login réussi : on efface le compteur de la fenêtre (fautes de frappe légitimes
+  // non pénalisées). Best-effort — un échec de purge ne doit pas rater le login.
+  await clearLoginAttempt(prisma, key).catch(() => {});
+  res.setHeader('Set-Cookie', buildSessionCookie(signSession(secret, nowSec)));
   res.status(200).json({ ok: true });
 }
 
