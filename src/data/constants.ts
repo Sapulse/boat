@@ -97,6 +97,11 @@ export const SOURCES = [
   'boats.com',
   'Annonces du bateau',
   'Cosas de barcos',
+  // Plateformes du réseau boats.com vues dans les leads réels (chantier import
+  // email) — orthographe alignée sur ACQUISITION_SOURCES (mergeAcquisition).
+  'Inautia',
+  'Top barcos',
+  'Boats and outboards',
   'Salon GP',
   'Salon CAN',
   'Salon PRS',
