@@ -188,6 +188,50 @@ export interface DefaultGoal {
   conversionRate: number | null;
 }
 
+// ============================================================
+// Import email — chantier « Boîte de réception prospects » (Étape A, maquette).
+// Types VOLONTAIREMENT hors AppState : la démo vit en mémoire (fixtures +
+// InboundDemoProvider, réinitialisée au rechargement). Rien n'est persisté tant
+// que la collecte réelle (Microsoft Graph, Étape B) n'existe pas — seuls les
+// leads ACCEPTÉS entrent dans le CRM, par le addLead normal.
+// ============================================================
+
+export type InboundStatus = 'a_traiter' | 'accepte' | 'rejete';
+
+/** Champs extraits d'un email entrant — ÉDITABLES sur la carte avant acceptation. */
+export interface InboundExtracted {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  boatInterest: string;   // modèle / annonce concernée
+  brand: string;
+}
+
+/** Un email entrant analysé, en attente de validation humaine (spec §5-§6). */
+export interface InboundEmail {
+  id: string;
+  receivedAt: string;      // "YYYY-MM-DD HH:mm" — tri et affichage en chaîne
+  fromAddress: string;
+  subject: string;
+  /** Extrait du message (corps nettoyé) : affiché sur la carte, versé aux commentaires du lead. */
+  excerpt: string;
+  /** Famille de source détectée via l'expéditeur (libellé d'affichage, spec §1). */
+  sourceLabel: string;
+  /** Plateforme réelle quand la source la précise (ex. YachtWorld via boats.com). */
+  sourceDetail?: string;
+  /** Valeur versée dans Lead.source à l'acceptation — invariant : appartient à SOURCES (harnais). */
+  leadSource: string;
+  /** Score de pertinence 0..100 (spec §3) : la file est triée décroissant. */
+  score: number;
+  /** Signaux expliquant le score, affichés sur la carte (le score aide, l'humain décide). */
+  scoreReasons: string[];
+  extracted: InboundExtracted;
+  status: InboundStatus;
+  /** Id du lead créé à l'acceptation (lien « Voir le lead »). */
+  leadId?: string;
+}
+
 export interface AppState {
   leads: Lead[];
   actions: LeadAction[];

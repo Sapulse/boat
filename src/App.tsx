@@ -2,6 +2,7 @@ import { lazy } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
+import { InboundDemoProvider } from './context/InboundDemoContext';
 import AppLayout from './components/layout/AppLayout';
 
 // Code-splitting par route (React.lazy) : chaque page part dans son propre chunk,
@@ -24,6 +25,7 @@ const EquipePage = lazy(() => import('./pages/EquipePage'));
 const ExportsPage = lazy(() => import('./pages/ExportsPage'));
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
 const RelancesPage = lazy(() => import('./pages/RelancesPage'));
+const InboxProspectsPage = lazy(() => import('./pages/InboxProspectsPage'));
 const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -34,6 +36,9 @@ export default function App() {
         {/* Toasts (confort B3) : provider dans la coquille (bundle initial, léger)
             pour que toutes les pages lazy y aient accès via useToast. */}
         <ToastProvider>
+        {/* Boîte de réception prospects (Étape A, maquette) : store en mémoire
+            dans la coquille — la page consomme la file, la Sidebar le compteur. */}
+        <InboundDemoProvider>
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
@@ -43,6 +48,7 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/relances" element={<RelancesPage />} />
+            <Route path="/boite-reception" element={<InboxProspectsPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/acquisition" element={<AcquisitionPage />} />
@@ -58,6 +64,7 @@ export default function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+        </InboundDemoProvider>
         </ToastProvider>
       </AppProvider>
     </HashRouter>

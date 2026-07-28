@@ -12,6 +12,7 @@ import {
   Target,
   CircleUser,
   UsersRound,
+  Inbox,
   Mail,
   Download,
   X,
@@ -21,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useInboundDemo } from '../../context/useInboundDemo';
 import logo from '../../assets/logo.png';
 
 type NavItem = { name: string; href: string; icon: LucideIcon };
@@ -45,6 +47,7 @@ const sections: NavSection[] = [
     defaultOpen: true,
     items: [
       { name: 'Espace commercial', href: '/espace-commercial', icon: CircleUser },
+      { name: 'Boîte de réception', href: '/boite-reception', icon: Inbox },
       { name: 'Leads / Prospects', href: '/leads', icon: Users },
       { name: 'Clients', href: '/clients', icon: UserCheck },
       { name: 'Pipeline', href: '/pipeline', icon: Kanban },
@@ -78,6 +81,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const toggleSection = (id: string) =>
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  // Compteur d'emails « à traiter » (maquette import prospects) : badge sur
+  // l'entrée Boîte de réception uniquement, masqué à zéro.
+  const { pendingCount } = useInboundDemo();
+
   const renderItem = (item: NavItem) => (
     <NavLink
       key={item.href}
@@ -94,6 +101,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     >
       <item.icon className="w-5 h-5 shrink-0" />
       {item.name}
+      {item.href === '/boite-reception' && pendingCount > 0 && (
+        <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white">
+          {pendingCount}
+        </span>
+      )}
     </NavLink>
   );
 
