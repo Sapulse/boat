@@ -18,6 +18,7 @@ import { useSubmitLock } from '../hooks/useSubmitLock';
 import Modal from '../components/ui/Modal';
 import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo, AGENDA_HOUR_START, AGENDA_SLOT_MIN, AGENDA_SCROLL_TO_HOUR } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
+import { useIsCompact } from '../lib/useIsCompact';
 import { activateOnKey } from '../lib/a11y';
 import {
   buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
@@ -97,7 +98,12 @@ export default function AgendaPage() {
   const { state, setNextAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
   const navigate = useNavigate();
 
-  const [view, setView] = useState<AgendaView>('semaine');
+  // Vue par DÉFAUT selon l'écran (audit mobile) : la grille Semaine fait
+  // ~950px — 2 jours visibles sur 7 au doigt. Sous 640px on ouvre en Journée ;
+  // l'utilisateur garde la main (les onglets basculent librement, seul le
+  // défaut au montage change — pas de bascule forcée en cours de route).
+  const compactAtMount = useIsCompact();
+  const [view, setView] = useState<AgendaView>(compactAtMount ? 'jour' : 'semaine');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [filterCommercial, setFilterCommercial] = useState('');
   // Createur : clic-creneau -> choix (action de lead / evenement) puis la bonne modale.

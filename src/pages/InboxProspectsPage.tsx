@@ -255,12 +255,14 @@ function InboundCard({ mail, duplicates, commercials, assignee, onAssign, onEdit
 
       {/* Email d'origine */}
       <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
-        <p className="text-xs text-gray-500">
+        {/* break-words : les URLs longues des extraits débordaient de 8px sur
+            mobile (audit) — césure forcée, jamais de scroll latéral. */}
+        <p className="text-xs text-gray-500 break-words">
           De : <span className="font-medium text-gray-700">{mail.fromAddress}</span>
           <span className="mx-1.5">·</span>
           Objet : <span className="font-medium text-gray-700">{mail.subject}</span>
         </p>
-        <p className="mt-1.5 text-gray-700 whitespace-pre-line">{mail.excerpt}</p>
+        <p className="mt-1.5 text-gray-700 whitespace-pre-line break-words">{mail.excerpt}</p>
       </div>
 
       {/* Champs extraits, ÉDITABLES avant acceptation */}

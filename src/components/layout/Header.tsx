@@ -1,6 +1,7 @@
 import { Menu, Plus, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { useInboundDemo } from '../../context/useInboundDemo';
 import { getAlertLevel, getLeadFullName } from '../../lib/utils';
 import { USE_API } from '../../lib/flags';
 import { SyncIndicator } from '../ui/SyncIndicator';
@@ -26,6 +27,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, sync } = useApp();
+  // Emails à traiter (audit mobile) : le compteur de la Sidebar est invisible
+  // menu fermé -> pastille sur le burger. Le burger étant lg:hidden, la
+  // pastille n'existe que sur mobile — au clic, le menu s'ouvre sur l'entrée.
+  const { pendingCount } = useInboundDemo();
 
   const segments = location.pathname.split('/').filter(Boolean);
   let title = titles['/' + (segments[0] || '')] || 'CRM Brest Ocean Boat';
@@ -46,9 +51,14 @@ export default function Header({ onMenuClick }: HeaderProps) {
     <header className="h-16 border-b border-gray-200 bg-white flex items-center px-4 lg:px-6 gap-4 shrink-0 print:hidden">
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+        className="relative lg:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
       >
         <Menu className="w-5 h-5" />
+        {pendingCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+            {pendingCount}
+          </span>
+        )}
       </button>
 
       <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>

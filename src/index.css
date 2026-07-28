@@ -148,3 +148,14 @@
     min-height: 44px;
   }
 }
+
+/* Anti-zoom iOS (audit mobile) : Safari iOS zoome automatiquement au focus de
+   tout champ dont la police est < 16px. Sous 640px (sm), les champs passent
+   donc a 16px — les textarea portent la classe .input, ils sont couverts.
+   Desktop (>= 640px) strictement inchange (text-sm 14px). */
+@media (max-width: 639px) {
+  .input,
+  .select {
+    font-size: 16px;
+  }
+}
