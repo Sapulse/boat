@@ -17,7 +17,10 @@ export default defineConfig(({ command, mode }) => {
   // reçoit jamais rien. Var sans préfixe VITE_ -> lue par la config seule, JAMAIS
   // exposée au bundle client.
   const env = loadEnv(mode, process.cwd(), '')
-  const proxyTarget = env.DEV_API_PROXY_TARGET
+  // L'env du PROCESS prime sur .env.local : le lanceur de test local
+  // (scripts/dev-local-test.ts) redirige ainsi le proxy vers son API de test
+  // (base jetable) même si .env.local pointe ailleurs. '' = proxy désactivé.
+  const proxyTarget = process.env.DEV_API_PROXY_TARGET ?? env.DEV_API_PROXY_TARGET
   const devProxy =
     command === 'serve' && proxyTarget
       ? {
