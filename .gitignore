@@ -38,3 +38,10 @@ memory/
 
 # Fichiers d'import RGPD (donnees perso reelles) — JAMAIS commites (chantier import/export)
 _import_local/
+
+# Emails d'echantillon (vraies donnees de prospects, chantier import email) — JAMAIS commites
+docs/emails-echantillon/
+# JSON derive des .eml par scripts/build-inbound-fixtures.ts (memes donnees perso)
+src/data/inboundFixtures.local.json
+# Attentes du harnais d'extraction (noms/emails/tels reels des .eml)
+scripts/harness-parse-email.expected.local.json

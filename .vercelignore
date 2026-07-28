@@ -9,6 +9,12 @@
 
 # Données perso réelles (RGPD) : jamais envoyées à Vercel.
 _import_local/
+# Chantier import email : échantillon .eml réel + JSON dérivé (mêmes données).
+# Double filet avec la garde import.meta.env.DEV (InboundDemoContext) : même si
+# un build local traînait, un `vercel deploy` depuis ce poste n'uploade rien.
+docs/emails-echantillon/
+src/data/inboundFixtures.local.json
+scripts/harness-parse-email.expected.local.json
 
 # Scratch / base de dev locale.
 *.db
