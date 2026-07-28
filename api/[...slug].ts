@@ -18,6 +18,8 @@ import {
   clientIp, windowBucket, windowStartSec, attemptKey, isRateLimited,
   RATE_LIMIT_WINDOW_SEC,
 } from './_lib/loginRateLimit.js';
+import { readGraphEnv, checkGraphConnection } from './_lib/graph.js';
+import { collectInbound, listInbound, patchInbound, computeSinceFloor } from './_lib/inboundStore.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
   CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal,
@@ -102,6 +104,32 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
       // Sonde d'authentification (le client teste au chargement). On n'arrive ici
       // qu'après requireAuth -> session valide.
       if (!id && m === 'GET') return sendJson(res, 200, { authenticated: true });
+      break;
+
+    case 'inbound':
+      // File d'import email (Étape B). Liste pour l'écran ; PATCH = accept/reject
+      // (action dans le corps — le routeur ne connaît que /ressource/:id).
+      if (!id && m === 'GET') return sendJson(res, 200, await listInbound(prisma));
+      if (id && m === 'PATCH') return sendJson(res, 200, await patchInbound(prisma, id, body(req)));
+      break;
+
+    case 'inbound-collect':
+      // Déclenchement MANUEL de la collecte (bouton de l'écran). AUCUN cron ne
+      // l'appelle. Lecture seule Outlook ; écrit uniquement dans inbound_emails
+      // (idempotent). Fenêtre : IMPORT_EMAILS_SINCE sinon J-7, resserrée par le
+      // curseur de la table.
+      if (!id && m === 'POST') {
+        return sendJson(res, 200, await collectInbound(prisma, readGraphEnv(process.env), {
+          sinceFloorIso: computeSinceFloor(process.env, Date.now()),
+        }));
+      }
+      break;
+
+    case 'graph-check':
+      // Validation de connexion Microsoft 365 (chantier import email, Étape B,
+      // jalon 1) : jeton + accès boîte + comptages — AUCUNE lecture de contenu.
+      // Derrière requireAuth comme tout le reste ; env absente -> 503 explicite.
+      if (!id && m === 'GET') return sendJson(res, 200, await checkGraphConnection(readGraphEnv(process.env)));
       break;
   }
 
