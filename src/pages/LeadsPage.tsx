@@ -260,8 +260,75 @@ export default function LeadsPage() {
 
       <div className="text-sm text-gray-500">{filtered.length} lead(s)</div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
+      {/* MOBILE (< 640px) : CARTES — le tableau à 11 colonnes (~1020px)
+          imposait un long défilement latéral au doigt (audit mobile). Mêmes
+          données, mêmes actions (tap -> fiche, tél avec confirmation de
+          journalisation). Le tableau desktop, lui, est STRICTEMENT inchangé. */}
+      <div className="card overflow-hidden sm:hidden">
+        <div className="divide-y divide-gray-100">
+          {filtered.map(lead => {
+            const alert = getAlertLevel(lead);
+            const days = daysSince(lead.lastActionDate || lead.createdAt);
+            const nextAction = ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label;
+            return (
+              <div
+                key={lead.id}
+                tabIndex={0}
+                onClick={() => navigate(`/leads/${lead.id}`)}
+                onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+                className="px-4 py-3 active:bg-gray-50 cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertDot level={alert} />
+                  <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
+                  <TemperatureBadge temperature={lead.temperature} />
+                  {lead.phone && (
+                    <a
+                      href={`tel:${lead.phone}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm('Enregistrer un appel passé ?')) {
+                          addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }));
+                        }
+                      }}
+                      className="p-2 -my-2 text-gray-400 active:text-success-600"
+                      title="Appeler"
+                    >
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-gray-500 truncate">{lead.email || lead.phone || '—'}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <StatusBadge status={lead.status} />
+                  <span className="text-gray-500">{getCommercialName(lead.commercialId)}</span>
+                  {lead.source && <span className="text-gray-400">· {lead.source}</span>}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                  <span className="text-gray-600 truncate">{lead.boatInterest || '—'}</span>
+                  <span className="font-medium text-gray-900 shrink-0">{formatCurrency(lead.budget)}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                  <span className={cn(days > 14 ? 'text-danger-600 font-medium' : days > 7 ? 'text-warning-600' : 'text-gray-500')}>
+                    Dern. action : {days === Infinity ? '-' : days === 0 ? "auj." : `${days}j`}
+                  </span>
+                  <span className="text-gray-600 truncate">
+                    {nextAction || lead.nextActionDate
+                      ? [nextAction, lead.nextActionDate && formatDateShort(lead.nextActionDate)].filter(Boolean).join(' · ')
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="px-4 py-12 text-center text-gray-400">Aucun lead trouvé</div>
+          )}
+        </div>
+      </div>
+
+      {/* Table (desktop >= 640px) */}
+      <div className="card overflow-hidden hidden sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
