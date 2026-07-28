@@ -267,3 +267,37 @@ model LoginAttempt {
 
   @@map("login_attempts")
 }
+
+// ============================================================
+// InboundEmail — file des emails prospects à valider (chantier import email,
+// Étape B). Table ISOLÉE comme login_attempts : aucune FK vers les données
+// métier (leadId = simple référence texte posée à l'acceptation). Purement
+// additive. Idempotence de la collecte : UNIQUE sur internetMessageId (stable
+// même si l'email est déplacé de dossier, contrairement à l'id Graph).
+// Minimisation RGPD : extrait TRONQUÉ (pas de HTML brut, pas de pièce jointe) ;
+// les rejetés ont vocation à être purgés (politique 90 j, cron ultérieur).
+// ============================================================
+model InboundEmail {
+  id                String  @id // UUID généré par le collecteur
+  graphId           String // id Graph du message (informatif, peut changer)
+  internetMessageId String  @unique // VERROU d'idempotence de la collecte
+  receivedAt        String // ISO UTC (tri et curseur en chaîne)
+  fromAddress       String
+  subject           String  @default("")
+  excerpt           String  @default("") // extrait + notes, tronqué
+  source            String // EmailSourceKind (boatscom|site|leboncoin|bandofboats|inconnu)
+  sourceLabel       String  @default("")
+  sourceDetail      String?
+  leadSource        String  @default("") // valeur pour Lead.source (∈ SOURCES)
+  extracted         String  @default("{}") // JSON InboundExtracted (éditable avant acceptation)
+  score             Int
+  scoreReasons      String  @default("[]") // JSON string[]
+  status            String  @default("a_traiter") // a_traiter | accepte | rejete
+  leadId            String? // id du lead créé à l'acceptation
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status])
+  @@index([receivedAt])
+  @@map("inbound_emails")
+}
