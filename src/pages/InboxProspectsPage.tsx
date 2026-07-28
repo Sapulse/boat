@@ -1,56 +1,94 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, FlaskConical, Inbox, Mail, X } from 'lucide-react';
+import { AlertTriangle, Check, FlaskConical, Inbox, Mail, RefreshCw, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
 import { useInboundDemo } from '../context/useInboundDemo';
 import { findDuplicateLeads } from '../lib/duplicateLeads';
-import { sortInboundByScore, scoreLevel, SCORE_LEVELS, buildLeadFromInbound } from '../lib/inbound';
-import { toISODate, cn } from '../lib/utils';
+import { sortInboundByScore, scoreLevel, SCORE_LEVELS } from '../lib/inbound';
+import { cn } from '../lib/utils';
 import type { InboundEmail } from '../data/types';
 
-// Écran « Leads entrants à valider » (spec §6, Étape A — maquette sur données
-// fictives). Une carte par email, triées par score décroissant ; champs
-// éditables avant acceptation ; Accepter (choix du commercial ou « Non
-// attribué ») crée RÉELLEMENT le lead via addLead ; Rejeter écarte la carte.
+// Écran « Leads entrants à valider » (spec §6). Une carte par email, triées par
+// score décroissant (parasites < 40 repliés en bas — visibles, jamais cachés) ;
+// champs éditables avant acceptation ; Accepter (choix du commercial ou « Non
+// attribué ») crée RÉELLEMENT le lead ; Rejeter écarte. En mode API, le bouton
+// « Importer les nouveaux emails » déclenche la collecte MANUELLE (aucun cron).
+
+// Seuil d'affichage replié (aligné sur scoreLevel : < 40 = parasite probable).
+const FOLD_THRESHOLD = 40;
 
 export default function InboxProspectsPage() {
-  const { state, addLead } = useApp();
-  const { emails, pendingCount, realData, updateExtracted, accept, reject } = useInboundDemo();
+  const { state } = useApp();
+  const { emails, pendingCount, realData, apiMode, collecting, collectNow, updateExtracted, accept, reject } = useInboundDemo();
   const toast = useToast();
   // Commercial choisi par carte ('' = Non attribué, défaut). Etat de PAGE (pas
   // du store) : un choix non validé n'a pas à survivre à la navigation.
   const [assignees, setAssignees] = useState<Record<string, string>>({});
-  // Verrou anti double-clic par carte : addLead ne doit tourner qu'une fois
-  // même si deux clics partent avant le re-rendu (le store, lui, est idempotent).
+  // Verrou anti double-clic par carte : une action ne part qu'une fois même si
+  // deux clics précèdent le re-rendu (le store/serveur est de toute façon
+  // idempotent — 409 si déjà traité). Retiré en cas d'échec pour permettre le retry.
   const processedRef = useRef(new Set<string>());
 
-  const pending = sortInboundByScore(emails.filter(m => m.status === 'a_traiter'));
+  const allPending = sortInboundByScore(emails.filter(m => m.status === 'a_traiter'));
+  const pending = allPending.filter(m => m.score >= FOLD_THRESHOLD);
+  const folded = allPending.filter(m => m.score < FOLD_THRESHOLD);
   const processed = emails.filter(m => m.status !== 'a_traiter');
 
-  const handleAccept = (mail: InboundEmail) => {
+  const handleAccept = async (mail: InboundEmail) => {
     if (processedRef.current.has(mail.id)) return;
     processedRef.current.add(mail.id);
-    const leadId = addLead(buildLeadFromInbound(mail, assignees[mail.id] ?? '', toISODate(new Date())));
-    accept(mail.id, leadId);
-    const name = `${mail.extracted.firstName} ${mail.extracted.lastName}`.trim() || mail.subject;
-    toast.success(`Lead créé — ${name}`);
+    try {
+      await accept(mail, assignees[mail.id] ?? '');
+      const name = `${mail.extracted.firstName} ${mail.extracted.lastName}`.trim() || mail.subject;
+      toast.success(`Lead créé — ${name}`);
+    } catch (e) {
+      processedRef.current.delete(mail.id);
+      toast.error(`Échec de l'acceptation : ${(e as Error).message}`);
+    }
   };
 
-  const handleReject = (mail: InboundEmail) => {
+  const handleReject = async (mail: InboundEmail) => {
     if (processedRef.current.has(mail.id)) return;
     processedRef.current.add(mail.id);
-    reject(mail.id);
-    toast.info('Email écarté');
+    try {
+      await reject(mail.id);
+      toast.info('Email écarté');
+    } catch (e) {
+      processedRef.current.delete(mail.id);
+      toast.error(`Échec du rejet : ${(e as Error).message}`);
+    }
+  };
+
+  const handleCollect = async () => {
+    if (!collectNow) return;
+    try {
+      const r = await collectNow();
+      const parts = [`${r.inserted} nouveau${r.inserted > 1 ? 'x' : ''}`, `${r.alreadySeen} déjà vu${r.alreadySeen > 1 ? 's' : ''}`];
+      if (r.autoRejected > 0) parts.push(`${r.autoRejected} administratif${r.autoRejected > 1 ? 's' : ''} auto-rejeté${r.autoRejected > 1 ? 's' : ''}`);
+      toast.success(`Import : ${parts.join(', ')}`);
+      if (r.truncated) toast.info('Fenêtre tronquée (plafond atteint) — relancez l\'import pour la suite.');
+      for (const err of r.errors) toast.error(`Collecte : ${err}`);
+    } catch (e) {
+      toast.error(`Import impossible : ${(e as Error).message}`);
+    }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center gap-3 justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Boîte de réception prospects</h1>
-        <span className="text-sm text-gray-500">
-          {pendingCount} à traiter · {processed.length} traité{processed.length > 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">
+            {pendingCount} à traiter · {processed.length} traité{processed.length > 1 ? 's' : ''}
+          </span>
+          {apiMode && collectNow && (
+            <button type="button" className="btn-primary btn-sm" onClick={handleCollect} disabled={collecting}>
+              <RefreshCw className={cn('w-4 h-4', collecting && 'animate-spin')} />
+              {collecting ? 'Import en cours…' : 'Importer les nouveaux emails'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Bandeau maquette : démo rejouable (cartes réinitialisées au rechargement),
@@ -58,7 +96,16 @@ export default function InboxProspectsPage() {
           fixtures fictives, ou VRAIS emails de l'échantillon analysés localement. */}
       <div className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 flex gap-3">
         <FlaskConical className="w-5 h-5 shrink-0 mt-0.5" />
-        {realData ? (
+        {apiMode ? (
+          <div>
+            <p className="font-semibold">Connecté à la boîte réelle — import en déclenchement MANUEL uniquement.</p>
+            <p className="mt-0.5">
+              « Importer les nouveaux emails » relève l'Inbox (lecture seule, rien n'est modifié dans
+              Outlook) : fenêtre des 7 derniers jours au premier import, puis reprise là où on s'était
+              arrêté. Rien n'entre dans les leads sans votre clic <strong>Accepter</strong>.
+            </p>
+          </div>
+        ) : realData ? (
           <div>
             <p className="font-semibold">Démonstration sur les VRAIS emails de l'échantillon — analysés en local, aucune boîte mail n'est connectée.</p>
             <p className="mt-0.5">
@@ -80,11 +127,13 @@ export default function InboxProspectsPage() {
         )}
       </div>
 
-      {pending.length === 0 ? (
+      {allPending.length === 0 ? (
         <div className="card p-10 text-center text-gray-500">
           <Inbox className="w-10 h-10 mx-auto mb-3 text-gray-300" />
           <p className="font-medium text-gray-700">Aucun email en attente</p>
-          <p className="text-sm mt-1">Rechargez la page pour rejouer la démonstration.</p>
+          <p className="text-sm mt-1">
+            {apiMode ? 'Cliquez « Importer les nouveaux emails » pour relever la boîte.' : 'Rechargez la page pour rejouer la démonstration.'}
+          </p>
         </div>
       ) : (
         pending.map(mail => (
@@ -100,6 +149,31 @@ export default function InboxProspectsPage() {
             onReject={() => handleReject(mail)}
           />
         ))
+      )}
+
+      {/* Parasites probables (< 40) : REPLIÉS mais jamais cachés — décision
+          validée : tout reste visible tant que le tri n'a pas fait ses preuves. */}
+      {folded.length > 0 && (
+        <details className="card p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-gray-700">
+            Probables parasites — {folded.length} replié{folded.length > 1 ? 's' : ''} (score &lt; {FOLD_THRESHOLD})
+          </summary>
+          <div className="mt-4 space-y-4">
+            {folded.map(mail => (
+              <InboundCard
+                key={mail.id}
+                mail={mail}
+                duplicates={findDuplicateLeads(state.leads, { email: mail.extracted.email, phone: mail.extracted.phone })}
+                commercials={state.commercials.filter(c => c.active)}
+                assignee={assignees[mail.id] ?? ''}
+                onAssign={(commercialId) => setAssignees(prev => ({ ...prev, [mail.id]: commercialId }))}
+                onEdit={(patch) => updateExtracted(mail.id, patch)}
+                onAccept={() => handleAccept(mail)}
+                onReject={() => handleReject(mail)}
+              />
+            ))}
+          </div>
+        </details>
       )}
 
       {processed.length > 0 && (
