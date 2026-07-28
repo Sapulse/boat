@@ -15,16 +15,40 @@ import { readGraphEnv } from '../api/_lib/graph';
 import { fetchRecentSourceEmails, toParseInput, DEFAULT_COLLECT_CAP } from '../api/_lib/inboundCollect';
 import { parseEmail, type ParsedEmail } from '../src/lib/email/parseEmail';
 import { scoreLevel, SCORE_LEVELS } from '../src/lib/inbound';
-import { normEmail, normPhone } from '../src/lib/duplicateLeads';
+import { findDuplicateLeads, normEmail, normPhone } from '../src/lib/duplicateLeads';
+import type { Lead } from '../src/data/types';
 
 const daysArg = process.argv.indexOf('--days');
 const days = daysArg !== -1 ? Math.max(1, Number(process.argv[daysArg + 1]) || 7) : 7;
+
+/**
+ * --dups-prod : croise chaque email avec les leads de la BASE DE PROD pour
+ * prévisualiser les signalements de doublon. LECTURE SEULE STRICTE : un unique
+ * SELECT (id, nom, email, tél) — aucune écriture, aucune autre requête.
+ */
+async function loadProdLeads(): Promise<Lead[] | null> {
+  if (!process.argv.includes('--dups-prod')) return null;
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  if (!url || !authToken) { console.error('⚠ --dups-prod ignoré : TURSO_* absents du .env'); return null; }
+  const { createClient } = await import('@libsql/client');
+  const db = createClient({ url, authToken });
+  const rs = await db.execute('SELECT id, firstName, lastName, email, phone FROM leads');
+  await db.close();
+  return rs.rows.map(r => ({
+    id: String(r.id), firstName: String(r.firstName ?? ''), lastName: String(r.lastName ?? ''),
+    email: String(r.email ?? ''), phone: String(r.phone ?? ''),
+  })) as Lead[];
+}
 
 async function main() {
   const env = readGraphEnv(process.env);
   const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
   console.log(`TEST À BLANC — fenêtre : ${days} jours (depuis ${sinceIso.slice(0, 16).replace('T', ' ')} UTC)`);
   console.log(`Boîte : ${env.mailbox} — dossier Inbox seul — cap ${DEFAULT_COLLECT_CAP} emails\n`);
+
+  const prodLeads = await loadProdLeads();
+  if (prodLeads) console.log(`Croisement doublons : ${prodLeads.length} leads de la base de PROD (lecture seule).\n`);
 
   const { messages, truncated, errors } = await fetchRecentSourceEmails(env, { sinceIso });
   for (const e of errors) console.error(`⚠ ${e}`);
@@ -52,10 +76,14 @@ async function main() {
     const lvl = SCORE_LEVELS[scoreLevel(p.score)].label;
     const name = `${p.extracted.firstName} ${p.extracted.lastName}`.trim() || '(sans nom)';
     const admin = p.scoreReasons.some(r => r.includes('Administratif'));
+    const inBase = prodLeads
+      ? findDuplicateLeads(prodLeads, { email: p.extracted.email, phone: p.extracted.phone })
+      : [];
     const tags = [
       admin ? 'AUTO-REJETÉ (administratif)' : '',
       p.score < 40 && !admin ? 'replié « probables parasites »' : '',
       dups.has(p) ? `DOUBLON probable de ${dups.get(p)}` : '',
+      inBase.length > 0 ? `DÉJÀ EN BASE : ${inBase.slice(0, 2).map(l => `${l.firstName} ${l.lastName}`.trim()).join(', ')}${inBase.length > 2 ? ` +${inBase.length - 2}` : ''}` : '',
     ].filter(Boolean).join(' · ');
     console.log(`${String(p.score).padStart(3)}  ${lvl.padEnd(18)} ${p.sourceLabel.padEnd(22)} ${name.padEnd(26)} ${(p.extracted.boatInterest || '—').slice(0, 34).padEnd(34)} ${m.receivedAt.slice(0, 10)}${tags ? '  [' + tags + ']' : ''}`);
   }
