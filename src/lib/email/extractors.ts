@@ -1,5 +1,5 @@
-import type { EmailEnvelope } from './forward';
-import type { ExtractResult } from './types';
+﻿import type { EmailEnvelope } from './forward.js';
+import type { ExtractResult } from './types.js';
 
 // Un extracteur par famille de source (spec §2), calibrés sur les 23 emails
 // réels de l'échantillon (docs/emails-echantillon, non commité). Chaque
@@ -126,9 +126,21 @@ export function extractSite(env: EmailEnvelope): ExtractResult {
   let lastFieldEnd = -1;
 
   for (let i = 0; i < lines.length; i++) {
+    // Format DIRECT (rendu texte Graph, constaté au test à blanc réel) :
+    // « Étiquette <tab/espaces> valeur » sur UNE seule ligne.
+    const inline = lines[i].match(/^([A-Za-zÀ-ÿ' -]{2,12})[ \t]+(.+)$/);
+    if (inline) {
+      const key = SITE_LABELS[normText(inline[1].trim())];
+      if (key && fields[key] === undefined) {
+        const v = inline[2].trim();
+        fields[key] = key === 'email' ? cleanEmail(v) : v;
+        lastFieldEnd = i;
+        continue;
+      }
+    }
+    // Format TRANSFERT (.eml Outlook) : étiquette seule, valeur à la ligne suivante.
     const key = SITE_LABELS[normText(lines[i])];
     if (!key || fields[key] !== undefined) continue;
-    // Valeur = prochaine ligne non vide qui n'est ni une étiquette ni du bruit.
     for (let j = i + 1; j < lines.length; j++) {
       const v = lines[j];
       if (!v || /^\[cid:/i.test(v)) continue;
@@ -150,10 +162,12 @@ export function extractSite(env: EmailEnvelope): ExtractResult {
   const notes: string[] = [];
   const adresse = [fields.adresse, [fields.cp, fields.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   if (adresse) notes.push(`Adresse : ${adresse}`);
-  // Consentement communications : la case (✔/✘) précède la phrase sur sa propre ligne.
-  const consentIdx = lines.findIndex(l => /^Oui, j'accepte de recevoir des communications/.test(l));
-  if (consentIdx > 0) {
-    const mark = lines.slice(0, consentIdx).reverse().find(l => l !== '');
+  // Consentement communications : case (✔/✘) sur la MÊME ligne que la phrase
+  // (format direct Graph) ou sur la ligne précédente (format transfert .eml).
+  const consentIdx = lines.findIndex(l => /Oui, j'accepte de recevoir des communications/.test(l));
+  if (consentIdx >= 0) {
+    const inlineMark = lines[consentIdx].match(/^([✔✘])/)?.[1];
+    const mark = inlineMark ?? lines.slice(0, consentIdx).reverse().find(l => l !== '');
     if (mark === '✔' || mark === '✘') {
       notes.push(`Consentement communications commerciales : ${mark === '✔' ? 'OUI' : 'NON'} (case du formulaire)`);
     }
@@ -188,7 +202,11 @@ export function extractLeboncoin(env: EmailEnvelope): ExtractResult {
   const email = cleanEmail(labeled(b, 'E-mail'));
   const ville = labeled(b, 'Ville');
   const rich = !!(prenom || nom);
-  const pseudo = env.fromName.replace(/\s+via leboncoin$/i, '').trim();
+  // Pseudo depuis « X via leboncoin ». Sur certains formats l'expéditeur est
+  // « leboncoin » tout court (constaté au test à blanc réel) : ce n'est PAS un
+  // nom de prospect -> nom laissé vide, à compléter à la validation.
+  let pseudo = env.fromName.replace(/\s+via leboncoin$/i, '').trim();
+  if (/^(le\s?bon\s?coin|leboncoin)$/i.test(pseudo)) pseudo = '';
 
   const boat = env.subject.match(/pour\s+"(.+?)"\s+sur leboncoin/i)?.[1] ?? '';
   // Message courant entre guillemets français (peut être creux sur le format ancien).

@@ -1,4 +1,4 @@
-import type { InboundExtracted } from '../../data/types';
+﻿import type { InboundExtracted } from '../../data/types.js';
 
 // Types du module d'extraction email (chantier import prospects, « cerveau »).
 // parseEmail est PUR : il reçoit un email déjà décodé (en prod : Microsoft

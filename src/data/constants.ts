@@ -1,4 +1,4 @@
-import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate, CalendarEventCategory, DefaultGoal } from './types';
+﻿import type { LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Commercial, Priority, MessageTemplate, CalendarEventCategory, DefaultGoal } from './types.js';
 
 // Objectifs par défaut « vides » : aucune cible d'équipe fixée (repli neutre à
 // l'hydratation d'un state sans defaultGoal — migration nulle).

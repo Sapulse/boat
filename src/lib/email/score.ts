@@ -1,4 +1,4 @@
-import type { EmailSourceKind, ExtractResult } from './types';
+﻿import type { EmailSourceKind, ExtractResult } from './types.js';
 
 // Score de pertinence prospect/parasite (spec §3), calibré sur les 23 emails
 // réels de l'échantillon. Le score TRIE la file et SIGNALE — il ne décide
@@ -26,7 +26,11 @@ const PROMO: RegExp[] = [
   // « appart » borné : « appartient » (leboncoin réel) n'est pas un hôtelier.
   /r[eé]sidence|appartement|appart-h[oô]tel|h[oô]tel\b|h[eé]bergement/i,
   /tarif partenaire/i,
-  /product catalog|\brfq\b|trading/i,
+  /product catalog|\brfq\b|trading|cooperation terms/i,
+  // Candidatures spontanées via le formulaire (constaté au test à blanc réel) :
+  // pas un prospect bateau. PAS de motif « cv » : en nautique, CV = chevaux
+  // moteur (« Honda 150 CV ») — faux positif prouvé au harnais.
+  /candidature|lettre de motivation|\bstage\b|\bemploi\b|recrutement|alternance/i,
 ];
 
 // Domaines d'email « personnels » (webmails) : signal de particulier.

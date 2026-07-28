@@ -1,4 +1,4 @@
-import type { InboundEmail, Lead } from '../data/types';
+﻿import type { InboundEmail, Lead } from '../data/types.js';
 
 // Cœur PUR de la boîte de réception prospects (Étape A, maquette) — aucune
 // dépendance React, testé par scripts/harness-inbound.ts (même découpage que

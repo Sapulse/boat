@@ -1,11 +1,11 @@
-import { SOURCES } from '../../data/constants';
-import { htmlToText } from './htmlToText';
-import { unwrapForwards, type EmailEnvelope } from './forward';
-import { extractBoatscom, extractSite, extractLeboncoin, extractBandofboats, extractInconnu } from './extractors';
-import { scoreEmail } from './score';
-import type { RawInboundEmail, ParsedEmail, EmailSourceKind, ExtractResult } from './types';
+﻿import { SOURCES } from '../../data/constants.js';
+import { htmlToText } from './htmlToText.js';
+import { unwrapForwards, type EmailEnvelope } from './forward.js';
+import { extractBoatscom, extractSite, extractLeboncoin, extractBandofboats, extractInconnu } from './extractors.js';
+import { scoreEmail } from './score.js';
+import type { RawInboundEmail, ParsedEmail, EmailSourceKind, ExtractResult } from './types.js';
 
-export type { RawInboundEmail, ParsedEmail, EmailSourceKind } from './types';
+export type { RawInboundEmail, ParsedEmail, EmailSourceKind } from './types.js';
 
 // parseEmail — le « cerveau » de l'import prospects (spec §2, §3, §5).
 // Fonction PURE : email décodé en entrée, fiche analysée en sortie. Les
