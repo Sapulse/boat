@@ -195,8 +195,40 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
+      {/* MOBILE (< 640px) : CARTES — tableau 9 colonnes (~980px) illisible au
+          doigt (audit mobile). Tap -> fiche. Desktop STRICTEMENT inchangé. */}
+      <div className="card overflow-hidden sm:hidden">
+        <div className="divide-y divide-gray-100">
+          {clients.map(lead => (
+            <div
+              key={lead.id}
+              tabIndex={0}
+              onClick={() => navigate(`/leads/${lead.id}`)}
+              onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+              className="px-4 py-3 active:bg-gray-50 cursor-pointer"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-gray-900 truncate">{getLeadFullName(lead)}</span>
+                <span className="font-semibold text-success-600 shrink-0">{formatCurrency(lead.quoteAmount ?? lead.budget)}</span>
+              </div>
+              <div className="mt-0.5 text-xs text-gray-500 truncate">{lead.email || lead.phone || '—'}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
+                <span className="truncate">{[lead.boatInterest, lead.brand].filter(Boolean).join(' · ') || '—'}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
+                <span>{getCommercialName(lead.commercialId)}</span>
+                <span>Signé {formatDate(lead.signedAt)}{lead.deliveryDate ? ` · livr. ${formatDate(lead.deliveryDate)}` : ''}</span>
+              </div>
+            </div>
+          ))}
+          {clients.length === 0 && (
+            <div className="px-4 py-12 text-center text-gray-400">Aucun client trouvé</div>
+          )}
+        </div>
+      </div>
+
+      {/* Table (desktop >= 640px) */}
+      <div className="card overflow-hidden hidden sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
