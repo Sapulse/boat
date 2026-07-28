@@ -120,9 +120,51 @@ export default function EquipePage() {
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="text-sm font-semibold text-gray-900">Équipe commerciale</h2>
         </div>
-        {/* 9 colonnes : scroll horizontal sur petit ecran (meme pattern que
-            les autres tableaux larges), sinon le card overflow-hidden coupe. */}
-        <div className="overflow-x-auto">
+        {/* MOBILE (< 640px) : CARTES — tableau 9 colonnes (~850px) au doigt
+            (audit mobile). Mêmes stats, mêmes actions (modifier / activer).
+            Desktop STRICTEMENT inchangé ci-dessous. */}
+        <div className="sm:hidden divide-y divide-gray-100">
+          {commercialStats.map(c => (
+            <div key={c.id} className={`px-4 py-3 ${!c.active ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900 truncate flex-1">{c.name}</span>
+                <span className={`badge ${c.active ? 'bg-success-100 text-success-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {c.active ? 'Actif' : 'Inactif'}
+                </span>
+                <button
+                  onClick={() => openEdit(c.id, c.name, c.email, c.signature)}
+                  className="btn-ghost btn-sm p-1.5 text-gray-400"
+                  title="Modifier (nom, email, signature)"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => toggleActive(c.id)}
+                  className="btn-ghost btn-sm p-1.5 text-gray-400"
+                  title={c.active ? 'Désactiver' : 'Réactiver'}
+                >
+                  <PowerOff className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="mt-0.5 text-xs text-gray-400 truncate">
+                {c.email || "pas d'email"}{c.signature ? ' · signature ✓' : ''}
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                <div><span className="text-gray-400">Actifs</span> <span className="text-gray-700 font-medium">{c.actifs}</span></div>
+                <div><span className="text-gray-400">Signés</span> <span className="text-success-600 font-medium">{c.signes}</span></div>
+                <div><span className="text-gray-400">Perdus</span> <span className="text-danger-600 font-medium">{c.perdus}</span></div>
+                <div><span className="text-gray-400">Total</span> <span className="text-gray-700 font-medium">{c.total}</span></div>
+                <div className="col-span-2"><span className="text-gray-400">CA</span> <span className="text-gray-900 font-semibold">{formatCurrency(c.montantSigne)}</span> <span className="text-gray-400">· conv. {c.tauxConversion}</span></div>
+              </div>
+            </div>
+          ))}
+          {state.commercials.length === 0 && (
+            <div className="px-4 py-10 text-center text-gray-400">Aucun commercial enregistré</div>
+          )}
+        </div>
+
+        {/* Tableau (desktop >= 640px) — 9 colonnes, scroll horizontal au besoin. */}
+        <div className="overflow-x-auto hidden sm:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
