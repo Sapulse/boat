@@ -1,6 +1,6 @@
 import { useReducer, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { reducer } from './appReducer';
-import { AppContext } from './useApp';
+import { AppContext, type AppContextType } from './useApp';
 import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
 import LoginScreen from '../components/auth/LoginScreen';
@@ -178,31 +178,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [repository]);
 
-  // Sélecteurs de vue (purs sur `state`) : restent dans le provider.
-  const getLeadActions = (leadId: string) =>
-    state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
-  // Repli « — » quand aucun commercial ne correspond (id vide ou obsolète) : on
-  // n'affiche JAMAIS une UUID brute. NB : distinct du VRAI commercial « Non
-  // attribué » (créé à l'import) qui, lui, a un id + nom réels et est trouvé ici.
-  const getCommercialName = (id: string) =>
-    state.commercials.find(c => c.id === id)?.name ?? '—';
+  // VALUE MÉMOÏSÉ (audit perf) — même patron que ToastContext : l'objet n'est
+  // reconstruit que si state / repository / syncInfo changent, plus à chaque
+  // render du provider (ready, authed…). Les sélecteurs et wrappers vivent
+  // DANS le memo : leurs fermetures capturent le `state` de la recomputation
+  // courante — pas d'état figé possible tant que `state` est dans les deps.
+  const value = useMemo<AppContextType>(() => {
+    // Sélecteurs de vue (purs sur `state`).
+    const getLeadActions = (leadId: string) =>
+      state.actions.filter(a => a.leadId === leadId).sort((a, b) => b.date.localeCompare(a.date));
+    // Repli « — » quand aucun commercial ne correspond (id vide ou obsolète) : on
+    // n'affiche JAMAIS une UUID brute. NB : distinct du VRAI commercial « Non
+    // attribué » (créé à l'import) qui, lui, a un id + nom réels et est trouvé ici.
+    const getCommercialName = (id: string) =>
+      state.commercials.find(c => c.id === id)?.name ?? '—';
 
-  // Import en masse (mode API) : écrit via l'endpoint bulk (hors outbox) PUIS
-  // ré-hydrate l'état depuis la base (l'aperçu se vide, la base s'affiche à jour).
-  async function runBulkImport(payload: ImportPayload): Promise<ImportReport> {
-    if (!repository.bulkImport) throw new Error('Import indisponible en mode local.');
-    const report = await repository.bulkImport(payload);
-    if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
-    return report;
-  }
+    // Import en masse (mode API) : écrit via l'endpoint bulk (hors outbox) PUIS
+    // ré-hydrate l'état depuis la base (l'aperçu se vide, la base s'affiche à jour).
+    async function runBulkImport(payload: ImportPayload): Promise<ImportReport> {
+      if (!repository.bulkImport) throw new Error('Import indisponible en mode local.');
+      const report = await repository.bulkImport(payload);
+      if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
+      return report;
+    }
 
-  // Restauration (mode API) : REMPLACE tout en base PUIS ré-hydrate l'écran.
-  async function runRestore(payload: BackupEnvelope): Promise<RestoreReport> {
-    if (!repository.restore) throw new Error('Restauration indisponible en mode local.');
-    const report = await repository.restore(payload);
-    if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
-    return report;
-  }
+    // Restauration (mode API) : REMPLACE tout en base PUIS ré-hydrate l'écran.
+    async function runRestore(payload: BackupEnvelope): Promise<RestoreReport> {
+      if (!repository.restore) throw new Error('Restauration indisponible en mode local.');
+      const report = await repository.restore(payload);
+      if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
+      return report;
+    }
+
+    return {
+      state,
+      // Contrôle de synchro exposé au Header (mode API). Undefined -> DCE en flag off.
+      sync: USE_API && repository.sync
+        ? { info: syncInfo ?? { status: 'idle', pending: 0 }, retryFailed: repository.sync.retryFailed, abandonFailed: repository.sync.abandonFailed }
+        : undefined,
+      addLead: repository.addLead,
+      updateLead: repository.updateLead,
+      deleteLead: repository.deleteLead,
+      updateLeadStatus: repository.updateLeadStatus,
+      addAction: repository.addAction,
+      updateAction: repository.updateAction,
+      deleteAction: repository.deleteAction,
+      setNextAction: repository.setNextAction,
+      addCommercial: repository.addCommercial,
+      updateCommercial: repository.updateCommercial,
+      toggleCommercial: repository.toggleCommercial,
+      getLeadActions,
+      getCommercialName,
+      saveMonthlyStats: repository.saveMonthlyStats,
+      saveGoals: repository.saveGoals,
+      saveDefaultGoal: repository.saveDefaultGoal,
+      addTemplate: repository.addTemplate,
+      updateTemplate: repository.updateTemplate,
+      deleteTemplate: repository.deleteTemplate,
+      addCalendarEvent: repository.addCalendarEvent,
+      updateCalendarEvent: repository.updateCalendarEvent,
+      deleteCalendarEvent: repository.deleteCalendarEvent,
+      importBulk: USE_API && repository.bulkImport ? runBulkImport : undefined,
+      restoreBackup: USE_API && repository.restore ? runRestore : undefined,
+    };
+  }, [state, repository, syncInfo]);
 
   // Gate d'AUTH (Lot 7 allégé, flag on) — AVANT toute hydratation. Tree-shaké en
   // flag off (USE_API constant false) : les commerciaux localStorage n'ont aucun login.
@@ -240,39 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppContext.Provider
-      value={{
-        state,
-        // Contrôle de synchro exposé au Header (mode API). Undefined -> DCE en flag off.
-        sync: USE_API && repository.sync
-          ? { info: syncInfo ?? { status: 'idle', pending: 0 }, retryFailed: repository.sync.retryFailed, abandonFailed: repository.sync.abandonFailed }
-          : undefined,
-        addLead: repository.addLead,
-        updateLead: repository.updateLead,
-        deleteLead: repository.deleteLead,
-        updateLeadStatus: repository.updateLeadStatus,
-        addAction: repository.addAction,
-        updateAction: repository.updateAction,
-        deleteAction: repository.deleteAction,
-        setNextAction: repository.setNextAction,
-        addCommercial: repository.addCommercial,
-        updateCommercial: repository.updateCommercial,
-        toggleCommercial: repository.toggleCommercial,
-        getLeadActions,
-        getCommercialName,
-        saveMonthlyStats: repository.saveMonthlyStats,
-        saveGoals: repository.saveGoals,
-        saveDefaultGoal: repository.saveDefaultGoal,
-        addTemplate: repository.addTemplate,
-        updateTemplate: repository.updateTemplate,
-        deleteTemplate: repository.deleteTemplate,
-        addCalendarEvent: repository.addCalendarEvent,
-        updateCalendarEvent: repository.updateCalendarEvent,
-        deleteCalendarEvent: repository.deleteCalendarEvent,
-        importBulk: USE_API && repository.bulkImport ? runBulkImport : undefined,
-        restoreBackup: USE_API && repository.restore ? runRestore : undefined,
-      }}
-    >
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

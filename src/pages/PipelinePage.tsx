@@ -25,6 +25,9 @@ import type { Lead, LeadStatus } from '../data/types';
 
 const PRIMARY_STATUSES: LeadStatus[] = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion'];
 const SECONDARY_STATUSES: LeadStatus[] = ['signe', 'perdu', 'reporte'];
+// Liste complète FIGÉE au niveau module (audit perf) : identité stable pour
+// les deps du useMemo leadsByStatus.
+const ALL_STATUSES: LeadStatus[] = [...PRIMARY_STATUSES, ...SECONDARY_STATUSES];
 
 function LeadCard({ lead, overlay }: { lead: Lead; overlay?: boolean }) {
   const { getCommercialName } = useApp();
@@ -203,12 +206,16 @@ export default function PipelinePage() {
     return leads;
   }, [state.leads, search, filterCommercial, filterSource, filterBoatType, filterCondition, filterTemp, filterAlert, validCommercialIds]);
 
-  const allStatuses = [...PRIMARY_STATUSES, ...SECONDARY_STATUSES];
-
-  const leadsByStatus = allStatuses.reduce((acc, status) => {
-    acc[status] = filteredLeads.filter(l => l.status === status);
-    return acc;
-  }, {} as Record<LeadStatus, Lead[]>);
+  // Mémoïsé (audit perf) : recalculé UNIQUEMENT quand les leads filtrés
+  // changent — plus à chaque toggle de filtre/colonne repliée (le reduce
+  // recréait un objet + 10 tableaux neufs par render).
+  const leadsByStatus = useMemo(
+    () => ALL_STATUSES.reduce((acc, status) => {
+      acc[status] = filteredLeads.filter(l => l.status === status);
+      return acc;
+    }, {} as Record<LeadStatus, Lead[]>),
+    [filteredLeads],
+  );
 
   const hasFilters = filterCommercial || filterSource || filterBoatType || filterCondition || filterTemp || filterAlert;
 

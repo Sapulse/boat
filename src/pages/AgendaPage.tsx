@@ -27,6 +27,11 @@ import {
 } from '../lib/agenda';
 import type { Commercial, ActionType, Lead, CalendarEvent, CalendarEventCategory } from '../data/types';
 
+// Creneaux horaires FIGES au niveau module (audit perf) : buildTimeSlots() ne
+// depend que de constantes (AGENDA_*) — il etait rappele a chaque render des
+// vues Semaine et Journee.
+const TIME_SLOTS = buildTimeSlots();
+
 // Icone par categorie d'evenement libre (distinction visuelle vs actions de lead).
 const CATEGORY_ICON: Record<CalendarEventCategory, LucideIcon> = {
   reunion: Users,
@@ -493,11 +498,18 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onEditEvent, onCreate, onI
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
   );
-  const start = startOfWeek(anchor, { weekStartsOn: 1 });
-  const end = endOfWeek(anchor, { weekStartsOn: 1 });
-  const days = eachDayOfInterval({ start, end });
-  const rangeLabel = `${format(start, 'd MMM', { locale: fr })} – ${format(end, 'd MMM yyyy', { locale: fr })}`;
-  const slots = buildTimeSlots();
+  // Bornes/jours de semaine mémoïsés (audit perf) : date-fns recalculait à
+  // chaque render (drag, survol…) pour un résultat qui ne dépend que d'anchor.
+  const { days, rangeLabel } = useMemo(() => {
+    const start = startOfWeek(anchor, { weekStartsOn: 1 });
+    const end = endOfWeek(anchor, { weekStartsOn: 1 });
+    return {
+      start,
+      days: eachDayOfInterval({ start, end }),
+      rangeLabel: `${format(start, 'd MMM', { locale: fr })} – ${format(end, 'd MMM yyyy', { locale: fr })}`,
+    };
+  }, [anchor]);
+  const slots = TIME_SLOTS;
 
   const gridColumns: GridColumn[] = days.map(day => {
     const dayISO = toISODate(day);
@@ -854,7 +866,7 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onEditEvent, onCre
   const dayISO = toISODate(anchor);
   const events = byDay.get(dayISO) ?? [];
   const isToday = isSameDay(anchor, new Date());
-  const slots = buildTimeSlots();
+  const slots = TIME_SLOTS;
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),

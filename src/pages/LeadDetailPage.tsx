@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Trash2, Plus, Phone, Mail, Calendar,
@@ -45,6 +45,13 @@ export default function LeadDetailPage() {
   const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
 
   const lead = state.leads.find(l => l.id === id);
+
+  // Mémoïsés (audit perf) : ces dérivations tournaient à chaque frappe dans un
+  // champ du formulaire inline. AVANT le retour anticipé (règle des hooks) —
+  // `lead` peut être undefined ici, les mémos le tolèrent.
+  const actions = useMemo(() => (lead ? getLeadActions(lead.id) : []), [getLeadActions, lead]);
+  const risks = useMemo(() => (lead ? getLeadRisks(lead) : []), [lead]);
+
   if (!lead) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -54,11 +61,9 @@ export default function LeadDetailPage() {
     );
   }
 
-  const actions = getLeadActions(lead.id);
   const alert = getAlertLevel(lead);
   const days = daysSince(lead.lastActionDate || lead.createdAt);
   const isActive = isLeadActive(lead.status);
-  const risks = getLeadRisks(lead);
   const nextStatus = getNextStatus(lead.status);
 
   const handleSave = (data: Omit<Lead, 'id'>) => {
