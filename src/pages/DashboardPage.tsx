@@ -1,11 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users, TrendingUp, AlertTriangle, CheckCircle2, DollarSign,
-  FileText, Target, ArrowRight, Filter, Flame, Clock, XCircle,
+  Users, AlertTriangle, CheckCircle2, DollarSign,
+  FileText, ArrowRight, Filter, Flame, Clock, XCircle,
   CalendarOff,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useApp } from '../context/useApp';
 import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
@@ -14,9 +13,18 @@ import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES, QUOTE_STATUSES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
-import { useIsCompact, shortLabel } from '../lib/useIsCompact';
+import { useIsCompact } from '../lib/useIsCompact';
 
-const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316'];
+// Graphiques recharts (~340 kB) CHARGÉS EN DIFFÉRÉ (audit perf) : le Dashboard
+// est la route d'accueil — les KPI et listes peignent immédiatement, le chunk
+// recharts arrive juste après (squelettes à hauteur STABLE : zéro saut de mise
+// en page). Deux imports lazy -> même chunk (même fichier source).
+const ChartsRow = lazy(() => import('../components/dashboard/DashboardCharts').then(m => ({ default: m.ChartsRow })));
+const SourceChart = lazy(() => import('../components/dashboard/DashboardCharts').then(m => ({ default: m.SourceChart })));
+
+function ChartSkeleton({ height }: { height: number }) {
+  return <div className="card p-5 animate-pulse bg-gray-50" style={{ height }} />;
+}
 
 export default function DashboardPage() {
   const { state } = useApp();
@@ -251,74 +259,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pipeline overview */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Target className="w-4 h-4 text-primary-600" /> Répartition pipeline
-          </h3>
-          {stats.byStatus.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={stats.byStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                    {stats.byStatus.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value} leads`]} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex flex-wrap gap-2 mt-2 justify-center">
-                {stats.byStatus.map((s, idx) => (
-                  <span key={s.name} className="text-xs text-gray-500 flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                    {s.name} ({s.value})
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée pour cette période</p>
-          )}
-        </div>
-
-        {/* Performance by commercial */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary-600" /> Performance commerciaux
-          </h3>
-          {stats.byCommercial.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stats.byCommercial} barGap={4}>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="actifs" name="Actifs" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="signes" name="Signés" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée</p>
-          )}
-        </div>
-      </div>
+      <Suspense
+        fallback={
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartSkeleton height={288} />
+            <ChartSkeleton height={288} />
+          </div>
+        }
+      >
+        <ChartsRow byStatus={stats.byStatus} byCommercial={stats.byCommercial} />
+      </Suspense>
 
       {/* Leads par source + table commercial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Leads par source</h3>
-          {stats.bySource.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stats.bySource} layout="vertical" barSize={16}>
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis dataKey="name" type="category" width={compact ? 76 : 120} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} />
-                <Tooltip />
-                <Bar dataKey="value" name="Leads" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-gray-400 py-12 text-center">Aucune donnée</p>
-          )}
-        </div>
+        <Suspense fallback={<ChartSkeleton height={288} />}>
+          <SourceChart bySource={stats.bySource} compact={compact} />
+        </Suspense>
 
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200">
