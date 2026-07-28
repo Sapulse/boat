@@ -126,6 +126,23 @@ export default function LeadsPage() {
     return leads;
   }, [state.leads, search, filterCommercial, filterStatus, filterBoatType, filterCondition, filterSource, filterAlert, filterTemp, filterPeriod, sortField, sortDir, viewMode, activeView, validCommercialIds]);
 
+  // PAGINATION PROGRESSIVE (audit perf) : au-delà de PAGE_SIZE, la liste rendait
+  // toutes les lignes d'un coup (~300 aujourd'hui, croissant). On affiche par
+  // tranches de 50 (« Afficher 50 de plus ») ; tout changement de filtre/tri/
+  // données ré-arme à 50 (l'identité de `filtered` change). L'export CSV, lui,
+  // reste sur `filtered` ENTIER (le fichier n'est jamais tronqué).
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Ré-armement PENDANT le rendu (patron React « adjusting state when props
+  // change ») : pas d'effet, pas de rendu en cascade — quand l'identité de
+  // `filtered` change (filtre/tri/données), on repart à 50 dans le même rendu.
+  const [prevFiltered, setPrevFiltered] = useState(filtered);
+  if (filtered !== prevFiltered) {
+    setPrevFiltered(filtered);
+    setVisibleCount(PAGE_SIZE);
+  }
+  const visible = filtered.length > visibleCount ? filtered.slice(0, visibleCount) : filtered;
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     // Prochaine action : 1er clic en ASCENDANT (echeances les plus proches en
@@ -258,7 +275,9 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <div className="text-sm text-gray-500">{filtered.length} lead(s)</div>
+      <div className="text-sm text-gray-500">
+        {filtered.length} lead(s){filtered.length > visible.length ? ` — ${visible.length} affichés` : ''}
+      </div>
 
       {/* MOBILE (< 640px) : CARTES — le tableau à 11 colonnes (~1020px)
           imposait un long défilement latéral au doigt (audit mobile). Mêmes
@@ -266,7 +285,7 @@ export default function LeadsPage() {
           journalisation). Le tableau desktop, lui, est STRICTEMENT inchangé. */}
       <div className="card overflow-hidden sm:hidden">
         <div className="divide-y divide-gray-100">
-          {filtered.map(lead => {
+          {visible.map(lead => {
             const alert = getAlertLevel(lead);
             const days = daysSince(lead.lastActionDate || lead.createdAt);
             const nextAction = ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label;
@@ -357,7 +376,7 @@ export default function LeadsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(lead => {
+              {visible.map(lead => {
                 const alert = getAlertLevel(lead);
                 const days = daysSince(lead.lastActionDate || lead.createdAt);
                 const nextAction = ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label;
@@ -432,6 +451,16 @@ export default function LeadsPage() {
           </table>
         </div>
       </div>
+
+      {filtered.length > visible.length && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+          className="btn-secondary w-full justify-center"
+        >
+          Afficher {Math.min(PAGE_SIZE, filtered.length - visible.length)} de plus ({filtered.length - visible.length} restant{filtered.length - visible.length > 1 ? 's' : ''})
+        </button>
+      )}
 
       <Modal open={!!importResult} onClose={() => setImportResult(null)} title="Import de contacts (.vcf)" size="lg">
         {importResult && (
