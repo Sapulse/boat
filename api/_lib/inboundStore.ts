@@ -41,6 +41,7 @@ interface InboundRow {
   fromAddress: string; subject: string; excerpt: string; source: string;
   sourceLabel: string; sourceDetail: string | null; leadSource: string;
   extracted: string; score: number; scoreReasons: string; status: string; leadId: string | null;
+  updatedAt: Date;
 }
 
 function toInbound(r: InboundRow): InboundEmail {
@@ -62,6 +63,9 @@ function toInbound(r: InboundRow): InboundEmail {
     extracted,
     status: r.status as InboundEmail['status'],
     leadId: r.leadId ?? undefined,
+    // `updatedAt` est maintenu par Prisma (@updatedAt) : pour un email traité, il
+    // marque l'instant de la décision. Inutile tant qu'il est « à traiter ».
+    processedAt: r.status === 'a_traiter' ? undefined : r.updatedAt.toISOString(),
   };
 }
 

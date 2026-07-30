@@ -238,8 +238,15 @@ export interface InboundEmail {
   scoreReasons: string[];
   extracted: InboundExtracted;
   status: InboundStatus;
-  /** Id du lead créé à l'acceptation (lien « Voir le lead »). */
+  /** Id du lead créé à l'acceptation, ou du lead visé au rattachement. */
   leadId?: string;
+  /**
+   * Instant du DERNIER traitement (accepté / rejeté / rattaché), en ISO UTC.
+   * Vient de `inbound_emails.updatedAt`, qui existait déjà en base mais n'était
+   * pas exposé : la section « Traités » ne montrait donc que le statut, jamais
+   * QUAND (retour terrain). Absent tant que l'email est « à traiter ».
+   */
+  processedAt?: string;
 }
 
 export interface AppState {

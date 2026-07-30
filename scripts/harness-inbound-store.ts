@@ -293,6 +293,39 @@ async function main() {
     })());
   }
 
+  section('Date de traitement exposée (« Traités » ne montrait que le statut)');
+  {
+    const all = await listInbound(prisma);
+    const enAttente = all.filter(m => m.status === 'a_traiter');
+    const traites = all.filter(m => m.status !== 'a_traiter');
+
+    check('un email « à traiter » n\'a PAS de date de traitement',
+      enAttente.every(m => m.processedAt === undefined),
+      JSON.stringify(enAttente.map(m => m.processedAt)));
+    check('tout email traité en porte une',
+      traites.length > 0 && traites.every(m => !!m.processedAt),
+      JSON.stringify(traites.map(m => [m.status, m.processedAt])));
+    check('la date est de l\'ISO exploitable par l\'affichage',
+      traites.every(m => !Number.isNaN(Date.parse(m.processedAt!))));
+    check('les 3 statuts traités en portent une (accepté, rejeté, rattaché)',
+      ['accepte', 'rejete', 'rattache'].every(st => traites.some(m => m.status === st && !!m.processedAt)),
+      JSON.stringify(traites.map(m => m.status)));
+
+    // Une remise en file EFFACE la date : l'email redevient « à traiter ».
+    await prisma.inboundEmail.create({
+      data: {
+        id: 'ib-date', graphId: 'g-date', internetMessageId: '<date@x>',
+        receivedAt: '2026-07-26T10:00:00Z', fromAddress: 'a@b.c', subject: 'S',
+        excerpt: 'E', source: 'site', sourceLabel: 'Formulaire du site', leadSource: 'Site BOB', score: 60,
+      },
+    });
+    const rejete = await patchInbound(prisma, 'ib-date', { action: 'reject' });
+    check('le rejet pose la date', !!rejete.inbound.processedAt);
+    const remis = await patchInbound(prisma, 'ib-date', { action: 'reopen' });
+    check('la remise en file EFFACE la date (il n\'est plus traité)',
+      remis.inbound.processedAt === undefined, String(remis.inbound.processedAt));
+  }
+
   // --- Purge de rétention (RGPD) — le SEUL DELETE du module ------------------
   // On ne bricole pas `updatedAt` (champ @updatedAt, format de stockage interne
   // à Prisma) : on déplace la BORNE. Un cutoff dans le futur rend tout « hors

@@ -78,7 +78,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
     // Démo : transitions à sens unique depuis 'a_traiter' (protège du double-clic).
     if (mail.status !== 'a_traiter') return mail.leadId ?? '';
     const leadId = addLead(buildLeadFromInbound(mail, commercialId, toISODate(new Date())));
-    setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'accepte', leadId } : m)));
+    setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'accepte', leadId, processedAt: new Date().toISOString() } : m)));
     return leadId;
   };
 
@@ -91,7 +91,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
       setEmails(prev => prev.map(m => (m.id === id ? out.inbound : m)));
       return;
     }
-    setEmails(prev => prev.map(m => (m.id === id && m.status === 'a_traiter' ? { ...m, status: 'rejete' } : m)));
+    setEmails(prev => prev.map(m => (m.id === id && m.status === 'a_traiter' ? { ...m, status: 'rejete', processedAt: new Date().toISOString() } : m)));
   };
 
   /**
@@ -126,7 +126,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
       notes: `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     });
     updateLead(leadId, { temperature: 'chaud' });
-    setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'rattache', leadId } : m)));
+    setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'rattache', leadId, processedAt: new Date().toISOString() } : m)));
   };
 
   /** Remet en file un email REJETÉ. Les autres statuts ont créé des données : le
@@ -141,7 +141,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
       return;
     }
     setEmails(prev => prev.map(m => (
-      m.id === id && m.status === 'rejete' ? { ...m, status: 'a_traiter', leadId: undefined } : m
+      m.id === id && m.status === 'rejete' ? { ...m, status: 'a_traiter', leadId: undefined, processedAt: undefined } : m
     )));
   };
 

@@ -67,6 +67,28 @@ export function daysSince(date: string): number {
 }
 
 /**
+ * Anciennete en clair, a partir d'un nombre de JOURS deja calcule (parametre
+ * injecte -> fonction PURE, testable sans horloge). Sert sous la date d'entree
+ * d'un lead : « il y a 6 mois » se lit mieux que « il y a 187 j », et c'est
+ * exactement le cas metier signale par l'equipe (prospect revenu apres ~200 j).
+ *
+ * Renvoie '' quand la duree est inconnue (date vide ou invalide -> Infinity) :
+ * une ligne vide vaut mieux qu'un « il y a Infinity j ».
+ */
+export function ageLabelFromDays(days: number): string {
+  if (!Number.isFinite(days) || days < 0) return '';
+  if (days === 0) return "aujourd'hui";
+  if (days === 1) return 'hier';
+  if (days < 30) return `il y a ${days} j`;
+  // Bornes alignees sur les JOURS, pas sur les mois derives : tester
+  // `months < 12` laissait un trou entre 360 et 364 jours (12 mois mais 0 an ->
+  // « il y a 0 ans »). Attrape au harnais.
+  if (days < 365) return `il y a ${Math.floor(days / 30)} mois`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? 'il y a 1 an' : `il y a ${years} ans`;
+}
+
+/**
  * Source de verite UNIQUE : une prochaine action n'est reellement "planifiee"
  * que si elle a une DATE (un type sans date n'est pas actionnable).
  * getAlertLevel, getLeadRisks et tous les predicats UI (Dashboard, vue Leads,

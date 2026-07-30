@@ -14,7 +14,7 @@
  *    (aucune annee codee en dur).
  */
 
-import { buildYearRange } from '../src/lib/utils';
+import { buildYearRange, ageLabelFromDays } from '../src/lib/utils';
 import { YEAR_RANGE_BACK, YEAR_RANGE_FORWARD } from '../src/data/constants';
 
 let passed = 0;
@@ -70,6 +70,24 @@ section('Defauts (constants) — horizon large vers le futur');
   check('forward par defaut applique', def[def.length - 1] === 2026 + YEAR_RANGE_FORWARD);
   check('futur large (forward >= 50) -> jamais de plafond de saisie', YEAR_RANGE_FORWARD >= 50);
 }
+
+// ---------------------------------------------------------------------------
+// ageLabelFromDays — anciennete lisible sous la date d'entree d'un lead
+// ---------------------------------------------------------------------------
+check("0 jour -> aujourd'hui", ageLabelFromDays(0) === "aujourd'hui", ageLabelFromDays(0));
+check('1 jour -> hier (pas « il y a 1 j »)', ageLabelFromDays(1) === 'hier', ageLabelFromDays(1));
+check('2 jours -> il y a 2 j', ageLabelFromDays(2) === 'il y a 2 j', ageLabelFromDays(2));
+check('29 jours -> encore en jours', ageLabelFromDays(29) === 'il y a 29 j', ageLabelFromDays(29));
+check('30 jours -> bascule en mois', ageLabelFromDays(30) === 'il y a 1 mois', ageLabelFromDays(30));
+check('le cas metier : 200 jours -> il y a 6 mois', ageLabelFromDays(200) === 'il y a 6 mois', ageLabelFromDays(200));
+check('364 jours -> encore en mois', ageLabelFromDays(364) === 'il y a 12 mois', ageLabelFromDays(364));
+check('365 jours -> il y a 1 an (singulier)', ageLabelFromDays(365) === 'il y a 1 an', ageLabelFromDays(365));
+check('800 jours -> il y a 2 ans (pluriel)', ageLabelFromDays(800) === 'il y a 2 ans', ageLabelFromDays(800));
+check('Infinity (date vide/invalide) -> chaine VIDE, jamais « il y a Infinity j »',
+  ageLabelFromDays(Infinity) === '', ageLabelFromDays(Infinity));
+check('NaN -> chaine vide', ageLabelFromDays(NaN) === '', ageLabelFromDays(NaN));
+check("date FUTURE (jours negatifs) -> chaine vide plutot qu'un non-sens",
+  ageLabelFromDays(-5) === '', ageLabelFromDays(-5));
 
 // ---------------------------------------------------------------------------
 // Bilan

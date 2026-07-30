@@ -5,7 +5,7 @@ import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate } from '../lib/utils';
+import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate, ageLabelFromDays } from '../lib/utils';
 import { buildCommunicationAction } from '../lib/communication';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
@@ -279,7 +279,7 @@ export default function LeadsPage() {
         {filtered.length} lead(s){filtered.length > visible.length ? ` — ${visible.length} affichés` : ''}
       </div>
 
-      {/* MOBILE (< 640px) : CARTES — le tableau à 11 colonnes (~1020px)
+      {/* MOBILE (< 640px) : CARTES — le tableau à 12 colonnes (~1120px)
           imposait un long défilement latéral au doigt (audit mobile). Mêmes
           données, mêmes actions (tap -> fiche, tél avec confirmation de
           journalisation). Le tableau desktop, lui, est STRICTEMENT inchangé. */}
@@ -322,6 +322,7 @@ export default function LeadsPage() {
                   <StatusBadge status={lead.status} />
                   <span className="text-gray-500">{getCommercialName(lead.commercialId)}</span>
                   {lead.source && <span className="text-gray-400">· {lead.source}</span>}
+                  <span className="text-gray-400">· entre le {formatDateShort(lead.createdAt)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs">
                   <span className="text-gray-600 truncate">{lead.boatInterest || '—'}</span>
@@ -356,6 +357,13 @@ export default function LeadsPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('name')}>
                   <span className="inline-flex items-center gap-1">Nom <SortIcon field="name" sortField={sortField} sortDir={sortDir} /></span>
                 </th>
+                {/* Date d'ENTREE du lead (retour terrain : « voir les derniers
+                    rentres »). Le tri par createdAt existait deja — et c'est meme
+                    le tri par defaut — mais la date n'etait ni affichee ni
+                    cliquable : la capacite etait invisible. */}
+                <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('createdAt')}>
+                  <span className="inline-flex items-center gap-1">Entre le <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} /></span>
+                </th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Commercial</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('status')}>
                   <span className="inline-flex items-center gap-1">Statut <SortIcon field="status" sortField={sortField} sortDir={sortDir} /></span>
@@ -386,6 +394,10 @@ export default function LeadsPage() {
                     <td tabIndex={0} className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
                       <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>
                       <div className="text-xs text-gray-500">{lead.email || lead.phone}</div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="text-xs text-gray-700">{formatDateShort(lead.createdAt)}</div>
+                      <div className="text-xs text-gray-400">{ageLabelFromDays(daysSince(lead.createdAt))}</div>
                     </td>
                     <td className="px-3 py-2.5 text-gray-600 text-xs">{getCommercialName(lead.commercialId)}</td>
                     <td className="px-3 py-2.5"><StatusBadge status={lead.status} /></td>

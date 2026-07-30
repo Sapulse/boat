@@ -274,9 +274,19 @@ export default function InboxProspectsPage() {
             {processed.map(mail => (
               <li key={mail.id} className="py-2 flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="flex-1 truncate text-gray-700">
-                  {inboundDisplayName(mail)}
-                  <span className="text-gray-400"> — {mail.subject}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate text-gray-700">
+                    {inboundDisplayName(mail)}
+                    <span className="text-gray-400"> — {mail.subject}</span>
+                  </span>
+                  {/* QUAND la décision a été prise (retour terrain : la section ne
+                      montrait que le statut). `processedAt` vient de
+                      inbound_emails.updatedAt, exposé pour ça. */}
+                  {mail.processedAt && (
+                    <span className="block text-xs text-gray-400">
+                      {formatReceivedShort(mail.processedAt)} · {formatReceivedAge(mail.processedAt, new Date())}
+                    </span>
+                  )}
                 </span>
                 {mail.status === 'accepte' && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Accepté</span>
