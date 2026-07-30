@@ -14,8 +14,12 @@ import type { InboundEmail, InboundExtracted, Lead } from '../../src/data/types.
 //  - collectInbound : INSERT ... ON CONFLICT DO NOTHING dans inbound_emails
 //    UNIQUEMENT (idempotence par internetMessageId, prouvée au harnais) ;
 //  - acceptInbound : CRÉE un lead (jamais de suppression nulle part) + marque
-//    l'email accepté ; rejectInbound : marque rejeté.
-// Aucun DELETE dans ce module. Lecture seule côté Outlook (Mail.Read).
+//    l'email accepté ; rejectInbound : marque rejeté ;
+//  - purgeRejectedInbound : le SEUL DELETE du module (rétention RGPD), ajouté le
+//    2026-07-30. Périmètre étroit et prouvé au harnais : uniquement des lignes
+//    inbound_emails au statut 'rejete' hors délai. Aucun lead n'est jamais
+//    supprimé, ici ni ailleurs.
+// Lecture seule côté Outlook (Mail.Read).
 
 // ---------------------------------------------------------------------------
 // Mapping ligne <-> domaine (extracted/scoreReasons stockés en JSON texte).
@@ -219,4 +223,48 @@ export async function patchInbound(prisma: PrismaClient, id: string, rawBody: un
   });
 
   return { inbound: toInbound(result.updated as unknown as InboundRow), lead: result.lead };
+}
+
+// ---------------------------------------------------------------------------
+// Purge de rétention (RGPD) — le SEUL DELETE de ce module.
+// ---------------------------------------------------------------------------
+
+/** Durée de conservation des emails REJETÉS, en jours (politique RGPD du projet). */
+export const INBOUND_RETENTION_DAYS = 90;
+
+/** Borne : tout email rejeté dont l'horodatage est antérieur est hors délai. */
+export function inboundRetentionCutoff(now: Date, days = INBOUND_RETENTION_DAYS): Date {
+  return new Date(now.getTime() - days * 86_400_000);
+}
+
+/**
+ * Les emails rejetés hors délai, SANS RIEN SUPPRIMER : c'est ce que le mode « à
+ * blanc » du script de purge affiche avant que l'utilisateur décide.
+ */
+export async function listPurgeableInbound(prisma: PrismaClient, before: Date) {
+  return prisma.inboundEmail.findMany({
+    where: { status: 'rejete', updatedAt: { lt: before } },
+    orderBy: { updatedAt: 'asc' },
+  });
+}
+
+/**
+ * Supprime les emails REJETÉS hors délai. Périmètre volontairement étroit :
+ *  - `status: 'rejete'` UNIQUEMENT. Un 'a_traiter' est du travail en attente ;
+ *    un 'accepte' porte le lien `leadId` vers le lead créé — donc la trace de
+ *    l'origine d'un lead réel, qu'on ne casse pas.
+ *  - rien d'autre que `inbound_emails` : aucun lead n'est touché.
+ *
+ * La borne porte sur `updatedAt`, c'est-à-dire l'INSTANT DU REJET (rien ne remet
+ * un email rejeté à jour ensuite, et les administratifs auto-rejetés le sont dès
+ * l'insertion) : la règle est donc « 90 jours après le rejet », ce qui est la
+ * formulation défendable côté RGPD.
+ *
+ * Renvoie le nombre de lignes supprimées.
+ */
+export async function purgeRejectedInbound(prisma: PrismaClient, before: Date): Promise<number> {
+  const { count } = await prisma.inboundEmail.deleteMany({
+    where: { status: 'rejete', updatedAt: { lt: before } },
+  });
+  return count;
 }

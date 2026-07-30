@@ -16,7 +16,10 @@ import { PrismaClient } from '@prisma/client';
 import { createClient } from '@libsql/client';
 import { readFileSync, rmSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { collectInbound, listInbound, patchInbound, computeSinceFloor } from '../api/_lib/inboundStore';
+import {
+  collectInbound, listInbound, patchInbound, computeSinceFloor,
+  listPurgeableInbound, purgeRejectedInbound, inboundRetentionCutoff, INBOUND_RETENTION_DAYS,
+} from '../api/_lib/inboundStore';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import type { GraphEnv } from '../api/_lib/graph';
 import { HttpError } from '../api/_lib/http';
@@ -176,6 +179,59 @@ async function main() {
     });
     await patchInbound(prisma, 'manual-1', { action: 'accept', commercialId: 'inconnu-999' });
   });
+
+  // --- Purge de rétention (RGPD) — le SEUL DELETE du module ------------------
+  // On ne bricole pas `updatedAt` (champ @updatedAt, format de stockage interne
+  // à Prisma) : on déplace la BORNE. Un cutoff dans le futur rend tout « hors
+  // délai », un cutoff dans le passé ne rend rien éligible — ce qui exerce
+  // exactement le même prédicat, dans les deux sens.
+  section('Purge de rétention : périmètre étroit, prouvé dans les deux sens');
+  {
+    const mk = (id: string, status: string) => prisma.inboundEmail.create({
+      data: {
+        id, graphId: `g-${id}`, internetMessageId: `<${id}@purge>`, receivedAt: '2026-07-20T08:00:00Z',
+        fromAddress: `${id}@prospect.fr`, subject: `Sujet ${id}`, source: 'site', score: 55, status,
+      },
+    });
+    await mk('pg-pending', 'a_traiter');
+    await mk('pg-accepted', 'accepte');
+    await mk('pg-rejected', 'rejete');
+
+    const leadsBefore = await prisma.lead.count();
+    const totalBefore = await prisma.inboundEmail.count();
+    const future = new Date(Date.now() + 86_400_000);
+    const past = new Date(Date.now() - 86_400_000);
+
+    // Mode « à blanc » : lister ne supprime RIEN.
+    const listed = await listPurgeableInbound(prisma, future);
+    check('listPurgeableInbound voit le rejeté hors délai', listed.some(r => r.id === 'pg-rejected'));
+    check('listPurgeableInbound ignore « à traiter » et « accepté »',
+      !listed.some(r => r.id === 'pg-pending' || r.id === 'pg-accepted'));
+    check('lister ne supprime rien (mode à blanc réellement inoffensif)',
+      (await prisma.inboundEmail.count()) === totalBefore);
+
+    // Borne dans le passé : rien n'est hors délai.
+    check('cutoff antérieur -> 0 suppression', (await purgeRejectedInbound(prisma, past)) === 0);
+    check('la file est intacte après un cutoff antérieur',
+      (await prisma.inboundEmail.count()) === totalBefore);
+
+    // Borne dans le futur : les rejetés partent, et EUX SEULS.
+    const deleted = await purgeRejectedInbound(prisma, future);
+    check('cutoff postérieur -> les rejetés sont supprimés', deleted >= 1, `deleted=${deleted}`);
+    check('le rejeté a disparu', (await prisma.inboundEmail.findUnique({ where: { id: 'pg-rejected' } })) === null);
+    check('« à traiter » SURVIT (travail en attente)',
+      (await prisma.inboundEmail.findUnique({ where: { id: 'pg-pending' } })) !== null);
+    check('« accepté » SURVIT (porte le lien vers le lead créé)',
+      (await prisma.inboundEmail.findUnique({ where: { id: 'pg-accepted' } })) !== null);
+    check('AUCUN lead touché par la purge', (await prisma.lead.count()) === leadsBefore);
+    check('plus aucun rejeté éligible après purge (idempotent)',
+      (await purgeRejectedInbound(prisma, future)) === 0);
+
+    // La constante de politique est bien celle annoncée.
+    const cutoff = inboundRetentionCutoff(new Date('2026-07-30T12:00:00Z'));
+    check(`inboundRetentionCutoff = J-${INBOUND_RETENTION_DAYS}`,
+      cutoff.toISOString().slice(0, 10) === '2026-05-01', cutoff.toISOString());
+  }
 
   await prisma.$disconnect();
   try { rmSync(DB_FILE, { force: true }); } catch { /* verrou Windows, sans gravité */ }
