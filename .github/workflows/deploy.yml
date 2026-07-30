@@ -1,8 +1,20 @@
-name: Deploy to GitHub Pages
+# DÉSACTIVÉ (2026-07-30) — vestige d'avant la bascule sur Vercel.
+#
+# La prod du CRM est SUR VERCEL (boat-eta) : elle a besoin des routes /api/**
+# (fonctions serverless) et de Turso. GitHub Pages ne sert que du statique, donc
+# le site publié ici était une app SANS API — au mieux inutile, au pire une
+# version fantôme trompeuse, redéployée à chaque push sur main.
+#
+# Le fichier est CONSERVÉ volontairement (retour arrière possible) mais ne se
+# déclenche plus tout seul : le trigger `push` est retiré, seul le lancement
+# MANUEL (workflow_dispatch, bouton « Run workflow ») subsiste.
+# Pour réactiver : remettre les deux lignes `push:` / `branches: [main]`.
+#
+# NB : ceci ne touche pas la CI de tests (.github/workflows/ci.yml), qui elle
+# doit bien tourner à chaque push.
+name: Deploy to GitHub Pages (désactivé — manuel seulement)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

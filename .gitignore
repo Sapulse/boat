@@ -36,6 +36,11 @@ memory/
 .vercel
 .env*
 
+# Scripts de diagnostic JETABLES : le prefixe _ signe un script temporaire, qui
+# n'a pas a survivre a la session ni a etre commite (cf. _diag-turso / _inspect-turso,
+# supprimes le 2026-07-30). Un outil qui doit durer porte un vrai nom.
+scripts/_*.ts
+
 # Fichiers d'import RGPD (donnees perso reelles) — JAMAIS commites (chantier import/export)
 _import_local/
 

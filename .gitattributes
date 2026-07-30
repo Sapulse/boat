@@ -1,0 +1,11 @@
+# Fins de ligne.
+#
+# `core.autocrlf=true` sur ce poste veut réécrire les fichiers en CRLF au
+# checkout. Prisma, lui, écrit `migration_lock.toml` en LF : git le voyait donc
+# éternellement « modifié » alors que le contenu était IDENTIQUE (`git diff` ne
+# montrait aucune ligne). Ce diff fantôme polluait chaque `git status` et
+# risquait de partir dans un commit par accident.
+#
+# On fixe le LF pour les fichiers écrits par des outils, sans toucher au reste du
+# dépôt (pas de `* text=auto`, qui renormaliserait des centaines de fichiers).
+*.toml text eol=lf
