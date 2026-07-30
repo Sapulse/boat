@@ -84,6 +84,24 @@ export function scoreEmail(source: EmailSourceKind, ex: ExtractResult): { score:
     case 'leboncoin': {
       score = 55;
       if (x.boatInterest) { score += 10; reasons.push(`Annonce identifiée (${x.boatInterest})`); }
+      // MISE EN FAVORI : sortie ANTICIPÉE, et c'est le cœur du correctif.
+      //
+      // Ces notifications arrivaient à 75/100 — donc « prospect probable », donc
+      // lead CHAUD — alors qu'elles ne portent ni nom, ni email, ni téléphone, ni
+      // message. Cause racine : le gabarit automatique de Leboncoin écrit
+      // lui-même « Votre bien est toujours disponible ? », ce qui déclenchait le
+      // bonus d'INTENTION. On ne l'applique donc pas ici (la phrase n'est pas du
+      // prospect), et on pénalise l'impossibilité de recontacter.
+      //
+      // On sort AVANT `richFormat` : « Format ancien : email + pseudo seulement »
+      // n'a aucun sens pour une notification qui n'a jamais eu de coordonnées.
+      // Résultat visé ~45 : au-dessus du seuil de repli (40) pour rester VISIBLE,
+      // franchement sous « prospect probable » (70).
+      if (flags.isFavoriteNotice) {
+        score -= 20;
+        reasons.push('Mise en favori : aucun message ni coordonnée — impossible de recontacter');
+        break;
+      }
       if (flags.richFormat) { score += 15; reasons.push('Format récent : coordonnées étiquetées complètes'); }
       else reasons.push('Format ancien : email + pseudo seulement, à compléter');
       if (intentHit) { score += 10; reasons.push(`Intention claire (« ${intentHit.toLowerCase()} »)`); }

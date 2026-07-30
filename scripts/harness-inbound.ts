@@ -8,9 +8,10 @@
  * leadSource ∈ SOURCES, scores bornés, cas doublon voulu présent).
  */
 import {
-  scoreLevel, sortInboundByScore, buildLeadFromInbound,
+  scoreLevel, sortInboundByScore, buildLeadFromInbound, isContactable,
   inboundDisplayName, parseReceivedAt, formatReceivedAge, formatReceivedShort, scoreReasonSign,
 } from '../src/lib/inbound';
+import { extractLeboncoin } from '../src/lib/email/extractors';
 import { scoreEmail } from '../src/lib/email/score';
 import type { ExtractResult } from '../src/lib/email/types';
 import { MOCK_INBOUND_EMAILS } from '../src/data/mockInboundEmails';
@@ -183,8 +184,136 @@ function main() {
       cases.every(c => c.reasons.length > 0));
   }
 
+  // ------------------------------------------------------------------------
+  // Mises en FAVORI Leboncoin (retour terrain 2026-08).
+  //
+  // Testé ICI plutôt que dans harness-parse-email : ce dernier dépend d'un
+  // fichier d'attentes gitignoré (vrais emails), donc il est SAUTÉ en CI. Une
+  // règle métier de cette importance doit être couverte par un test qui tourne.
+  // ------------------------------------------------------------------------
+  section('Favoris Leboncoin : détection');
+  {
+    const env = (subject: string, body: string, fromName = 'pseudo via leboncoin') => ({
+      fromName, fromAddress: 'abc@messagerie.leboncoin.fr', subject, body,
+    });
+
+    // Le VRAI cas collecté le 2026-07-23.
+    const favori = extractLeboncoin(env(
+      'Un nouveau contact pour "Voilier - BENETEAU FIRST 41S5" sur leboncoin',
+      'Votre bien est toujours disponible ? Faites-le lui savoir.\n59 900 €\n',
+    ));
+    check('favori détecté', favori.flags.isFavoriteNotice === true);
+    check('aucune coordonnée extraite (c\'est le fond du problème)',
+      favori.extracted.email === '' && favori.extracted.phone === '');
+    check('annonce quand même identifiée depuis l\'objet',
+      favori.extracted.boatInterest === 'Voilier - BENETEAU FIRST 41S5', favori.extracted.boatInterest);
+    check('sourceDetail explicite', favori.sourceDetail === 'mise en favori (notification automatique)', favori.sourceDetail);
+
+    // Objet transféré (« TR: ») : la détection ne doit PAS être ancrée en début.
+    const transfere = extractLeboncoin(env(
+      'TR: Un nouveau contact pour "Zodiac Pro 6.5" sur leboncoin',
+      'Votre bien est toujours disponible ? Faites-le lui savoir.\n',
+    ));
+    check('objet transféré (préfixe TR:) détecté aussi', transfere.flags.isFavoriteNotice === true);
+
+    // Marqueurs INDÉPENDANTS : chacun suffit seul.
+    const objetSeul = extractLeboncoin(env('Un nouveau contact pour "X" sur leboncoin', 'Corps sans gabarit.\n'));
+    check('objet seul suffit', objetSeul.flags.isFavoriteNotice === true);
+    const corpsSeul = extractLeboncoin(env('Objet remanié par leboncoin', 'Faites-le lui savoir.\n'));
+    check('gabarit du corps seul suffit', corpsSeul.flags.isFavoriteNotice === true);
+  }
+
+  section('Favoris Leboncoin : les VRAIS messages ne sont PAS pénalisés');
+  {
+    const env = (subject: string, body: string, fromName = 'pseudo via leboncoin') => ({
+      fromName, fromAddress: 'abc@messagerie.leboncoin.fr', subject, body,
+    });
+
+    // Format RÉCENT (coordonnées étiquetées) — cas réel du 2026-07-25.
+    const recent = extractLeboncoin(env(
+      'Nouveau message pour "Semi-rigide - Zodiac Pro 6.5" sur leboncoin',
+      'Prénom : Marc\nNom : Le Goff\nE-mail : marc@exemple.fr\nTéléphone : 0611223344\nVille : Brest\n'
+      + '« Bonjour, votre annonce m\'intéresse ! Est-elle toujours disponible ? »\n53 900 €\n',
+    ));
+    check('format RÉCENT : pas marqué favori', recent.flags.isFavoriteNotice === false, String(recent.flags.isFavoriteNotice));
+    check('format RÉCENT : reconnu comme riche', recent.flags.richFormat === true);
+    check('format RÉCENT : coordonnées extraites',
+      recent.extracted.email === 'marc@exemple.fr' && recent.extracted.phone === '0611223344');
+
+    // Format ANCIEN (email + pseudo seulement) — l'autre format de la spec.
+    const ancien = extractLeboncoin(env(
+      'Nouveau message pour "Coque open - FLYER 6" sur leboncoin',
+      'E-mail : p@exemple.fr\n« Bonjour, disponible ? »\n35 900 €\n',
+    ));
+    check('format ANCIEN : pas marqué favori', ancien.flags.isFavoriteNotice === false, String(ancien.flags.isFavoriteNotice));
+    check('format ANCIEN : pas riche, mais email extrait',
+      ancien.flags.richFormat === false && ancien.extracted.email === 'p@exemple.fr');
+
+    // Scores : le favori descend, les vrais messages NE BOUGENT PAS.
+    const sFavori = scoreEmail('leboncoin', favoriExtract());
+    const sRecent = scoreEmail('leboncoin', recent);
+    const sAncien = scoreEmail('leboncoin', ancien);
+
+    check(`favori : score ${sFavori.score} — sous « prospect probable » (70)`, sFavori.score < 70, String(sFavori.score));
+    check(`favori : score ${sFavori.score} — AU-DESSUS du seuil de repli (40), donc VISIBLE`,
+      sFavori.score >= 40, String(sFavori.score));
+    check('favori : niveau « à vérifier », ni prospect ni parasite',
+      scoreLevel(sFavori.score) === 'a_verifier', scoreLevel(sFavori.score));
+    check('favori : la raison est explicite',
+      sFavori.reasons.some(r => r.startsWith('Mise en favori')), sFavori.reasons.join(' | '));
+    check('favori : le bonus d\'INTENTION n\'est PLUS appliqué (cause racine)',
+      !sFavori.reasons.some(r => r.startsWith('Intention')), sFavori.reasons.join(' | '));
+    check('favori : pas de « Format ancien » parasite dans les raisons',
+      !sFavori.reasons.some(r => r.startsWith('Format ancien')), sFavori.reasons.join(' | '));
+
+    check(`vrai message RÉCENT : score ${sRecent.score} inchangé (>= 70, prospect)`,
+      sRecent.score >= 70 && scoreLevel(sRecent.score) === 'prospect', String(sRecent.score));
+    check(`vrai message ANCIEN : score ${sAncien.score} inchangé (>= 40)`,
+      sAncien.score >= 40, String(sAncien.score));
+    check('vrai message : aucune raison « Mise en favori »',
+      !sRecent.reasons.some(r => r.startsWith('Mise en favori'))
+      && !sAncien.reasons.some(r => r.startsWith('Mise en favori')));
+    check('le favori score STRICTEMENT moins que les deux vrais formats',
+      sFavori.score < sRecent.score && sFavori.score < sAncien.score,
+      `${sFavori.score} vs ${sRecent.score} / ${sAncien.score}`);
+  }
+
+  section('Température : injoignable = FROID, quelle que soit la note');
+  {
+    const noContact = mail({
+      score: 90, // volontairement TRÈS haut : la note ne doit pas primer
+      extracted: { firstName: '', lastName: '', email: '', phone: '', boatInterest: 'Antares 9', brand: 'Beneteau' },
+    });
+    check('injoignable -> isContactable = false', isContactable(noContact) === false);
+    check('injoignable + score 90 -> lead FROID',
+      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature === 'froid',
+      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature);
+
+    const phoneOnly = mail({ score: 50, extracted: { firstName: '', lastName: '', email: '', phone: '0611223344', boatInterest: '', brand: '' } });
+    check('téléphone SEUL suffit à être joignable -> tiède',
+      isContactable(phoneOnly) && buildLeadFromInbound(phoneOnly, 'fred', '2026-07-28').temperature === 'tiede');
+
+    const emailOnly = mail({ score: 90, extracted: { firstName: '', lastName: '', email: 'a@b.c', phone: '', boatInterest: '', brand: '' } });
+    check('email SEUL suffit -> chaud si le score est élevé',
+      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature === 'chaud');
+
+    const nameOnly = mail({ score: 90, extracted: { firstName: 'Marc', lastName: 'Le Goff', email: '  ', phone: '  ', boatInterest: '', brand: '' } });
+    check('un NOM sans coordonnée ne rend pas joignable (espaces ignorés)',
+      isContactable(nameOnly) === false
+      && buildLeadFromInbound(nameOnly, 'fred', '2026-07-28').temperature === 'froid');
+  }
+
   console.log(`\n${passed} OK, ${failed} KO`);
   if (failed > 0) process.exit(1);
+}
+
+/** L'extraction du favori réel, rejouée pour la section des scores. */
+function favoriExtract() {
+  return extractLeboncoin({
+    fromName: 'pseudo via leboncoin', fromAddress: 'abc@messagerie.leboncoin.fr',
+    subject: 'Un nouveau contact pour "Voilier - BENETEAU FIRST 41S5" sur leboncoin',
+    body: 'Votre bien est toujours disponible ? Faites-le lui savoir.\n59 900 €\n',
+  });
 }
 
 main();

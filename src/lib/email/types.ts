@@ -50,5 +50,11 @@ export interface ExtractResult {
     hasLeadSmart?: boolean;
     /** Format Leboncoin récent : coordonnées étiquetées complètes. */
     richFormat?: boolean;
+    /**
+     * Leboncoin : mise en FAVORI de l'annonce, pas un message (retour terrain
+     * 2026-08). Notification automatique, sans nom, sans email, sans téléphone et
+     * sans texte du prospect — l'intérêt est réel mais on ne peut pas recontacter.
+     */
+    isFavoriteNotice?: boolean;
   };
 }

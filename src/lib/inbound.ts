@@ -31,6 +31,15 @@ export function sortInboundByScore(emails: InboundEmail[]): InboundEmail[] {
 }
 
 /**
+ * Peut-on RECONTACTER ce prospect ? Sans email ni téléphone, non — et ça décide
+ * de la température du lead créé. Le nom ne compte pas : connaître un pseudo sans
+ * moyen de contact ne permet toujours rien.
+ */
+export function isContactable(mail: Pick<InboundEmail, 'extracted'>): boolean {
+  return !!(mail.extracted.email.trim() || mail.extracted.phone.trim());
+}
+
+/**
  * Fiche lead pré-remplie depuis un email accepté. Le contexte de l'email
  * (source, objet, message) part dans les commentaires : rien n'est perdu même
  * si l'extraction était partielle. `commercialId` peut être '' (« Non
@@ -60,9 +69,18 @@ export function buildLeadFromInbound(mail: InboundEmail, commercialId: string, t
       `Reçu par email (${via}) le ${mail.receivedAt}.\n` +
       `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     deliveryDate: '',
-    // Score élevé = acheteur actif identifié -> lead chaud d'emblée ; sinon tiède
-    // (le défaut du formulaire manuel).
-    temperature: scoreLevel(mail.score) === 'prospect' ? 'chaud' : 'tiede',
+    // Un lead qu'on ne peut PAS recontacter est FROID quelle que soit la note :
+    // sans email ni téléphone, il n'y a rien à travailler, et le faire remonter
+    // fausserait la priorisation de l'équipe (retour terrain 2026-08 sur les mises
+    // en favori Leboncoin, qui arrivaient chaudes). Règle DÉRIVÉE de l'absence
+    // réelle de coordonnées, donc elle couvre aussi toute autre source qui ne
+    // livre qu'une notification — pas seulement Leboncoin.
+    //
+    // Sinon : score élevé = acheteur actif identifié -> chaud d'emblée ; à défaut
+    // tiède (le défaut du formulaire manuel).
+    temperature: !isContactable(mail)
+      ? 'froid'
+      : (scoreLevel(mail.score) === 'prospect' ? 'chaud' : 'tiede'),
     priority: 'normale',
     nextActionType: '',
     nextActionDate: '',
@@ -147,6 +165,7 @@ const NEGATIVE_REASON_PREFIXES = [
   'Notification automatique',
   'Source inconnue',
   'Démarchage probable',
+  'Mise en favori',
   "Adresse d'entreprise tierce",
   'Adresse email commerciale',
 ] as const;

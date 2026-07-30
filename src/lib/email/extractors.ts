@@ -209,6 +209,19 @@ export function extractLeboncoin(env: EmailEnvelope): ExtractResult {
   if (/^(le\s?bon\s?coin|leboncoin)$/i.test(pseudo)) pseudo = '';
 
   const boat = env.subject.match(/pour\s+"(.+?)"\s+sur leboncoin/i)?.[1] ?? '';
+
+  // MISE EN FAVORI (retour terrain 2026-08) : Leboncoin notifie « quelqu'un a mis
+  // votre annonce en favori » sans aucune coordonnée ni message. Deux marqueurs
+  // indépendants, constatés sur les emails RÉELLEMENT collectés :
+  //  - l'objet dit « Un nouveau contact pour "…" » là où un vrai message dit
+  //    « Nouveau message pour "…" ». Non ancré : les emails transférés portent un
+  //    préfixe « TR: » ;
+  //  - le corps porte le gabarit fixe « Faites-le lui savoir ».
+  // Le OU est volontaire (robuste si Leboncoin change un seul des deux). Le risque
+  // de faux positif est borné : le flag ne joue QUE sur le score, jamais sur la
+  // température, qui se dérive de l'absence réelle de coordonnées.
+  const isFavoriteNotice = /un nouveau contact pour/i.test(env.subject)
+    || /faites[-\s]?le\s+lui\s+savoir/i.test(b);
   // Message courant entre guillemets français (peut être creux sur le format ancien).
   const quoted = b.match(/«\s*([\s\S]*?)\s*»/)?.[1]?.replace(/\s+/g, ' ').trim() ?? '';
 
@@ -253,10 +266,12 @@ export function extractLeboncoin(env: EmailEnvelope): ExtractResult {
       boatInterest: boat,
       brand: detectBrand(boat),
     },
-    sourceDetail: rich ? 'format récent (étiqueté)' : 'format ancien (fil de messages)',
+    sourceDetail: isFavoriteNotice
+      ? 'mise en favori (notification automatique)'
+      : (rich ? 'format récent (étiqueté)' : 'format ancien (fil de messages)'),
     excerpt: quoted,
     notes,
-    flags: { richFormat: rich },
+    flags: { richFormat: rich, isFavoriteNotice },
   };
 }
 
