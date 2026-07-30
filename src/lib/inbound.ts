@@ -73,3 +73,111 @@ export function buildLeadFromInbound(mail: InboundEmail, commercialId: string, t
     reportedAt: '',
   };
 }
+
+// ---------------------------------------------------------------------------
+// Présentation de la file (lot améliorations, 2026-07-30) — cœur PUR, testé par
+// scripts/harness-inbound.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Titre d'une carte : QUI écrit. C'était l'information la plus importante de
+ * l'écran et la seule à n'être nulle part — elle vivait dans un `<input>` au
+ * milieu de la carte, donc impossible de survoler la file.
+ *
+ * Replis successifs : nom complet -> email extrait -> adresse d'expédition. On ne
+ * renvoie jamais une chaîne vide (une carte sans titre est une carte illisible).
+ */
+export function inboundDisplayName(mail: Pick<InboundEmail, 'extracted' | 'fromAddress'>): string {
+  const full = `${mail.extracted.firstName} ${mail.extracted.lastName}`.trim();
+  if (full) return full;
+  if (mail.extracted.email.trim()) return mail.extracted.email.trim();
+  if (mail.fromAddress.trim()) return mail.fromAddress.trim();
+  return 'Expéditeur inconnu';
+}
+
+/**
+ * Date de réception LISIBLE. L'écran affichait `receivedAt` brut, soit
+ * « 2026-07-28T11:17:00Z » en mode réel (le collecteur stocke de l'ISO UTC)
+ * et « 2026-07-28 10:00 » dans les fixtures de démo : les deux formats sont
+ * donc tolérés, et une valeur illisible est rendue telle quelle plutôt que
+ * remplacée par « Invalid Date ».
+ */
+export function parseReceivedAt(receivedAt: string): Date | null {
+  const t = Date.parse(receivedAt.includes('T') ? receivedAt : receivedAt.replace(' ', 'T') + 'Z');
+  return Number.isNaN(t) ? null : new Date(t);
+}
+
+/** « il y a 2 h », « il y a 3 j » — la FRAÎCHEUR décide de l'urgence d'un
+ *  prospect, bien plus que l'horodatage exact. */
+export function formatReceivedAge(receivedAt: string, now: Date): string {
+  const d = parseReceivedAt(receivedAt);
+  if (!d) return '';
+  const mins = Math.floor((now.getTime() - d.getTime()) / 60_000);
+  if (mins < 0) return '';               // horloge décalée : on n'invente pas
+  if (mins < 2) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `il y a ${days} j`;
+}
+
+/** Date courte « 28/07 à 13:17 » (heure locale). Repli : la chaîne d'origine. */
+export function formatReceivedShort(receivedAt: string): string {
+  const d = parseReceivedAt(receivedAt);
+  if (!d) return receivedAt;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Raisons de score qui FONT BAISSER le score, telles que produites par
+ * `src/lib/email/score.ts`. Comparaison par PRÉFIXE : certaines raisons portent
+ * un compte variable (« Démarchage probable : … (3 signaux) »).
+ *
+ * Cette liste duplique des libellés de score.ts — le harnais fait tourner le
+ * VRAI `scoreEmail` et exige qu'AUCUNE raison ne ressorte « inconnue », donc
+ * ajouter une raison là-bas sans la classer ici casse les tests bruyamment.
+ */
+const NEGATIVE_REASON_PREFIXES = [
+  'Administratif',
+  'Pas de téléphone fourni',
+  'Format ancien',
+  'Réponse via la plateforme uniquement',
+  'Notification automatique',
+  'Source inconnue',
+  'Démarchage probable',
+  "Adresse d'entreprise tierce",
+  'Adresse email commerciale',
+] as const;
+
+/** Raisons qui MONTENT le score (mêmes règles de préfixe). */
+const POSITIVE_REASON_PREFIXES = [
+  'Format boats.com',
+  'Bateau précis',
+  'Téléphone + email fournis',
+  'LeadSmart',
+  'Intention nautique claire',
+  'Bateau / marque identifié',
+  'Mobile FR personnel',
+  'Email personnel',
+  'Annonce identifiée',
+  'Format récent',
+  'Intention claire',
+  'Email du prospect fourni',
+] as const;
+
+/**
+ * Signe d'une raison de score. « Administratif (facture) » et « Téléphone
+ * fourni » s'affichaient dans le MÊME gris : impossible de voir d'un coup d'œil
+ * pourquoi un score est bas.
+ *
+ * `inconnu` (repli neutre) plutôt qu'une supposition : mieux vaut un signal
+ * sans couleur qu'un signal peint à l'envers.
+ */
+export function scoreReasonSign(reason: string): 'positif' | 'negatif' | 'inconnu' {
+  const r = reason.trim();
+  if (!r) return 'inconnu';
+  if (NEGATIVE_REASON_PREFIXES.some(p => r.startsWith(p))) return 'negatif';
+  return POSITIVE_REASON_PREFIXES.some(p => r.startsWith(p)) ? 'positif' : 'inconnu';
+}
