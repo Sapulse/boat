@@ -21,14 +21,19 @@ import { buildCommunicationAction } from '../lib/communication';
 import { generateVCard } from '../lib/vcard';
 import { isEndAfterStart } from '../lib/agenda';
 import { useAutoReveal } from '../hooks/useAutoReveal';
+import { diffLeadForConflict, canCheckConflict, type FieldChange } from '../lib/concurrencyGuard';
 import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, setNextAction, getLeadActions, getCommercialName, updateLeadStatus } = useApp();
+  const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, setNextAction, getLeadActions, getCommercialName, updateLeadStatus, readServerState, sync } = useApp();
   const toast = useToast();
   const [editMode, setEditMode] = useState(false);
+  // Contrôle de conflit multi-postes (option b′) : le lead TEL QU'IL ÉTAIT à
+  // l'ouverture du formulaire. Sert de base de comparaison à l'enregistrement.
+  const [editBaseline, setEditBaseline] = useState<Lead | null>(null);
+  const [conflict, setConflict] = useState<{ changes: FieldChange[]; draft: Omit<Lead, 'id'> } | null>(null);
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingNextAction, setEditingNextAction] = useState(false);
@@ -66,10 +71,62 @@ export default function LeadDetailPage() {
   const isActive = isLeadActive(lead.status);
   const nextStatus = getNextStatus(lead.status);
 
-  const handleSave = (data: Omit<Lead, 'id'>) => {
+  const commitSave = (data: Omit<Lead, 'id'>) => {
     updateLead(lead.id, data);
     setEditMode(false);
+    setEditBaseline(null);
+    setConflict(null);
     toast.success('Lead mis à jour');
+  };
+
+  /**
+   * Enregistrement avec contrôle de conflit multi-postes (option b′).
+   *
+   * Un PATCH envoie le lead ENTIER : si un autre poste a touché ce lead pendant
+   * que le formulaire était ouvert, enregistrer ramènerait ses champs en arrière,
+   * silencieusement. On relit donc l'état serveur juste avant d'écrire et on
+   * compare au lead tel qu'il était à l'ouverture.
+   *
+   * Le contrôle est CONSULTATIF et ne bloque jamais :
+   *  - sauté s'il reste des écritures en attente (la comparaison porterait sur
+   *    mes propres changements optimistes -> faux conflits) ;
+   *  - sauté en mode local (pas de serveur à interroger) ;
+   *  - en cas d'échec réseau, on enregistre quand même : perdre le garde-fou vaut
+   *    mieux que perdre la saisie de l'utilisateur.
+   */
+  const handleSave = async (data: Omit<Lead, 'id'>) => {
+    const pending = sync?.info.pending ?? 0;
+    if (!readServerState || !editBaseline || !canCheckConflict(pending)) {
+      commitSave(data);
+      return;
+    }
+    try {
+      const server = await readServerState();
+      const fresh = server.leads.find(l => l.id === lead.id);
+      if (!fresh) {
+        // Supprimé par un autre poste pendant l'édition : on ne ressuscite pas
+        // en silence, on rend la main.
+        setEditMode(false);
+        setEditBaseline(null);
+        toast.error('Ce lead vient d\'être supprimé depuis un autre poste — votre saisie n\'a pas été enregistrée.');
+        return;
+      }
+      const changes = diffLeadForConflict(editBaseline, fresh, getCommercialName);
+      if (changes.length > 0) { setConflict({ changes, draft: data }); return; }
+      commitSave(data);
+    } catch {
+      commitSave(data); // réseau indisponible : on ne bloque pas la saisie
+    }
+  };
+
+  /** « Recharger » : on abandonne sa propre saisie (confirmation exigée) et on
+   *  laisse le poll de 5 s ramener la version serveur dès la modale fermée. */
+  const discardAndReload = () => {
+    if (!confirm('Abandonner votre saisie en cours et repartir de la version à jour ? Ce que vous venez de taper sera perdu.')) return;
+    setConflict(null);
+    setEditMode(false);
+    setEditBaseline(null);
+    toast.info('Saisie abandonnée — la fiche va se remettre à jour.');
   };
 
   const handleDelete = () => {
@@ -223,7 +280,7 @@ export default function LeadDetailPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={exportContact} className="btn-secondary btn-sm"><Contact className="w-4 h-4" /> Exporter contact (.vcf)</button>
-          <button onClick={() => setEditMode(true)} className="btn-secondary btn-sm"><Edit2 className="w-4 h-4" /> Modifier</button>
+          <button onClick={() => { setEditBaseline(lead); setEditMode(true); }} className="btn-secondary btn-sm"><Edit2 className="w-4 h-4" /> Modifier</button>
           <button onClick={handleDelete} className="btn-ghost btn-sm text-danger-600 hover:text-danger-700 hover:bg-danger-50"><Trash2 className="w-4 h-4" /></button>
         </div>
       </div>
@@ -619,8 +676,66 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      <Modal open={editMode} onClose={() => setEditMode(false)} title="Modifier le lead" size="xl">
-        <LeadForm lead={lead} onSave={handleSave} onCancel={() => setEditMode(false)} />
+      <Modal open={editMode} onClose={() => { setEditMode(false); setEditBaseline(null); }} title="Modifier le lead" size="xl">
+        <LeadForm lead={lead} onSave={handleSave} onCancel={() => { setEditMode(false); setEditBaseline(null); }} />
+      </Modal>
+
+      {/* Conflit multi-postes détecté à l'enregistrement (option b′). Consultatif :
+          l'utilisateur tranche, rien n'est imposé. */}
+      <Modal open={conflict !== null} onClose={() => setConflict(null)} title="Ce lead a été modifié entre-temps" size="md">
+        {conflict && (
+          <div className="space-y-4 text-sm text-gray-700">
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-300 px-3 py-2 text-amber-900">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">
+                  {conflict.changes.length} champ{conflict.changes.length > 1 ? 's' : ''} {conflict.changes.length > 1 ? 'ont' : 'a'} été modifié{conflict.changes.length > 1 ? 's' : ''} depuis un autre poste
+                </p>
+                <p className="mt-1 text-xs">
+                  Pendant que vous éditiez cette fiche, quelqu'un a enregistré des changements.
+                  Si vous enregistrez maintenant, <strong>ces valeurs reviendront en arrière</strong> —
+                  y compris les champs que vous n'avez pas touchés.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="text-left font-medium px-3 py-1.5">Champ</th>
+                    <th className="text-left font-medium px-3 py-1.5">À votre ouverture</th>
+                    <th className="text-left font-medium px-3 py-1.5">Maintenant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {conflict.changes.map(c => (
+                    <tr key={c.field}>
+                      <td className="px-3 py-1.5 text-gray-700 font-medium">{c.label}</td>
+                      <td className="px-3 py-1.5 text-gray-500 line-through">{c.mine}</td>
+                      <td className="px-3 py-1.5 text-green-800 font-semibold">{c.theirs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Le compte étant partagé par l'équipe, l'application ne peut pas dire QUI a fait ces
+              modifications. En cas de doute, un mot à l'équipe évite d'écraser le travail de quelqu'un.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-1 flex-wrap">
+              <button onClick={() => setConflict(null)} className="btn-ghost btn-sm">Continuer à modifier</button>
+              <button onClick={discardAndReload} className="btn-secondary btn-sm">
+                <RotateCw className="w-4 h-4" /> Recharger (abandonner ma saisie)
+              </button>
+              <button onClick={() => commitSave(conflict.draft)} className="btn-primary btn-sm bg-amber-600 hover:bg-amber-700">
+                Enregistrer quand même
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {pendingStatus && (

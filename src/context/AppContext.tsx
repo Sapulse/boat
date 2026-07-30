@@ -240,6 +240,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteCalendarEvent: repository.deleteCalendarEvent,
       importBulk: USE_API && repository.bulkImport ? runBulkImport : undefined,
       restoreBackup: USE_API && repository.restore ? runRestore : undefined,
+      // Lecture seule, JAMAIS dispatchée : l'appelant compare, il n'aligne pas
+      // l'écran (le réalignement reste le métier du poll et de sync.refresh,
+      // avec leurs gardes outbox).
+      readServerState: USE_API && repository.hydrate ? repository.hydrate : undefined,
     };
   }, [state, repository, syncInfo]);
 

@@ -52,6 +52,10 @@ export interface AppContextType {
   // Restauration d'une sauvegarde (mode API uniquement, Étape 5). REMPLACE tout
   // PUIS ré-hydrate. Undefined en flag off -> UI désactivée.
   restoreBackup?: (payload: BackupEnvelope) => Promise<RestoreReport>;
+  // Lecture SEULE de l'état serveur, SANS l'appliquer à l'écran (aucun
+  // SET_STATE) : sert au contrôle de conflit multi-postes au moment
+  // d'enregistrer un lead. Undefined en flag off (rien à comparer sans serveur).
+  readServerState?: () => Promise<AppState>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);
