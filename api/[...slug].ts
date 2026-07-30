@@ -219,6 +219,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   } catch (e) {
     // Statuts précis : 400 validation/JSON/FK, 404 introuvable, 409 unicité, 500 sinon.
     const err = toHttpError(e);
+    // Le client ne reçoit qu'un message muet sur 5xx (cf. GENERIC_SERVER_ERROR) :
+    // le détail — seule piste de debug — est tracé ICI, côté serveur, où l'erreur
+    // d'origine est encore en main. Logs Vercel = accès restreint au propriétaire
+    // du projet ; ils peuvent contenir des données métier, ne pas les recopier
+    // ailleurs. Les 4xx (fautes du client) ne polluent pas les logs.
+    if (err.status >= 500) console.error('[api] erreur serveur', req.method, req.url, e);
     res.status(err.status).json({ error: err.message });
   }
 }

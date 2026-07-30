@@ -8,6 +8,9 @@ export class HttpError extends Error {
   }
 }
 
+/** Message des erreurs serveur INATTENDUES : volontairement muet (cf. toHttpError). */
+export const GENERIC_SERVER_ERROR = 'Erreur interne du serveur';
+
 /**
  * Traduit toute erreur en HttpError au statut PRÉCIS (correctif audit #2/4.2) :
  * refus propre plutôt que 500 générique.
@@ -15,7 +18,16 @@ export class HttpError extends Error {
  *  - Prisma P2025 (enregistrement introuvable sur update/delete) -> 404 ;
  *  - Prisma P2002 (violation d'unicité) -> 409 ;
  *  - Prisma P2003 (clé étrangère invalide, ex. leadId inconnu) -> 400 ;
- *  - reste -> 500.
+ *  - reste -> 500 au message GÉNÉRIQUE.
+ *
+ * Le message d'une erreur INATTENDUE ne sort JAMAIS vers le client (correctif
+ * audit sécurité) : `(e as Error).message` porte des internes — noms de
+ * colonnes, chemins de fichiers, fragments de SQL Prisma — qui cartographient
+ * le serveur pour un attaquant. Le détail est loggué côté serveur par
+ * l'enveloppe `handler` (api/[...slug].ts), qui a l'erreur d'origine en main.
+ *
+ * Les HttpError DÉLIBÉRÉES passent inchangées (early return ci-dessous) : leur
+ * message est rédigé POUR le client (validation validate.ts, 503 de config…).
  */
 export function toHttpError(e: unknown): HttpError {
   if (e instanceof HttpError) return e;
@@ -24,7 +36,7 @@ export function toHttpError(e: unknown): HttpError {
   if (code === 'P2025') return new HttpError(404, 'Ressource introuvable');
   if (code === 'P2002') return new HttpError(409, "Conflit d'unicité (enregistrement déjà existant)");
   if (code === 'P2003') return new HttpError(400, 'Référence invalide (clé étrangère inconnue)');
-  return new HttpError(500, (e as Error).message);
+  return new HttpError(500, GENERIC_SERVER_ERROR);
 }
 
 // NB : l'ancienne garde par JETON PARTAGÉ (requireToken / API_SHARED_TOKEN,
