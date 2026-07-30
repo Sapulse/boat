@@ -281,7 +281,14 @@ export default function LeadDetailPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={exportContact} className="btn-secondary btn-sm"><Contact className="w-4 h-4" /> Exporter contact (.vcf)</button>
           <button onClick={() => { setEditBaseline(lead); setEditMode(true); }} className="btn-secondary btn-sm"><Edit2 className="w-4 h-4" /> Modifier</button>
-          <button onClick={handleDelete} className="btn-ghost btn-sm text-danger-600 hover:text-danger-700 hover:bg-danger-50"><Trash2 className="w-4 h-4" /></button>
+          <button
+            onClick={handleDelete}
+            aria-label="Supprimer le lead"
+            title="Supprimer le lead"
+            className="btn-ghost btn-sm text-danger-600 hover:text-danger-700 hover:bg-danger-50"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
         </div>
       </div>
 

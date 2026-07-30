@@ -20,6 +20,8 @@ import {
   type LegacyAcquisitionVolume,
 } from '../src/lib/acquisition';
 import type { MonthlyStat } from '../src/data/types';
+import { SOURCES } from '../src/data/constants';
+import { shortLabel, GUTTER_COMPACT } from '../src/lib/useIsCompact';
 
 let passed = 0;
 let failed = 0;
@@ -160,6 +162,32 @@ section('isPaidSource — regie vs plateforme');
   check("'Youboat' (plateforme) -> non payante", isPaidSource('Youboat') === false);
   check("'Yachtworld' (plateforme) -> non payante", isPaidSource('Yachtworld') === false);
   check('source inconnue -> non payante', isPaidSource('???') === false);
+}
+
+// ---------------------------------------------------------------------------
+// Libelles d'axes des graphiques a barres horizontales (audit mobile).
+// Le risque d'une troncature n'est pas la longueur : c'est que DEUX sources
+// deviennent indiscernables sur l'axe. On l'interdit ici.
+// ---------------------------------------------------------------------------
+section('Libelles d\'axes en mode compact');
+{
+  const labels = SOURCES.map(s => shortLabel(s));
+  const collisions = labels.filter((l, i) => labels.indexOf(l) !== i);
+  check('aucune source ne devient AMBIGUE apres troncature',
+    collisions.length === 0, collisions.join(', '));
+
+  check('« Annonces du bateau » reste reconnaissable (etait « Annonces d… »)',
+    shortLabel('Annonces du bateau') === 'Annonces du ba…', shortLabel('Annonces du bateau'));
+  check('« Boats and outboards » ne se confond plus avec « BoatsGroup »',
+    shortLabel('Boats and outboards') !== shortLabel('BoatsGroup'));
+  check('« Cosas de barcos » (15 car.) tient maintenant en ENTIER',
+    shortLabel('Cosas de barcos') === 'Cosas de barcos');
+  check('« Recommandation » tient en entier', shortLabel('Recommandation') === 'Recommandation');
+  check('un libelle court est rendu tel quel', shortLabel('LBC') === 'LBC');
+  check('aucun libelle ne depasse 15 caracteres',
+    labels.every(l => l.length <= 15), labels.filter(l => l.length > 15).join(', '));
+  check('la gouttiere laisse ~6px par caractere (15 car. dans 100px)',
+    GUTTER_COMPACT >= 15 * 6, String(GUTTER_COMPACT));
 }
 
 // ---------------------------------------------------------------------------

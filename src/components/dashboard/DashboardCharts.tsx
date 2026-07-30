@@ -1,6 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Target, TrendingUp } from 'lucide-react';
-import { shortLabel } from '../../lib/useIsCompact';
+import { shortLabel, GUTTER_COMPACT, GUTTER_WIDE } from '../../lib/useIsCompact';
 
 // Graphiques du Dashboard, EXTRAITS de la page (audit perf) : recharts pèse
 // ~340 kB et le Dashboard est la route d'accueil — via React.lazy (côté page),
@@ -76,7 +76,7 @@ export function SourceChart({ bySource, compact }: { bySource: NameValue[]; comp
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={bySource} layout="vertical" barSize={16}>
             <XAxis type="number" tick={{ fontSize: 12 }} />
-            <YAxis dataKey="name" type="category" width={compact ? 76 : 120} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} />
+            <YAxis dataKey="name" type="category" width={compact ? GUTTER_COMPACT : GUTTER_WIDE} tick={{ fontSize: compact ? 10 : 11 }} tickFormatter={compact ? (v: string) => shortLabel(v) : undefined} />
             <Tooltip />
             <Bar dataKey="value" name="Leads" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
           </BarChart>

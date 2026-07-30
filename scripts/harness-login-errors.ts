@@ -7,13 +7,15 @@
  *
  * Couvre le coeur PUR (src/lib/loginErrors.ts) :
  *  - 401 -> "Mot de passe incorrect." (la cause probable, sans jargon HTTP) ;
+ *  - 429 -> le VRAI message du serveur (rate-limit) : il refuse sciemment, il
+ *    n'est pas en panne. Repli maison si le corps n'est pas exploitable ;
  *  - autres statuts HTTP (4xx/5xx) -> message "serveur", ton rassurant ;
  *  - echec sans reponse HTTP (fetch rejette : reseau coupe, timeout) ->
  *    message "verifiez votre connexion" ;
  *  - aucun message technique brut ("Failed to fetch", "HTTP 500") ne fuit.
  */
 
-import { LoginError, loginErrorMessage } from '../src/lib/loginErrors';
+import { LoginError, loginErrorMessage, RATE_LIMITED_MESSAGE } from '../src/lib/loginErrors';
 
 let passed = 0;
 let failed = 0;
@@ -64,11 +66,38 @@ section('Échec réseau (fetch rejette, pas de réponse HTTP)');
 }
 
 // ---------------------------------------------------------------------------
+section('429 — rate-limit : on relaie l\'explication du serveur');
+{
+  const server = 'Trop de tentatives de connexion — réessayez dans quelques minutes.';
+  const msg = loginErrorMessage(new LoginError(429, server));
+  console.log(`    « ${msg} »`);
+  check('le VRAI message serveur est affiche', msg === server, `=${msg}`);
+  check('plus le message « le serveur ne repond pas correctement »',
+    !msg.includes('ne répond pas correctement'));
+
+  // Corps non exploitable : repository.login fabrique « Connexion refusée (429) ».
+  // Ce texte porte un code de statut -> il ne doit JAMAIS atteindre l'ecran.
+  const fallback = loginErrorMessage(new LoginError(429, 'Connexion refusée (429)'));
+  check('corps non exploitable -> repli maison, pas le code de statut',
+    fallback === RATE_LIMITED_MESSAGE, `=${fallback}`);
+  check('le repli ne contient aucun code de statut', !/[45]\d\d/.test(fallback), fallback);
+
+  const empty = loginErrorMessage(new LoginError(429, '   '));
+  check('message vide -> repli maison', empty === RATE_LIMITED_MESSAGE, `=${empty}`);
+
+  // 429 ne doit pas contaminer les autres statuts (deja couverts plus haut).
+  check('503 garde le message serveur generique',
+    loginErrorMessage(new LoginError(503, 'Auth non configurée')) === 'Le serveur ne répond pas correctement — réessayez dans un instant.');
+}
+
+// ---------------------------------------------------------------------------
 section('Aucune fuite de message technique');
 {
   const all = [
     loginErrorMessage(new LoginError(401, 'Identifiants invalides')),
     loginErrorMessage(new LoginError(500, 'Connexion refusée (500)')),
+    loginErrorMessage(new LoginError(429, 'Connexion refusée (429)')),
+    loginErrorMessage(new LoginError(429, 'Trop de tentatives de connexion — réessayez dans quelques minutes.')),
     loginErrorMessage(new TypeError('Failed to fetch')),
   ];
   check('pas de "HTTP", "fetch", ni code de statut a l\'ecran',
