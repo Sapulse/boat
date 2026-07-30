@@ -46,7 +46,8 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function InboundDemoProvider({ children }: { children: ReactNode }) {
-  const { addLead } = useApp();
+  const { addLead, addAction, updateLead, state } = useApp();
+  const leads = state.leads;
   const [emails, setEmails] = useState<InboundEmail[]>(USE_API ? [] : DEMO_INITIAL);
   const [collecting, setCollecting] = useState(false);
 
@@ -93,6 +94,57 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
     setEmails(prev => prev.map(m => (m.id === id && m.status === 'a_traiter' ? { ...m, status: 'rejete' } : m)));
   };
 
+  /**
+   * RATTACHE à un lead existant. Le serveur fait tout en une transaction ; en
+   * démo on reproduit la même sémantique côté client — action d'historique de
+   * type 'note' (jamais 'email' : ce type compte dans les objectifs du
+   * commercial, cf. lib/goals.ts), datée du jour de RÉCEPTION, et lead remis en
+   * chaud sans toucher `lastActionDate` (personne ne l'a encore rappelé).
+   */
+  const attach = async (mail: InboundEmail, leadId: string): Promise<void> => {
+    if (USE_API) {
+      const out = await apiJson<{ inbound: InboundEmail }>(`/inbound/${mail.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'attach', leadId }),
+      });
+      setEmails(prev => prev.map(m => (m.id === mail.id ? out.inbound : m)));
+      return;
+    }
+    if (mail.status !== 'a_traiter') return;
+    const target = leads.find(l => l.id === leadId);
+    if (!target) return;
+    const via = mail.sourceDetail ? `${mail.sourceLabel} — ${mail.sourceDetail}` : mail.sourceLabel;
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(mail.receivedAt.slice(0, 10))
+      ? mail.receivedAt.slice(0, 10)
+      : toISODate(new Date());
+    addAction({
+      leadId,
+      authorId: target.commercialId,
+      type: 'note',
+      date: day,
+      result: `Demande entrante — ${via}`,
+      notes: `Objet : ${mail.subject}\n\n${mail.excerpt}`,
+    });
+    updateLead(leadId, { temperature: 'chaud' });
+    setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'rattache', leadId } : m)));
+  };
+
+  /** Remet en file un email REJETÉ. Les autres statuts ont créé des données : le
+   *  serveur les refuse, et la démo applique la même règle. */
+  const reopen = async (id: string): Promise<void> => {
+    if (USE_API) {
+      const out = await apiJson<{ inbound: InboundEmail }>(`/inbound/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'reopen' }),
+      });
+      setEmails(prev => prev.map(m => (m.id === id ? out.inbound : m)));
+      return;
+    }
+    setEmails(prev => prev.map(m => (
+      m.id === id && m.status === 'rejete' ? { ...m, status: 'a_traiter', leadId: undefined } : m
+    )));
+  };
+
   const collectNow = USE_API
     ? async (): Promise<CollectSummary> => {
         setCollecting(true);
@@ -120,6 +172,8 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         updateExtracted,
         accept,
         reject,
+        attach,
+        reopen,
       }}
     >
       {children}

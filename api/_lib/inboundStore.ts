@@ -2,24 +2,33 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { HttpError } from './http.js';
-import { createLead } from './store.js';
+import { createLead, createAction, updateLead } from './store.js';
 import { fetchRecentSourceEmails, toParseInput, DEFAULT_COLLECT_CAP } from './inboundCollect.js';
 import type { GraphEnv } from './graph.js';
 import { parseEmail } from '../../src/lib/email/parseEmail.js';
 import { buildLeadFromInbound } from '../../src/lib/inbound.js';
-import type { InboundEmail, InboundExtracted, Lead } from '../../src/data/types.js';
+import type { InboundEmail, InboundExtracted, InboundStatus, Lead, LeadAction } from '../../src/data/types.js';
 
 // Couche d'accès de la file d'import email (Étape B) — même rôle que store.ts
 // pour les entités métier. Périmètre d'écriture STRICT :
 //  - collectInbound : INSERT ... ON CONFLICT DO NOTHING dans inbound_emails
 //    UNIQUEMENT (idempotence par internetMessageId, prouvée au harnais) ;
-//  - acceptInbound : CRÉE un lead (jamais de suppression nulle part) + marque
-//    l'email accepté ; rejectInbound : marque rejeté ;
 //  - purgeRejectedInbound : le SEUL DELETE du module (rétention RGPD), ajouté le
 //    2026-07-30. Périmètre étroit et prouvé au harnais : uniquement des lignes
 //    inbound_emails au statut 'rejete' hors délai. Aucun lead n'est jamais
 //    supprimé, ici ni ailleurs.
 // Lecture seule côté Outlook (Mail.Read).
+//
+// MODÈLE D'ACTIONS de la file (retour terrain 2026-08, `patchInbound`) — quatre
+// issues, dont les transitions autorisées vivent dans ALLOWED_FROM :
+//  - accept : CRÉE un lead ;
+//  - attach : AJOUTE une action d'historique à un lead EXISTANT et le repasse en
+//    chaud. C'est la troisième issue qui manquait : un prospect qui refait la même
+//    demande ne doit ni créer un doublon (accept) ni voir sa demande perdue
+//    (reject). Aucun lead n'est créé ;
+//  - reject : écarte ;
+//  - reopen : remet en file un email REJETÉ — le seul état réversible, parce que
+//    c'est le seul qui n'a créé aucune donnée à défaire.
 
 // ---------------------------------------------------------------------------
 // Mapping ligne <-> domaine (extracted/scoreReasons stockés en JSON texte).
@@ -145,7 +154,7 @@ export async function collectInbound(
 export async function listInbound(prisma: PrismaClient): Promise<InboundEmail[]> {
   const pending = await prisma.inboundEmail.findMany({ where: { status: 'a_traiter' }, orderBy: { receivedAt: 'desc' } });
   const processed = await prisma.inboundEmail.findMany({
-    where: { status: { in: ['accepte', 'rejete'] } }, orderBy: { updatedAt: 'desc' }, take: 50,
+    where: { status: { in: ['accepte', 'rejete', 'rattache'] } }, orderBy: { updatedAt: 'desc' }, take: 50,
   });
   return [...pending, ...processed].map(r => toInbound(r as unknown as InboundRow));
 }
@@ -173,7 +182,53 @@ const patchSchema = z.discriminatedUnion('action', [
     extracted: extractedSchema.optional(),
   }).strip(),
   z.object({ action: z.literal('reject') }).strip(),
+  // RATTACHER à un lead EXISTANT (retour terrain) : pas de nouveau lead, une
+  // ACTION d'historique sur celui qui existe déjà.
+  z.object({ action: z.literal('attach'), leadId: z.string().regex(ID_RE) }).strip(),
+  // REMETTRE EN FILE un email rejeté par erreur.
+  z.object({ action: z.literal('reopen') }).strip(),
 ]);
+
+type PatchAction = z.infer<typeof patchSchema>['action'];
+
+/**
+ * Transitions AUTORISÉES — source de vérité UNIQUE du cycle de vie de la file.
+ *
+ * `reopen` n'est permis QUE depuis `rejete`, et c'est un choix assumé, pas un
+ * oubli : un rejet n'a créé aucune donnée, donc le défaire ne laisse rien
+ * derrière. Un `accepte` a créé un LEAD et un `rattache` a créé une ACTION sur un
+ * lead existant — les défaire supposerait de supprimer des données métier, ce que
+ * ce module ne fait jamais. Dans ces deux cas la correction se fait depuis la
+ * fiche du lead, et le message d'erreur le dit.
+ */
+const ALLOWED_FROM: Record<PatchAction, InboundStatus[]> = {
+  accept: ['a_traiter'],
+  reject: ['a_traiter'],
+  attach: ['a_traiter'],
+  reopen: ['rejete'],
+};
+
+/** Refus EXPLIQUÉ : l'utilisateur doit savoir quoi faire, pas juste que c'est non. */
+function transitionError(action: PatchAction, current: InboundStatus): HttpError {
+  if (action === 'reopen') {
+    if (current === 'a_traiter') return new HttpError(409, 'Cet email est déjà dans la file à traiter.');
+    if (current === 'accepte') {
+      return new HttpError(409,
+        'Impossible de remettre en file : cet email a créé un lead. Corrigez depuis la fiche du lead.');
+    }
+    return new HttpError(409,
+      'Impossible de remettre en file : cet email a été rattaché à un lead. Corrigez depuis la fiche du lead.');
+  }
+  return new HttpError(409, 'Email déjà traité (rechargez la file)');
+}
+
+/** Date de l'action d'historique : le jour de RÉCEPTION, pas aujourd'hui, pour que
+ *  la frise du lead reste chronologiquement honnête. Tolère l'ISO du collecteur
+ *  comme le « YYYY-MM-DD HH:mm » des fixtures ; repli sur aujourd'hui si illisible. */
+function receivedDayISO(receivedAt: string): string {
+  const day = receivedAt.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : new Date().toISOString().slice(0, 10);
+}
 
 const UNASSIGNED_NAME = 'Non attribué';
 
@@ -189,18 +244,73 @@ async function resolveCommercialId(prisma: PrismaClient, requested: string): Pro
   return created.id;
 }
 
-export async function patchInbound(prisma: PrismaClient, id: string, rawBody: unknown): Promise<{ inbound: InboundEmail; lead?: Lead }> {
+export async function patchInbound(
+  prisma: PrismaClient, id: string, rawBody: unknown,
+): Promise<{ inbound: InboundEmail; lead?: Lead; action?: LeadAction }> {
   const parsed = patchSchema.safeParse(rawBody);
-  if (!parsed.success) throw new HttpError(400, 'Corps invalide : action accept/reject attendue');
+  if (!parsed.success) {
+    throw new HttpError(400, 'Corps invalide : action accept / reject / attach / reopen attendue');
+  }
   const body = parsed.data;
 
   const row = await prisma.inboundEmail.findUnique({ where: { id } });
   if (!row) throw new HttpError(404, 'Email introuvable dans la file');
-  if (row.status !== 'a_traiter') throw new HttpError(409, 'Email déjà traité (rechargez la file)');
+  const current = row.status as InboundStatus;
+  if (!ALLOWED_FROM[body.action].includes(current)) throw transitionError(body.action, current);
 
   if (body.action === 'reject') {
     const updated = await prisma.inboundEmail.update({ where: { id }, data: { status: 'rejete' } });
     return { inbound: toInbound(updated as unknown as InboundRow) };
+  }
+
+  // REOPEN — remise en file d'un rejet. On efface aussi `leadId` par précaution :
+  // un rejeté n'en porte pas, mais la file ne doit jamais afficher un lien mort.
+  if (body.action === 'reopen') {
+    const updated = await prisma.inboundEmail.update({
+      where: { id }, data: { status: 'a_traiter', leadId: null },
+    });
+    return { inbound: toInbound(updated as unknown as InboundRow) };
+  }
+
+  // ATTACH — la demande rejoint un lead EXISTANT : aucune création de lead, donc
+  // aucun doublon. Transaction : action d'historique + lead remis en chaud +
+  // marquage de l'email.
+  if (body.action === 'attach') {
+    const target = await prisma.lead.findUnique({ where: { id: body.leadId } });
+    if (!target) throw new HttpError(400, 'Lead cible introuvable');
+    const base = toInbound(row as unknown as InboundRow);
+    const via = base.sourceDetail ? `${base.sourceLabel} — ${base.sourceDetail}` : base.sourceLabel;
+
+    const out = await prisma.$transaction(async (tx) => {
+      // Type 'note' VOLONTAIREMENT : 'email' appartient à FOLLOWUP_TYPES
+      // (lib/goals.ts) et créditerait le commercial d'une relance qu'il n'a pas
+      // faite dans ses objectifs du mois. 'note' n'entre dans aucun compteur.
+      const created = await createAction(tx as PrismaClient, {
+        id: randomUUID(),
+        leadId: target.id,
+        authorId: target.commercialId,
+        type: 'note',
+        date: receivedDayISO(base.receivedAt),
+        result: `Demande entrante — ${via}`,
+        notes: `Objet : ${base.subject}\n\n${base.excerpt}`,
+      } as LeadAction);
+
+      // Le lead repasse CHAUD : revenir après des mois sur le même bateau est un
+      // signal d'achat fort, et `getAlertLevel` place un lead chaud sans prochaine
+      // action planifiée en ROUGE — la demande remonte donc à la surface.
+      //
+      // On ne touche PAS `lastActionDate` : personne n'a encore rappelé ce
+      // prospect, l'alerte d'inactivité doit rester VRAIE. La remonter aurait
+      // exactement l'effet inverse de celui qu'on cherche.
+      const lead = await updateLead(tx as PrismaClient, target.id, { temperature: 'chaud' });
+
+      const updated = await tx.inboundEmail.update({
+        where: { id }, data: { status: 'rattache', leadId: target.id },
+      });
+      return { created, lead, updated };
+    });
+
+    return { inbound: toInbound(out.updated as unknown as InboundRow), lead: out.lead, action: out.created };
   }
 
   // ACCEPT — transaction : création du lead (jamais de suppression) + marquage.

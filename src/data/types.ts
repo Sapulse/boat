@@ -196,7 +196,17 @@ export interface DefaultGoal {
 // leads ACCEPTÉS entrent dans le CRM, par le addLead normal.
 // ============================================================
 
-export type InboundStatus = 'a_traiter' | 'accepte' | 'rejete';
+/**
+ * Cycle de vie d'un email de la file d'import.
+ *  - `a_traiter` : en attente d'une décision humaine ;
+ *  - `accepte`   : un NOUVEAU lead a été créé ;
+ *  - `rattache`  : la demande a été ajoutée à un lead EXISTANT (retour terrain
+ *    2026-08 : un prospect qui refait la même demande ne doit pas créer de
+ *    doublon, et son message ne doit pas être perdu) ;
+ *  - `rejete`    : écarté. SEUL état réversible (« remettre en file »), parce
+ *    qu'il n'a créé aucune donnée à défaire.
+ */
+export type InboundStatus = 'a_traiter' | 'accepte' | 'rejete' | 'rattache';
 
 /** Champs extraits d'un email entrant — ÉDITABLES sur la carte avant acceptation. */
 export interface InboundExtracted {

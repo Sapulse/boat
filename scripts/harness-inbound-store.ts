@@ -9,7 +9,12 @@
  *  - accept : lead créé (« Non attribué » résolu/créé), champs édités
  *    appliqués, email marqué accepté + lié ; re-accept -> 409 ;
  *  - reject ; validations (corps invalide 400, id inconnu 404, commercial
- *    inconnu 400) ; computeSinceFloor (env valide/invalide/absente).
+ *    inconnu 400) ; computeSinceFloor (env valide/invalide/absente) ;
+ *  - ATTACH (retour terrain) : aucun lead créé, une action 'note' datée du jour
+ *    de réception, lead remis en chaud MAIS `lastActionDate` intacte ;
+ *  - REOPEN : réversibilité du seul rejet — accepté et rattaché sont refusés
+ *    parce qu'ils ont créé des données que ce module ne défait jamais ;
+ *  - purge de rétention RGPD (le seul DELETE du module).
  */
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { PrismaClient } from '@prisma/client';
@@ -20,6 +25,7 @@ import {
   collectInbound, listInbound, patchInbound, computeSinceFloor,
   listPurgeableInbound, purgeRejectedInbound, inboundRetentionCutoff, INBOUND_RETENTION_DAYS,
 } from '../api/_lib/inboundStore';
+import { createLead, createCommercial } from '../api/_lib/store';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import type { GraphEnv } from '../api/_lib/graph';
 import { HttpError } from '../api/_lib/http';
@@ -179,6 +185,113 @@ async function main() {
     });
     await patchInbound(prisma, 'manual-1', { action: 'accept', commercialId: 'inconnu-999' });
   });
+
+  // --- Modèle d'actions de la file : RATTACHER et REMETTRE EN FILE -----------
+  // Retour terrain : un prospect qui refait la même demande ne doit ni créer un
+  // doublon (accept) ni voir sa demande perdue (reject).
+  section('RATTACHER à un lead existant');
+  {
+    await createCommercial(prisma, { id: 'oceane', name: 'Océane', active: true });
+    const cible = await createLead(prisma, {
+      id: 'lead-cible', createdAt: '2026-01-10', source: 'LBC', commercialId: 'oceane',
+      firstName: 'Marc', lastName: 'Le Goff', phone: '0611223344', email: 'marc@test.fr',
+      boatType: 'Moteur', boatCondition: 'Neuf', boatInterest: 'Antares 9', brand: 'Beneteau',
+      budget: 50000, status: 'negociation', contactDate: '2026-01-11', quoteAmount: null,
+      probability: null, currentBoat: '', comments: '', deliveryDate: '',
+      temperature: 'froid', priority: 'normale', nextActionType: '', nextActionDate: '',
+      lastActionDate: '2026-01-20', lossReason: '', signedAt: '', lostAt: '', reportedAt: '',
+    });
+    check('lead cible créé, froid, dernière activité au 2026-01-20',
+      cible.temperature === 'froid' && cible.lastActionDate === '2026-01-20');
+
+    await prisma.inboundEmail.create({
+      data: {
+        id: 'ib-attach', graphId: 'g-att', internetMessageId: '<att@lbc>',
+        receivedAt: '2026-07-23T21:19:00Z', fromAddress: 'marc@test.fr',
+        subject: 'Nouveau message pour "Antares 9" sur leboncoin',
+        excerpt: 'Bonjour, toujours disponible ?', source: 'leboncoin',
+        sourceLabel: 'Leboncoin', sourceDetail: 'Annonce Antares', leadSource: 'LBC', score: 80,
+      },
+    });
+
+    const leadsBefore = await prisma.lead.count();
+    const out = await patchInbound(prisma, 'ib-attach', { action: 'attach', leadId: 'lead-cible' });
+
+    check('AUCUN lead créé (c\'est tout l\'intérêt)', (await prisma.lead.count()) === leadsBefore,
+      `${leadsBefore} -> ${await prisma.lead.count()}`);
+    check('email marqué « rattache »', out.inbound.status === 'rattache', out.inbound.status);
+    check('email lié au lead existant', out.inbound.leadId === 'lead-cible');
+
+    const actions = await prisma.leadAction.findMany({ where: { leadId: 'lead-cible' } });
+    check('exactement 1 action créée', actions.length === 1, String(actions.length));
+    const a = actions[0];
+    check("type 'note' — PAS 'email' (qui compterait dans les objectifs du commercial)",
+      a.type === 'note', a.type);
+    check('datée du jour de RÉCEPTION, pas d\'aujourd\'hui', a.date === '2026-07-23', a.date);
+    check('auteur = commercial du lead (FK Restrict : ne peut pas être vide)', a.authorId === 'oceane');
+    check('result porte la provenance', a.result === 'Demande entrante — Leboncoin — Annonce Antares', a.result);
+    check("notes portent l'objet ET le message",
+      a.notes.includes('Nouveau message pour') && a.notes.includes('toujours disponible'), a.notes);
+    check('aucun changement de statut du lead imposé', a.newStatus === null || a.newStatus === undefined);
+
+    const after = await prisma.lead.findUnique({ where: { id: 'lead-cible' } });
+    check('le lead repasse CHAUD (signal d\'achat fort)', after?.temperature === 'chaud', after?.temperature);
+    check('lastActionDate INCHANGÉE : personne ne l\'a encore rappelé, l\'alerte doit rester vraie',
+      after?.lastActionDate === '2026-01-20', String(after?.lastActionDate));
+    check('la file « traités » inclut les rattachés',
+      (await listInbound(prisma)).some(m => m.id === 'ib-attach' && m.status === 'rattache'));
+  }
+
+  section('Rattachement — refus');
+  {
+    await prisma.inboundEmail.create({
+      data: {
+        id: 'ib-att2', graphId: 'g-att2', internetMessageId: '<att2@lbc>',
+        receivedAt: '2026-07-24T10:00:00Z', fromAddress: 'x@y.z', subject: 'S',
+        excerpt: 'E', source: 'site', sourceLabel: 'Formulaire du site', leadSource: 'Site BOB', score: 60,
+      },
+    });
+    await expectHttpError('lead cible inconnu -> 400', 400,
+      () => patchInbound(prisma, 'ib-att2', { action: 'attach', leadId: 'fantome' }));
+    await expectHttpError('rattacher un email DÉJÀ rattaché -> 409', 409,
+      () => patchInbound(prisma, 'ib-attach', { action: 'attach', leadId: 'lead-cible' }));
+    await expectHttpError('leadId absent du corps -> 400', 400,
+      () => patchInbound(prisma, 'ib-att2', { action: 'attach' }));
+  }
+
+  section('REMETTRE EN FILE — seul le rejet est réversible');
+  {
+    // Le cas vécu : l'équipe a rejeté 4 vraies demandes faute de « rattacher ».
+    await patchInbound(prisma, 'ib-att2', { action: 'reject' });
+    check('email bien rejeté', (await prisma.inboundEmail.findUnique({ where: { id: 'ib-att2' } }))?.status === 'rejete');
+
+    const back = await patchInbound(prisma, 'ib-att2', { action: 'reopen' });
+    check('rejeté -> remis « a_traiter »', back.inbound.status === 'a_traiter', back.inbound.status);
+    check('leadId effacé (jamais de lien mort dans la file)', back.inbound.leadId === undefined);
+
+    // Et il redevient réellement actionnable : c'est tout le but.
+    const re = await patchInbound(prisma, 'ib-att2', { action: 'attach', leadId: 'lead-cible' });
+    check('un email remis en file est de nouveau actionnable', re.inbound.status === 'rattache');
+
+    await expectHttpError('remettre en file un ACCEPTÉ -> 409 (un lead a été créé)', 409,
+      () => patchInbound(prisma, pendingItem.id, { action: 'reopen' }));
+    await expectHttpError('remettre en file un RATTACHÉ -> 409 (une action a été créée)', 409,
+      () => patchInbound(prisma, 'ib-attach', { action: 'reopen' }));
+
+    await prisma.inboundEmail.create({
+      data: {
+        id: 'ib-att3', graphId: 'g-att3', internetMessageId: '<att3@lbc>',
+        receivedAt: '2026-07-25T10:00:00Z', fromAddress: 'a@b.c', subject: 'S',
+        excerpt: 'E', source: 'site', sourceLabel: 'Formulaire du site', leadSource: 'Site BOB', score: 60,
+      },
+    });
+    await expectHttpError('remettre en file un email DÉJÀ à traiter -> 409', 409,
+      () => patchInbound(prisma, 'ib-att3', { action: 'reopen' }));
+
+    check('action inconnue -> refus', await (async () => {
+      try { await patchInbound(prisma, 'ib-att3', { action: 'nawak' }); return false; } catch { return true; }
+    })());
+  }
 
   // --- Purge de rétention (RGPD) — le SEUL DELETE du module ------------------
   // On ne bricole pas `updatedAt` (champ @updatedAt, format de stockage interne

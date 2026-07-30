@@ -38,6 +38,14 @@ export interface InboundContextType {
   /** Accepte : crée le lead (client en démo, serveur en API) — résout l'id du lead créé. */
   accept(mail: InboundEmail, commercialId: string): Promise<string>;
   reject(id: string): Promise<void>;
+  /**
+   * RATTACHE la demande à un lead EXISTANT : aucun lead créé, une action
+   * d'historique ajoutée au lead visé, qui repasse en chaud. La troisième issue
+   * qui manquait quand un doublon est détecté (retour terrain).
+   */
+  attach(mail: InboundEmail, leadId: string): Promise<void>;
+  /** Remet en file un email REJETÉ (le seul statut réversible). */
+  reopen(id: string): Promise<void>;
 }
 
 export const InboundDemoContext = createContext<InboundContextType | null>(null);

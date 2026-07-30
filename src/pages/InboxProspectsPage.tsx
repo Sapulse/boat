@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, FlaskConical, Inbox, Mail, Minus, Plus, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Check, FlaskConical, Inbox, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
 import { useInboundDemo } from '../context/useInboundDemo';
@@ -9,7 +9,8 @@ import {
   sortInboundByScore, scoreLevel, SCORE_LEVELS,
   inboundDisplayName, formatReceivedShort, formatReceivedAge, scoreReasonSign,
 } from '../lib/inbound';
-import { cn } from '../lib/utils';
+import { cn, formatDate } from '../lib/utils';
+import { getStatusLabel } from '../data/constants';
 import type { InboundEmail, Lead } from '../data/types';
 
 // Écran « Leads entrants à valider » (spec §6). Une carte par email, triées par
@@ -41,7 +42,7 @@ const FOLD_THRESHOLD = 40;
 
 export default function InboxProspectsPage() {
   const { state } = useApp();
-  const { emails, pendingCount, realData, apiMode, collecting, collectNow, updateExtracted, accept, reject } = useInboundDemo();
+  const { emails, pendingCount, realData, apiMode, collecting, collectNow, updateExtracted, accept, reject, attach, reopen } = useInboundDemo();
   const toast = useToast();
   // Commercial choisi par carte ('' = Non attribué, défaut). Etat de PAGE (pas
   // du store) : un choix non validé n'a pas à survivre à la navigation.
@@ -82,12 +83,45 @@ export default function InboxProspectsPage() {
   };
 
   /**
+   * RATTACHEMENT à un lead existant : la troisième issue réclamée par l'équipe.
+   * Le lead visé reçoit une action d'historique et repasse en chaud ; aucun lead
+   * n'est créé, donc aucun doublon.
+   */
+  const handleAttach = async (mail: InboundEmail, leadId: string) => {
+    if (!leadId || processedRef.current.has(mail.id)) return;
+    processedRef.current.add(mail.id);
+    try {
+      await attach(mail, leadId);
+      const target = state.leads.find(l => l.id === leadId);
+      const name = target ? `${target.firstName} ${target.lastName}`.trim() || target.email : 'lead existant';
+      toast.success(`Demande rattachée à ${name} — le lead repasse en chaud`);
+    } catch (e) {
+      processedRef.current.delete(mail.id);
+      toast.error(`Échec du rattachement : ${(e as Error).message}`);
+    }
+  };
+
+  /**
+   * REMISE EN FILE d'un email rejeté (le seul statut réversible). On relâche le
+   * verrou anti double-clic : l'email redevient actionnable.
+   */
+  const handleReopen = async (mail: InboundEmail) => {
+    try {
+      await reopen(mail.id);
+      processedRef.current.delete(mail.id);
+      toast.success('Email remis dans la file à traiter');
+    } catch (e) {
+      toast.error(`Remise en file impossible : ${(e as Error).message}`);
+    }
+  };
+
+  /**
    * Rejet GROUPÉ des parasites repliés. Séquentiel volontairement : la base est
    * un writer unique (SQLite), et on préfère un compte-rendu exact à de la
    * vitesse. Un échec n'interrompt pas les suivants et libère son verrou.
    *
-   * La confirmation dit « définitif » parce que ça l'est aujourd'hui : le serveur
-   * refuse toute action sur un email déjà traité. L'annulation reste à faire.
+   * Depuis l'ajout de « remettre en file », un rejet n'est PLUS définitif : la
+   * confirmation le dit, pour ne pas effrayer inutilement.
    */
   const handleRejectAllFolded = async () => {
     if (folded.length === 0 || bulkRejecting) return;
@@ -132,6 +166,7 @@ export default function InboxProspectsPage() {
     onEdit: (patch: Partial<InboundEmail['extracted']>) => updateExtracted(mail.id, patch),
     onAccept: () => handleAccept(mail),
     onReject: () => handleReject(mail),
+    onAttach: (leadId: string) => handleAttach(mail, leadId),
   });
 
   return (
@@ -243,17 +278,34 @@ export default function InboxProspectsPage() {
                   {inboundDisplayName(mail)}
                   <span className="text-gray-400"> — {mail.subject}</span>
                 </span>
-                {mail.status === 'accepte' ? (
+                {mail.status === 'accepte' && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Accepté</span>
+                )}
+                {/* Rattaché : distinct de « Accepté » — aucun lead n'a été créé,
+                    la demande a rejoint l'historique d'un lead existant. */}
+                {mail.status === 'rattache' && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">Rattaché</span>
+                )}
+                {mail.status === 'rejete' && (
                   <>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Accepté</span>
-                    {mail.leadId && (
-                      <Link to={`/leads/${mail.leadId}`} className="text-primary-600 hover:underline whitespace-nowrap">
-                        Voir le lead
-                      </Link>
-                    )}
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Rejeté</span>
+                    {/* Le filet réclamé : un rejet par erreur se répare. Seul le
+                        rejet est réversible — accepté et rattaché ont créé des
+                        données, le serveur refuse de les défaire. */}
+                    <button
+                      type="button"
+                      onClick={() => handleReopen(mail)}
+                      className="btn-ghost btn-sm text-primary-600 hover:text-primary-700 whitespace-nowrap"
+                      title="Remettre cet email dans la file à traiter"
+                    >
+                      <RotateCcw className="w-4 h-4" /> Remettre en file
+                    </button>
                   </>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Rejeté</span>
+                )}
+                {(mail.status === 'accepte' || mail.status === 'rattache') && mail.leadId && (
+                  <Link to={`/leads/${mail.leadId}`} className="text-primary-600 hover:underline whitespace-nowrap">
+                    Voir le lead
+                  </Link>
                 )}
               </li>
             ))}
@@ -277,9 +329,10 @@ interface InboundCardProps {
   onEdit: (patch: Partial<InboundEmail['extracted']>) => void;
   onAccept: () => void;
   onReject: () => void;
+  onAttach: (leadId: string) => void;
 }
 
-function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onAccept, onReject }: InboundCardProps) {
+function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onAccept, onReject, onAttach }: InboundCardProps) {
   const level = SCORE_LEVELS[scoreLevel(mail.score)];
   const x = mail.extracted;
 
@@ -296,6 +349,13 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
   const negatives = mail.scoreReasons.filter(r => scoreReasonSign(r) === 'negatif');
   const positives = mail.scoreReasons.filter(r => scoreReasonSign(r) === 'positif');
   const neutrals = mail.scoreReasons.filter(r => scoreReasonSign(r) === 'inconnu');
+
+  // Lead cible du rattachement. Repli sur le 1er candidat : la liste des doublons
+  // change quand l'utilisateur corrige l'email/le tel, donc une cible mémorisée
+  // peut devenir obsolète — on ne rattache jamais à un lead qui n'est plus proposé.
+  const [attachPick, setAttachPick] = useState('');
+  const attachId = duplicates.some(l => l.id === attachPick) ? attachPick : (duplicates[0]?.id ?? '');
+  const setAttachId = setAttachPick;
 
   const wants = [x.boatInterest, x.brand].filter(Boolean).join(' · ');
   const age = formatReceivedAge(mail.receivedAt, new Date());
@@ -316,14 +376,19 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
 
       {/* 2. DOUBLON juste sous l'identité : au test à blanc, 9 emails sur 20
              visaient un prospect déjà en base. Signal NON bloquant, cohérent
-             avec la création manuelle (LeadForm). */}
+             avec la création manuelle (LeadForm).
+
+             C'est ici que vit la TROISIÈME ISSUE (retour terrain) : un prospect
+             qui refait la même demande ne doit ni créer un doublon (Accepter) ni
+             voir sa demande perdue (Rejeter). « Rattacher » ajoute la demande à
+             l'historique du lead existant. */}
       {duplicates.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm space-y-2">
           <p className="font-medium text-amber-800 flex items-center gap-1.5">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             Doublon possible : {duplicates.length > 1 ? 'des leads existent déjà' : 'un lead existe déjà'} avec cet email ou ce téléphone
           </p>
-          <p className="text-amber-700 mt-0.5">
+          <p className="text-amber-700">
             {duplicates.slice(0, 3).map((l, i) => (
               <span key={l.id}>
                 {i > 0 && ', '}
@@ -334,6 +399,35 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
             ))}
             {duplicates.length > 3 ? ` +${duplicates.length - 3}` : ''}
           </p>
+
+          <div className="pt-2 border-t border-amber-200 space-y-2">
+            {/* Plusieurs candidats -> choix EXPLICITE. Jamais de rattachement à l'aveugle. */}
+            {duplicates.length > 1 && (
+              <div>
+                <label className="label">Rattacher à</label>
+                <select className="select" value={attachId} onChange={e => setAttachId(e.target.value)}>
+                  {duplicates.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {`${l.firstName} ${l.lastName}`.trim() || l.email || l.phone}
+                      {` — ${getStatusLabel(l.status)} — créé le ${formatDate(l.createdAt)}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => onAttach(attachId)} className="btn-secondary btn-sm">
+                <Link2 className="w-4 h-4" />
+                {duplicates.length > 1
+                  ? 'Rattacher au lead choisi'
+                  : `Rattacher à ${`${duplicates[0].firstName} ${duplicates[0].lastName}`.trim() || duplicates[0].email || duplicates[0].phone}`}
+              </button>
+              <span className="text-xs text-amber-700">
+                Ajoute cette demande à l'historique du lead et le repasse en <strong>chaud</strong>.
+                Aucun nouveau lead n'est créé.
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
