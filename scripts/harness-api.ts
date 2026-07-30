@@ -192,7 +192,7 @@ async function main() {
     const leadsBefore = (await getState(prisma)).leads.length;
 
     // Champ requis manquant (status retiré).
-    const noStatus = makeLead({ id: 'vz1' }) as Record<string, unknown>;
+    const noStatus = makeLead({ id: 'vz1' }) as unknown as Record<string, unknown>;
     delete noStatus.status;
     await expectStatus(400, 'lead sans status -> 400', () => createLead(prisma, noStatus as unknown as Lead));
     // Type incohérent.

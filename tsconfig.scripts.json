@@ -1,0 +1,17 @@
+{
+  "//": "Typecheck des scripts (harnais, sauvegarde, purge, outils Turso/Graph). Ils n'étaient couverts par AUCUN tsconfig : tsconfig.app.json ne prend que `src`, api/tsconfig.json que `api`. Résultat, ~1000 assertions écrites en TypeScript jamais vérifiées par le compilateur. Sert au `npm run typecheck:scripts` et à la CI. moduleResolution `bundler` : les scripts importent sans extension (`../api/_lib/graph`) là où api/ utilise `.js` — ce mode accepte les deux.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.ts"]
+}

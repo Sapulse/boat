@@ -28,7 +28,12 @@ import {
   FOLLOWUP_TYPES,
   MEETING_TYPES,
 } from '../src/lib/goals';
-import type { Lead, LeadAction, CommercialGoal, GoalMetric, GoalRealized } from '../src/data/types';
+import type { Lead, LeadAction, CommercialGoal, GoalMetric } from '../src/data/types';
+
+// `GoalRealized` n'est plus exporte par src/data/types (type retire de l'app) :
+// la forme reste utile ICI pour prouver la chaine bout-en-bout, on la declare donc
+// localement au harnais plutot que de ressusciter un type mort cote app.
+type GoalRealized = Record<'prospectsCreated' | 'coldCalls' | 'followups' | 'meetings' | 'revenue' | 'conversionRate', number>;
 import { SOURCES, PROSPECTION_SOURCES } from '../src/data/constants';
 
 let passed = 0;

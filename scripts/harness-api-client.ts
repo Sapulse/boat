@@ -72,16 +72,32 @@ const outboxSize = (storage: StorageLike): number => {
 
 // --- mini-serveur programmable ---
 interface Received { method: string; path: string; body?: unknown }
-function makeServer(serverState: AppState) {
+
+/**
+ * Type EXPLICITE du serveur simulé. Indispensable : `fetchImpl` se référence
+ * lui-même via `srv`, donc sans annotation TypeScript renonce à inférer (TS7022)
+ * et retombe sur `any` — ce qui contaminait silencieusement ~25 callbacks de ce
+ * fichier en `any` implicite. Repéré à la mise en place du typecheck des scripts.
+ */
+interface FakeServer {
+  received: Received[];
+  networkDown: boolean;
+  hang: boolean;
+  respondWith: ((method: string, path: string) => { status: number; json?: unknown } | null) | null;
+  /** Hook appelé PENDANT un GET /state (avant de répondre) : simule une écriture
+   *  qui démarre au milieu d'une lecture (test de course). */
+  onGet: (() => void | Promise<void>) | null;
+  fetchImpl: typeof fetch;
+}
+
+function makeServer(serverState: AppState): FakeServer {
   const received: Received[] = [];
-  const srv = {
+  const srv: FakeServer = {
     received,
     networkDown: false,
     hang: false,
-    respondWith: null as ((method: string, path: string) => { status: number; json?: unknown } | null) | null,
-    // Hook appelé PENDANT le traitement d'un GET /state (avant de répondre) :
-    // permet de simuler une écriture qui démarre au milieu d'une lecture (test de course).
-    onGet: null as (null | (() => void | Promise<void>)),
+    respondWith: null,
+    onGet: null,
     fetchImpl: (async (url: string | URL, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
       const path = String(url);

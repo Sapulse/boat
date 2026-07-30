@@ -26,7 +26,7 @@ const store = new Map<string, string>();
 };
 
 import { reducer, getInitialState } from '../src/context/appReducer';
-import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES } from '../src/data/constants';
+import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../src/data/constants';
 import { toWaNumber, buildWhatsApp } from '../src/lib/whatsapp';
 import { getCreatableLeads, buildTimeSlots, eventSlot, layoutDayEvents, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots } from '../src/lib/agenda';
 import { leadMatchesSearch } from '../src/lib/utils';
@@ -110,9 +110,12 @@ function makeState(over: Partial<AppState> = {}): AppState {
     actions: [makeAction()],
     commercials: DEFAULT_COMMERCIALS,
     monthlyStats: [],
-    acquisitionVolumes: [],
     templates: DEFAULT_TEMPLATES,
     calendarEvents: [],
+    // goals/defaultGoal sont REQUIS par AppState (ajoutes au chantier objectifs)
+    // mais manquaient a cette fabrique : invisible jusqu'au typecheck des scripts.
+    goals: [],
+    defaultGoal: EMPTY_DEFAULT_GOAL,
     ...over,
   };
 }

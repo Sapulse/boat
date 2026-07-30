@@ -1,0 +1,60 @@
+# CI de vérification — lint, typecheck (3 surfaces), les 29 harnais, build.
+#
+# Pourquoi : les ~1000 assertions du projet ne tournaient qu'à la main, une par
+# une, donc en pratique jamais en entier. Une régression pouvait partir en prod
+# (utilisée quotidiennement par l'équipe BOB) sans que rien ne la signale.
+#
+# AUCUN SECRET n'est nécessaire et aucun n'est exposé ici :
+#  - les harnais tournent sur des bases SQLite JETABLES, et le lanceur RETIRE
+#    les variables TURSO_* de l'environnement des enfants -> la base de prod est
+#    structurellement inatteignable depuis la CI ;
+#  - les appels Microsoft Graph sont SIMULÉS (fetch injecté), donc hors réseau.
+#
+# Cette CI ne déploie RIEN : le déploiement reste manuel sur Vercel (`vercel --prod`),
+# décision du projet. Le workflow GitHub Pages voisin est désactivé (vestige).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Le client Prisma est généré, pas versionné : requis par le typecheck de
+      # api/ et par tous les harnais qui touchent une base.
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      # tsc -b (src) + api/tsconfig.json + tsconfig.scripts.json. La 3e surface
+      # (les scripts) n'était couverte par AUCUN tsconfig avant le 2026-07-30.
+      - name: Typecheck (src + api + scripts)
+        run: npm run typecheck
+
+      # 29 harnais. harness-parse-email est SAUTÉ ici : ses attentes sont bâties
+      # sur de vrais emails de prospects (fichier gitignoré, RGPD). Le lanceur
+      # l'annonce explicitement dans son rapport — jamais de saut silencieux.
+      - name: Harnais
+        run: npm test
+
+      # Ce que Vercel fera : on préfère le savoir cassé ici.
+      - name: Build
+        run: npm run build

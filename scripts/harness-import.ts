@@ -37,7 +37,7 @@ const TODAY = '2026-07-09';
 const HEADER = 'Date de création;Source;Commercial;Nom;Prénom;Téléphone;Email;Type de bateau;Etat ;Intérêt bateau;Marque; Budget (€) ;En conclusion;Date de contact ;Relance 1;Relance 2;Négociation/Devis;Relance 3;Conclusion;Signé/Perdu; Montant devis (€) ;% Réalisation;Bateau actuel;Commentaires;Date de livraison';
 
 // Fabrique une RawRow (clés = en-têtes TRIMMÉS) à partir de surcharges partielles.
-function row(over: Partial<Record<string, string>> = {}): RawRow {
+function row(over: RawRow = {}): RawRow {
   const base: RawRow = {
     'Date de création': '', 'Source': '', 'Commercial': '', 'Nom': '', 'Prénom': '',
     'Téléphone': '', 'Email': '', 'Type de bateau': '', 'Etat': '', 'Intérêt bateau': '',

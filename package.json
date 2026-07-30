@@ -16,7 +16,11 @@
     "db:push:turso": "npx tsx scripts/push-schema-turso.ts",
     "backup": "npx tsx scripts/backup-turso.ts",
     "api:typecheck": "tsc -p api/tsconfig.json",
-    "api:test": "npx tsx scripts/harness-api.ts"
+    "api:test": "npx tsx scripts/harness-api.ts",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
+    "typecheck": "tsc -b && npm run api:typecheck && npm run typecheck:scripts",
+    "test": "npx tsx scripts/run-harnesses.ts",
+    "purge:inbound": "npx tsx scripts/purge-inbound.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
