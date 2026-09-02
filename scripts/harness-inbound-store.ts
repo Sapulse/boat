@@ -234,8 +234,13 @@ async function main() {
       a.notes.includes('Nouveau message pour') && a.notes.includes('toujours disponible'), a.notes);
     check('aucun changement de statut du lead imposé', a.newStatus === null || a.newStatus === undefined);
 
+    // Le lead cible n'est PAS touché : depuis 2026-09 le système ne pose plus la
+    // température (elle appartient au commercial). Le lead a été créé FROID, il
+    // reste FROID — la demande entrante se signale par l'action d'historique et
+    // par la file « Traités », pas en repeignant la fiche.
     const after = await prisma.lead.findUnique({ where: { id: 'lead-cible' } });
-    check('le lead repasse CHAUD (signal d\'achat fort)', after?.temperature === 'chaud', after?.temperature);
+    check('température INCHANGÉE (le système ne la décide plus)', after?.temperature === 'froid', after?.temperature);
+    check('aucun lead retourné : aucun lead modifié', out.lead === undefined);
     check('lastActionDate INCHANGÉE : personne ne l\'a encore rappelé, l\'alerte doit rester vraie',
       after?.lastActionDate === '2026-01-20', String(after?.lastActionDate));
     check('la file « traités » inclut les rattachés',

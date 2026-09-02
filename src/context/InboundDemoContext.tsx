@@ -46,7 +46,7 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function InboundDemoProvider({ children }: { children: ReactNode }) {
-  const { addLead, addAction, updateLead, state } = useApp();
+  const { addLead, addAction, state } = useApp();
   const leads = state.leads;
   const [emails, setEmails] = useState<InboundEmail[]>(USE_API ? [] : DEMO_INITIAL);
   const [collecting, setCollecting] = useState(false);
@@ -98,8 +98,9 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
    * RATTACHE à un lead existant. Le serveur fait tout en une transaction ; en
    * démo on reproduit la même sémantique côté client — action d'historique de
    * type 'note' (jamais 'email' : ce type compte dans les objectifs du
-   * commercial, cf. lib/goals.ts), datée du jour de RÉCEPTION, et lead remis en
-   * chaud sans toucher `lastActionDate` (personne ne l'a encore rappelé).
+   * commercial, cf. lib/goals.ts), datée du jour de RÉCEPTION. Le lead cible
+   * n'est PAS modifié : ni sa température (le système ne la pose plus — retour
+   * terrain 2026-09), ni `lastActionDate` (personne ne l'a encore rappelé).
    */
   const attach = async (mail: InboundEmail, leadId: string): Promise<void> => {
     if (USE_API) {
@@ -125,7 +126,6 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
       result: `Demande entrante — ${via}`,
       notes: `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     });
-    updateLead(leadId, { temperature: 'chaud' });
     setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'rattache', leadId, processedAt: new Date().toISOString() } : m)));
   };
 

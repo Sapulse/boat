@@ -31,15 +31,6 @@ export function sortInboundByScore(emails: InboundEmail[]): InboundEmail[] {
 }
 
 /**
- * Peut-on RECONTACTER ce prospect ? Sans email ni téléphone, non — et ça décide
- * de la température du lead créé. Le nom ne compte pas : connaître un pseudo sans
- * moyen de contact ne permet toujours rien.
- */
-export function isContactable(mail: Pick<InboundEmail, 'extracted'>): boolean {
-  return !!(mail.extracted.email.trim() || mail.extracted.phone.trim());
-}
-
-/**
  * Fiche lead pré-remplie depuis un email accepté. Le contexte de l'email
  * (source, objet, message) part dans les commentaires : rien n'est perdu même
  * si l'extraction était partielle. `commercialId` peut être '' (« Non
@@ -69,18 +60,17 @@ export function buildLeadFromInbound(mail: InboundEmail, commercialId: string, t
       `Reçu par email (${via}) le ${mail.receivedAt}.\n` +
       `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     deliveryDate: '',
-    // Un lead qu'on ne peut PAS recontacter est FROID quelle que soit la note :
-    // sans email ni téléphone, il n'y a rien à travailler, et le faire remonter
-    // fausserait la priorisation de l'équipe (retour terrain 2026-08 sur les mises
-    // en favori Leboncoin, qui arrivaient chaudes). Règle DÉRIVÉE de l'absence
-    // réelle de coordonnées, donc elle couvre aussi toute autre source qui ne
-    // livre qu'une notification — pas seulement Leboncoin.
+    // TIÈDE, en dur — comme TOUTE autre création de lead (formulaire manuel,
+    // import Excel, vCard). Décision de l'équipe (retour terrain 2026-09) : le
+    // système ne décide PLUS de la température à la place des commerciaux, qui
+    // veulent la poser eux-mêmes. Il n'existe donc plus qu'une seule valeur
+    // d'entrée dans tout le CRM, et un lead venu d'un email est un lead comme
+    // les autres.
     //
-    // Sinon : score élevé = acheteur actif identifié -> chaud d'emblée ; à défaut
-    // tiède (le défaut du formulaire manuel).
-    temperature: !isContactable(mail)
-      ? 'froid'
-      : (scoreLevel(mail.score) === 'prospect' ? 'chaud' : 'tiede'),
+    // Le SCORE, lui, reste entièrement automatique : c'est lui qui trie la file
+    // et qui signale les notifications (favoris Leboncoin à 45, cf. lib/email/
+    // score.ts). La priorisation n'a jamais reposé sur la température.
+    temperature: 'tiede',
     priority: 'normale',
     nextActionType: '',
     nextActionDate: '',

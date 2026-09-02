@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { HttpError } from './http.js';
-import { createLead, createAction, updateLead } from './store.js';
+import { createLead, createAction } from './store.js';
 import { fetchRecentSourceEmails, toParseInput, DEFAULT_COLLECT_CAP } from './inboundCollect.js';
 import type { GraphEnv } from './graph.js';
 import { parseEmail } from '../../src/lib/email/parseEmail.js';
@@ -22,10 +22,11 @@ import type { InboundEmail, InboundExtracted, InboundStatus, Lead, LeadAction } 
 // MODÈLE D'ACTIONS de la file (retour terrain 2026-08, `patchInbound`) — quatre
 // issues, dont les transitions autorisées vivent dans ALLOWED_FROM :
 //  - accept : CRÉE un lead ;
-//  - attach : AJOUTE une action d'historique à un lead EXISTANT et le repasse en
-//    chaud. C'est la troisième issue qui manquait : un prospect qui refait la même
-//    demande ne doit ni créer un doublon (accept) ni voir sa demande perdue
-//    (reject). Aucun lead n'est créé ;
+//  - attach : AJOUTE une action d'historique à un lead EXISTANT. C'est la
+//    troisième issue qui manquait : un prospect qui refait la même demande ne
+//    doit ni créer un doublon (accept) ni voir sa demande perdue (reject). Aucun
+//    lead n'est créé, et depuis 2026-09 aucun lead n'est MODIFIÉ non plus (le
+//    système ne pose plus la température) ;
 //  - reject : écarte ;
 //  - reopen : remet en file un email REJETÉ — le seul état réversible, parce que
 //    c'est le seul qui n'a créé aucune donnée à défaire.
@@ -299,22 +300,24 @@ export async function patchInbound(
         notes: `Objet : ${base.subject}\n\n${base.excerpt}`,
       } as LeadAction);
 
-      // Le lead repasse CHAUD : revenir après des mois sur le même bateau est un
-      // signal d'achat fort, et `getAlertLevel` place un lead chaud sans prochaine
-      // action planifiée en ROUGE — la demande remonte donc à la surface.
+      // Le lead cible n'est PAS modifié. Il repassait en chaud jusqu'ici (revenir
+      // sur le même bateau est un signal d'achat fort, et un lead chaud sans
+      // prochaine action passe en ROUGE) — mais depuis le retour terrain 2026-09
+      // le système ne pose plus la température, c'est le commercial qui décide.
       //
-      // On ne touche PAS `lastActionDate` : personne n'a encore rappelé ce
-      // prospect, l'alerte d'inactivité doit rester VRAIE. La remonter aurait
-      // exactement l'effet inverse de celui qu'on cherche.
-      const lead = await updateLead(tx as PrismaClient, target.id, { temperature: 'chaud' });
-
+      // Ce qui reste : l'action « Demande entrante » dans l'historique de la
+      // fiche, et l'email en « Traités » dans la file. `lastActionDate` n'est
+      // toujours pas touchée — personne n'a encore rappelé ce prospect, donc les
+      // alertes d'inactivité continuent de le signaler, et c'est VRAI.
       const updated = await tx.inboundEmail.update({
         where: { id }, data: { status: 'rattache', leadId: target.id },
       });
-      return { created, lead, updated };
+      return { created, updated };
     });
 
-    return { inbound: toInbound(out.updated as unknown as InboundRow), lead: out.lead, action: out.created };
+    // Pas de `lead` dans la réponse : aucun lead n'a été modifié, en annoncer un
+    // laisserait croire le contraire (le champ est optionnel, cf. patchInbound).
+    return { inbound: toInbound(out.updated as unknown as InboundRow), action: out.created };
   }
 
   // ACCEPT — transaction : création du lead (jamais de suppression) + marquage.

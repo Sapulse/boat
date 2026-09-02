@@ -8,7 +8,7 @@
  * leadSource ∈ SOURCES, scores bornés, cas doublon voulu présent).
  */
 import {
-  scoreLevel, sortInboundByScore, buildLeadFromInbound, isContactable,
+  scoreLevel, sortInboundByScore, buildLeadFromInbound,
   inboundDisplayName, parseReceivedAt, formatReceivedAge, formatReceivedShort, scoreReasonSign,
 } from '../src/lib/inbound';
 import { extractLeboncoin } from '../src/lib/email/extractors';
@@ -72,8 +72,9 @@ function main() {
   check('createdAt et contactDate = jour de validation', lead.createdAt === '2026-07-28' && lead.contactDate === '2026-07-28');
   check('commentaires : provenance + détail + objet + message',
     lead.comments.includes('Formulaire du site — YachtWorld') && lead.comments.includes('Objet : Objet') && lead.comments.includes('Message.'));
-  check('score prospect -> chaud', lead.temperature === 'chaud');
-  check('score moyen -> tiède', buildLeadFromInbound(mail({ score: 50 }), 'fred', '2026-07-28').temperature === 'tiede');
+  check('température NEUTRE : tiède, quel que soit le score (le système ne la décide plus)',
+    lead.temperature === 'tiede'
+    && buildLeadFromInbound(mail({ score: 50 }), 'fred', '2026-07-28').temperature === 'tiede');
   check('« Non attribué » : commercialId vide accepté', buildLeadFromInbound(src, '', '2026-07-28').commercialId === '');
 
   section('Fixtures de démo : invariants');
@@ -278,29 +279,34 @@ function main() {
       `${sFavori.score} vs ${sRecent.score} / ${sAncien.score}`);
   }
 
-  section('Température : injoignable = FROID, quelle que soit la note');
+  section('Température : le système ne la décide PLUS (retour terrain 2026-09)');
   {
+    // L'équipe pose la température elle-même. AUCUNE dimension de l'email ne doit
+    // plus la faire varier : ni la note, ni la présence de coordonnées. C'est le
+    // sens de cette section — elle prouve une ABSENCE de règle.
     const noContact = mail({
-      score: 90, // volontairement TRÈS haut : la note ne doit pas primer
+      score: 90, // volontairement TRÈS haut : la note ne décide plus de rien
       extracted: { firstName: '', lastName: '', email: '', phone: '', boatInterest: 'Antares 9', brand: 'Beneteau' },
     });
-    check('injoignable -> isContactable = false', isContactable(noContact) === false);
-    check('injoignable + score 90 -> lead FROID',
-      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature === 'froid',
+    check('injoignable + score 90 -> tiède (plus de « froid » dérivé)',
+      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature === 'tiede',
       buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature);
 
-    const phoneOnly = mail({ score: 50, extracted: { firstName: '', lastName: '', email: '', phone: '0611223344', boatInterest: '', brand: '' } });
-    check('téléphone SEUL suffit à être joignable -> tiède',
-      isContactable(phoneOnly) && buildLeadFromInbound(phoneOnly, 'fred', '2026-07-28').temperature === 'tiede');
-
     const emailOnly = mail({ score: 90, extracted: { firstName: '', lastName: '', email: 'a@b.c', phone: '', boatInterest: '', brand: '' } });
-    check('email SEUL suffit -> chaud si le score est élevé',
-      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature === 'chaud');
+    check('joignable + score 90 -> tiède (plus de « chaud » dérivé)',
+      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature === 'tiede',
+      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature);
 
-    const nameOnly = mail({ score: 90, extracted: { firstName: 'Marc', lastName: 'Le Goff', email: '  ', phone: '  ', boatInterest: '', brand: '' } });
-    check('un NOM sans coordonnée ne rend pas joignable (espaces ignorés)',
-      isContactable(nameOnly) === false
-      && buildLeadFromInbound(nameOnly, 'fred', '2026-07-28').temperature === 'froid');
+    // Balayage de toute la plage de notes, seuils compris : la température est
+    // CONSTANTE. Un futur ajout de règle casse forcément cette assertion.
+    const scores = [0, 20, 39, 40, 45, 55, 69, 70, 75, 90, 100];
+    check('température constante sur toute la plage de scores',
+      scores.every(s => buildLeadFromInbound(mail({ score: s }), 'fred', '2026-07-28').temperature === 'tiede'));
+
+    // Ce qui reste automatique, LUI : le score. Le correctif du favori Leboncoin
+    // (45) tient sans sa partie température — c'est le score qui trie la file.
+    check('le SCORE reste le signal : 45 = à vérifier, jamais « prospect probable »',
+      scoreLevel(45) === 'a_verifier');
   }
 
   console.log(`\n${passed} OK, ${failed} KO`);
