@@ -4,14 +4,14 @@
  * Execution : npx tsx scripts/harness-templates.ts
  * (hors tsc -b et hors bundle Vite, comme les autres harnais.)
  *
- * Couvre `sortTemplatesByNewest` (lib/templates) — l'ordre d'affichage de la
+ * Couvre `sortTemplatesByNewest` et `templatePreview` (lib/templates) — l'ordre d'affichage de la
  * page Modeles : DERNIER CREE en premier. L'enjeu est l'ordre TOTAL : la page
  * melange des modeles dates (venus de la base, colonne d'audit exposee) et des
  * modeles SANS date (defauts localStorage, states d'avant ce lot). Un tri qui
  * bascule d'un rendu a l'autre serait pire que l'ordre d'origine.
  */
 
-import { sortTemplatesByNewest } from '../src/lib/templates';
+import { sortTemplatesByNewest, templatePreview } from '../src/lib/templates';
 import type { MessageTemplate } from '../src/data/types';
 
 let passed = 0;
@@ -84,6 +84,22 @@ section('Ordre TOTAL : deterministe, jamais deux rendus differents');
 {
   check('liste vide -> liste vide', sortTemplatesByNewest([]).length === 0);
   check('un seul modele -> inchange', ids(sortTemplatesByNewest([tpl('seul')])) === 'seul');
+}
+
+section("Apercu d'un modele replie");
+{
+  const email = { ...tpl('e'), subject: '  Votre projet bateau  ', body: 'Bonjour\nBonjour encore' };
+  check('email : le SUJET (rogne)', templatePreview(email) === 'Votre projet bateau', templatePreview(email));
+
+  const noSubject = { ...tpl('e2'), subject: '   ', body: 'Bonjour {{prenom}},\n\nSuite a votre demande' };
+  check('email sans sujet -> repli sur le corps, aplati sur une ligne',
+    templatePreview(noSubject) === 'Bonjour {{prenom}}, Suite a votre demande', templatePreview(noSubject));
+
+  const sms: MessageTemplate = { ...tpl('s'), type: 'sms', subject: '', body: 'Coucou\t{{prenom}}' };
+  check('sms : le corps (pas de sujet)', templatePreview(sms) === 'Coucou {{prenom}}', templatePreview(sms));
+
+  check('modele vide -> chaine vide (aucun blanc affiche)',
+    templatePreview({ ...tpl('v'), subject: '', body: '' }) === '');
 }
 
 // ---------------------------------------------------------------------------
