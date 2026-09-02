@@ -133,9 +133,13 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     updateCommercial: (id, data) => dispatch({ type: 'UPDATE_COMMERCIAL', payload: { id, data } }),
     toggleCommercial: (id) => dispatch({ type: 'TOGGLE_COMMERCIAL', payload: id }),
 
+    // `createdAt` posé ICI (et pas seulement par la base) : le modèle qu'on vient
+    // de créer doit remonter EN TÊTE tout de suite, sans attendre un refresh. Le
+    // zod du serveur ignore le champ à l'envoi -> c'est le @default(now()) de la
+    // base qui fait foi, et la prochaine lecture réaligne les deux.
     addTemplate: (template) => {
       const id = generateId();
-      dispatch({ type: 'ADD_TEMPLATE', payload: { ...template, id } });
+      dispatch({ type: 'ADD_TEMPLATE', payload: { ...template, id, createdAt: new Date().toISOString() } });
       return id;
     },
     updateTemplate: (id, data) => dispatch({ type: 'UPDATE_TEMPLATE', payload: { id, data } }),

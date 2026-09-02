@@ -104,6 +104,11 @@ function toCommercial(r: Record<string, unknown>): Commercial {
   };
 }
 
+// SEUL mapper à exposer une colonne d'AUDIT : `createdAt` date les modèles pour
+// le tri « dernier créé en premier » de la page Modèles (lib/templates). Rien à
+// migrer — la colonne existe depuis le Lot 1 avec @default(now()), donc les
+// modèles déjà en base portent leur vraie date. `undefined` si absente (le tri
+// les traite alors comme les plus anciens).
 function toTemplate(r: Record<string, unknown>): MessageTemplate {
   return {
     id: r.id as string,
@@ -111,6 +116,7 @@ function toTemplate(r: Record<string, unknown>): MessageTemplate {
     title: r.title as string,
     subject: r.subject as string,
     body: r.body as string,
+    createdAt: (r.createdAt as Date | undefined)?.toISOString(),
   };
 }
 
@@ -195,7 +201,10 @@ export async function getState(prisma: PrismaClient): Promise<AppState> {
     prisma.leadAction.findMany(),
     prisma.commercial.findMany(),
     prisma.monthlyStat.findMany(),
-    prisma.messageTemplate.findMany(),
+    // Plus récent d'abord : la page Modèles retrie de toute façon (lib/templates,
+    // pour couvrir le mode localStorage et les créations optimistes), mais autant
+    // que la lecture serveur arrive déjà dans le bon ordre.
+    prisma.messageTemplate.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.calendarEvent.findMany(),
     prisma.commercialGoal.findMany(),
     prisma.defaultGoal.findUnique({ where: { id: 1 } }),

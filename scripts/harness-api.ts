@@ -415,11 +415,16 @@ async function main() {
   section('Restauration (restoreBackup) : remplacement total, id-préservant, rollback');
   {
     // Normalisation ordre-indépendante (tri par id) pour comparer deux AppState.
+    // `createdAt` des MODÈLES est retiré : c'est une colonne d'AUDIT, et une
+    // restauration recrée les lignes, donc la re-date (@default(now())). Le
+    // round-trip porte sur les données MÉTIER, pas sur l'horodatage d'écriture —
+    // décision assumée : on ne touche pas au chemin restore pour la préserver.
+    const noAudit = (t: AppState['templates'][number]) => ({ ...t, createdAt: undefined });
     const norm = (s: AppState) => JSON.stringify({
       leads: [...s.leads].sort((a, b) => a.id.localeCompare(b.id)),
       actions: [...s.actions].sort((a, b) => a.id.localeCompare(b.id)),
       commercials: [...s.commercials].sort((a, b) => a.id.localeCompare(b.id)),
-      templates: [...s.templates].sort((a, b) => a.id.localeCompare(b.id)),
+      templates: [...s.templates].map(noAudit).sort((a, b) => a.id.localeCompare(b.id)),
       calendarEvents: [...s.calendarEvents].sort((a, b) => a.id.localeCompare(b.id)),
       goals: [...s.goals].sort((a, b) => a.id.localeCompare(b.id)),
       monthlyStats: [...s.monthlyStats].sort((a, b) => a.id.localeCompare(b.id)),

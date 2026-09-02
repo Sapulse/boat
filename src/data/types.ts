@@ -55,6 +55,13 @@ export interface MessageTemplate {
   title: string;
   subject: string;
   body: string;
+  /**
+   * Date de creation ISO (colonne d'audit de la base, exposee pour trier la
+   * page Modeles du plus recent au plus ancien). OPTIONNELLE : absente des
+   * modeles par defaut et des states hydrates d'avant ce lot — le tri
+   * (lib/templates) les traite alors comme les plus anciens. Jamais affichee.
+   */
+  createdAt?: string;
 }
 
 export interface LeadAction {

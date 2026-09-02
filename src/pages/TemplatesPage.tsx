@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Save, Mail, MessageSquare, MessageCircle, Check, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { TEMPLATE_VARIABLES } from '../data/constants';
 import type { MessageTemplate, TemplateType } from '../data/types';
+import { sortTemplatesByNewest } from '../lib/templates';
 import { cn } from '../lib/utils';
 
 function TypeBadge({ type }: { type: TemplateType }) {
@@ -116,6 +117,11 @@ export default function TemplatesPage() {
 
   const canDelete = state.templates.length > 1;
 
+  // Dernier créé EN PREMIER (retour terrain BOB) : un modèle qu'on vient
+  // d'ajouter était relégué en bas de page. Tri à l'affichage seulement — le
+  // state, lui, reste dans son ordre d'insertion.
+  const ordered = useMemo(() => sortTemplatesByNewest(state.templates), [state.templates]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -154,7 +160,7 @@ export default function TemplatesPage() {
       </div>
 
       <div className="space-y-4">
-        {state.templates.map(t => (
+        {ordered.map(t => (
           <TemplateEditor key={t.id} template={t} canDelete={canDelete} />
         ))}
       </div>
