@@ -84,8 +84,9 @@ export default function InboxProspectsPage() {
 
   /**
    * RATTACHEMENT à un lead existant : la troisième issue réclamée par l'équipe.
-   * Le lead visé reçoit une action d'historique et repasse en chaud ; aucun lead
-   * n'est créé, donc aucun doublon.
+   * Le lead visé reçoit une action d'historique, et RIEN d'autre : ni
+   * température ni statut ne sont touchés (03afa7e). Aucun lead n'est créé,
+   * donc aucun doublon.
    */
   const handleAttach = async (mail: InboundEmail, leadId: string) => {
     if (!leadId || processedRef.current.has(mail.id)) return;
@@ -94,7 +95,7 @@ export default function InboxProspectsPage() {
       await attach(mail, leadId);
       const target = state.leads.find(l => l.id === leadId);
       const name = target ? `${target.firstName} ${target.lastName}`.trim() || target.email : 'lead existant';
-      toast.success(`Demande rattachée à ${name} — le lead repasse en chaud`);
+      toast.success(`Demande rattachée à ${name}`);
     } catch (e) {
       processedRef.current.delete(mail.id);
       toast.error(`Échec du rattachement : ${(e as Error).message}`);
@@ -126,7 +127,7 @@ export default function InboxProspectsPage() {
   const handleRejectAllFolded = async () => {
     if (folded.length === 0 || bulkRejecting) return;
     const n = folded.length;
-    if (!confirm(`Rejeter les ${n} email${n > 1 ? 's' : ''} classé${n > 1 ? 's' : ''} « parasite probable » ?\n\nCette action est définitive : un email rejeté ne peut pas être remis dans la file.`)) return;
+    if (!confirm(`Rejeter les ${n} email${n > 1 ? 's' : ''} classé${n > 1 ? 's' : ''} « parasite probable » ?\n\nUn email rejeté reste visible dans « Traités » et peut y être remis dans la file.`)) return;
     setBulkRejecting(true);
     let done = 0;
     const failures: string[] = [];
@@ -433,8 +434,7 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
                   : `Rattacher à ${`${duplicates[0].firstName} ${duplicates[0].lastName}`.trim() || duplicates[0].email || duplicates[0].phone}`}
               </button>
               <span className="text-xs text-amber-700">
-                Ajoute cette demande à l'historique du lead et le repasse en <strong>chaud</strong>.
-                Aucun nouveau lead n'est créé.
+                Ajoute cette demande à l'historique du lead. Aucun nouveau lead n'est créé.
               </span>
             </div>
           </div>

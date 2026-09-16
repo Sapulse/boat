@@ -218,8 +218,8 @@ export function extractLeboncoin(env: EmailEnvelope): ExtractResult {
   //    préfixe « TR: » ;
   //  - le corps porte le gabarit fixe « Faites-le lui savoir ».
   // Le OU est volontaire (robuste si Leboncoin change un seul des deux). Le risque
-  // de faux positif est borné : le flag ne joue QUE sur le score, jamais sur la
-  // température, qui se dérive de l'absence réelle de coordonnées.
+  // de faux positif est borné : le flag ne joue QUE sur le score. La température,
+  // elle, n'est plus jamais décidée par le système (03afa7e).
   const isFavoriteNotice = /un nouveau contact pour/i.test(env.subject)
     || /faites[-\s]?le\s+lui\s+savoir/i.test(b);
   // Message courant entre guillemets français (peut être creux sur le format ancien).

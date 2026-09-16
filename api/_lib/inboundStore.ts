@@ -278,8 +278,8 @@ export async function patchInbound(
   }
 
   // ATTACH — la demande rejoint un lead EXISTANT : aucune création de lead, donc
-  // aucun doublon. Transaction : action d'historique + lead remis en chaud +
-  // marquage de l'email.
+  // aucun doublon. Transaction : action d'historique + marquage de l'email (le
+  // lead lui-même n'est pas modifié, cf. plus bas).
   if (body.action === 'attach') {
     const target = await prisma.lead.findUnique({ where: { id: body.leadId } });
     if (!target) throw new HttpError(400, 'Lead cible introuvable');
