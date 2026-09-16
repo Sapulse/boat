@@ -21,7 +21,9 @@ import { HttpError } from './http.js';
 
 const LEAD_STATUSES = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion', 'signe', 'perdu', 'reporte'] as const;
 const ACTION_TYPES = ['appel', 'email', 'sms', 'whatsapp', 'rdv', 'visite', 'devis', 'relance', 'negociation', 'conclusion', 'note', 'autre'] as const;
-const TEMPERATURES = ['froid', 'tiede', 'chaud'] as const;
+// 'neutre' ajouté (lot 1). Les trois autres restent acceptées : choix des
+// commerciaux ET restauration des sauvegardes antérieures.
+const TEMPERATURES = ['neutre', 'froid', 'tiede', 'chaud'] as const;
 const PRIORITIES = ['basse', 'normale', 'haute', 'critique'] as const;
 const BOAT_TYPES = ['Moteur', 'Voile', 'Semi-rigide'] as const;
 const BOAT_CONDITIONS = ['Neuf', 'BO', 'DV'] as const;

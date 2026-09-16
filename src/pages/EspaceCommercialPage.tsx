@@ -6,7 +6,7 @@ import {
   formatCurrency,
   formatDate,
   getLeadFullName,
-  isLeadActive,
+  isActiveHotLead,
   toISODate,
 } from '../lib/utils';
 import { buildAgendaEvents } from '../lib/agenda';
@@ -76,7 +76,7 @@ export default function EspaceCommercialPage() {
     ...s,
     count: commercialLeads.filter((l) => l.status === s.value).length,
   }));
-  const hotLeads = commercialLeads.filter((l) => l.temperature === 'chaud' && isLeadActive(l.status));
+  const hotLeads = commercialLeads.filter(isActiveHotLead);
 
   const today = toISODate(now);
   const agendaEvents = buildAgendaEvents(commercialLeads, today).sort((a, b) =>

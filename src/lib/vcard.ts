@@ -1,4 +1,5 @@
 import type { Lead } from '../data/types';
+import { DEFAULT_TEMPERATURE } from '../data/constants';
 import { toISODate } from './utils';
 
 export interface ParsedContact {
@@ -295,7 +296,7 @@ export function createLeadFromContact(contact: ParsedContact, commercialId: stri
     currentBoat: '',
     comments: '',
     deliveryDate: '',
-    temperature: 'tiede',
+    temperature: DEFAULT_TEMPERATURE,
     priority: 'normale',
     nextActionType: '',
     nextActionDate: '',

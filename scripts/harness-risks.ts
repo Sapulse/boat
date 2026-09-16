@@ -30,10 +30,13 @@ import {
   hasPlannedNextAction,
   hasFutureNextAction,
   isInactiveOverWeek,
+  isActiveHotLead,
+  isHotLeadWithoutAction,
   toISODate,
   type RiskItem,
 } from '../src/lib/utils';
 import { getFollowUpLeads } from '../src/lib/relances';
+import { TEMPERATURES, DEFAULT_TEMPERATURE, getTemperatureInfo } from '../src/data/constants';
 import type { Lead } from '../src/data/types';
 
 const today = new Date();
@@ -313,6 +316,82 @@ section('getFollowUpLeads — passe-plat de getLeadRisks');
   check('statut terminal exclu', !ids.includes('done'));
   check('tri urgence : danger (no-date) avant warning (overdue)', ids.indexOf('no-date') < ids.indexOf('overdue'));
   check('maxSeverity correcte sur le lead echu', list.find(i => i.lead.id === 'overdue')?.maxSeverity === 'warning');
+}
+
+section('Lot 1 — NEUTRE se comporte EXACTEMENT comme tiède (alertes, risques, relances)');
+{
+  // Matrice de situations : inactivité (0 à 30 j), prochaine action (aucune,
+  // type sans date, échue, aujourd'hui, future), statuts actifs ET terminaux,
+  // priorités. Pour CHAQUE combinaison, neutre et tiède doivent donner la même
+  // alerte, les mêmes risques (libellés + gravités) et la même présence en
+  // relances. Une future règle propre à Neutre casse forcément ce test.
+  const lastActions = [0, -3, -5, -7, -9, -14, -30];
+  const nextActions: Partial<Lead>[] = [
+    { nextActionType: '', nextActionDate: '' },
+    { nextActionType: 'rdv', nextActionDate: '' },
+    { nextActionType: 'appel', nextActionDate: d(-2) },
+    { nextActionType: 'appel', nextActionDate: d(-5) },
+    { nextActionType: 'appel', nextActionDate: d(0) },
+    { nextActionType: 'appel', nextActionDate: d(5) },
+  ];
+  const statuses: Lead['status'][] = ['nouveau', 'contacte', 'devis_envoye', 'negociation', 'signe', 'perdu', 'reporte'];
+  const priorities: Lead['priority'][] = ['normale', 'critique'];
+  let combos = 0;
+  let mismatches = 0;
+  let firstMismatch = '';
+  let differsFromChaud = 0;
+  for (const la of lastActions) for (const na of nextActions) for (const status of statuses) for (const priority of priorities) {
+    const base = { lastActionDate: d(la), status, priority, ...na };
+    const neutre = makeLead({ ...base, temperature: 'neutre' });
+    const tiede = makeLead({ ...base, temperature: 'tiede' });
+    const chaud = makeLead({ ...base, temperature: 'chaud' });
+    combos++;
+    const same = getAlertLevel(neutre) === getAlertLevel(tiede)
+      && JSON.stringify(getLeadRisks(neutre)) === JSON.stringify(getLeadRisks(tiede))
+      && isInactiveOverWeek(neutre) === isInactiveOverWeek(tiede)
+      && getFollowUpLeads([neutre]).length === getFollowUpLeads([tiede]).length;
+    if (!same) { mismatches++; firstMismatch ||= JSON.stringify(base); }
+    if (getAlertLevel(neutre) !== getAlertLevel(chaud) || JSON.stringify(getLeadRisks(neutre)) !== JSON.stringify(getLeadRisks(chaud))) differsFromChaud++;
+  }
+  check(`neutre ≡ tiède sur ${combos} situations (alerte, risques, inactivité, relances)`, mismatches === 0, firstMismatch);
+  check('le test est discriminant : neutre ≠ chaud dans de nombreuses situations', differsFromChaud > 50, String(differsFromChaud));
+
+  // Cas nommés, lisibles : ce que l'équipe verra.
+  const sansAction = makeLead({ temperature: 'neutre', nextActionType: '', nextActionDate: '', lastActionDate: d(0) });
+  check('neutre sans prochaine action, actif aujourd\'hui -> PAS rouge (un chaud le serait)',
+    getAlertLevel(sansAction) === 'none' && getAlertLevel({ ...sansAction, temperature: 'chaud' }) === 'red');
+  check('neutre sans prochaine action -> risque « avertissement », pas « danger »',
+    riskSeverity(getLeadRisks(sansAction), 'Aucune prochaine action') === 'warning');
+  check('neutre inactif 9 j -> orange', getAlertLevel(makeLead({ temperature: 'neutre', lastActionDate: d(-9), nextActionDate: '' })) === 'orange');
+  check('neutre inactif 14 j -> rouge', getAlertLevel(makeLead({ temperature: 'neutre', lastActionDate: d(-14), nextActionDate: '' })) === 'red');
+  check('neutre inactif 20 j AVEC action future -> suspendu (aucune alerte)',
+    getAlertLevel(makeLead({ temperature: 'neutre', lastActionDate: d(-20), nextActionDate: d(3) })) === 'none');
+  check('neutre inactif 5 j -> jamais « Lead chaud inactif »',
+    !hasRisk(getLeadRisks(makeLead({ temperature: 'neutre', lastActionDate: d(-5) })), 'chaud'));
+}
+
+section('Lot 1 — valeurs, ordre, repli');
+{
+  check('4 valeurs dans l\'ordre Neutre, Froid, Tiède, Chaud',
+    TEMPERATURES.map(t => t.label).join(',') === 'Neutre,Froid,Tiède,Chaud', TEMPERATURES.map(t => t.label).join(','));
+  check('valeur par défaut = neutre', DEFAULT_TEMPERATURE === 'neutre');
+  check('valeur inconnue -> repli NEUTRE (plus Froid)',
+    getTemperatureInfo('bizarre' as Lead['temperature']).value === 'neutre');
+  check('badge Neutre distinct des 3 autres (couleur unique)',
+    new Set(TEMPERATURES.map(t => t.color)).size === 4);
+}
+
+section('Lot 1 — encarts « Leads chauds » : jamais de Neutre');
+{
+  const actifSansAction = { status: 'contacte' as const, nextActionType: '' as const, nextActionDate: '' };
+  check('Dashboard « chauds sans action » : chaud oui, neutre / tiède / froid non',
+    isHotLeadWithoutAction(makeLead({ ...actifSansAction, temperature: 'chaud' }))
+    && (['neutre', 'tiede', 'froid'] as const).every(t => !isHotLeadWithoutAction(makeLead({ ...actifSansAction, temperature: t }))));
+  check('Espace commercial « Leads chauds » : chaud actif oui, neutre non',
+    isActiveHotLead(makeLead({ temperature: 'chaud' })) && !isActiveHotLead(makeLead({ temperature: 'neutre' })));
+  check('chaud mais statut terminal -> hors encarts', !isActiveHotLead(makeLead({ temperature: 'chaud', status: 'perdu' })));
+  check('chaud AVEC prochaine action datée -> hors « sans action »',
+    !isHotLeadWithoutAction(makeLead({ temperature: 'chaud', nextActionDate: d(2) })));
 }
 
 // ---------------------------------------------------------------------------

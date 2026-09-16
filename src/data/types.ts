@@ -12,7 +12,11 @@ export type LeadStatus =
 
 export type BoatType = 'Moteur' | 'Voile' | 'Semi-rigide';
 export type BoatCondition = 'Neuf' | 'BO' | 'DV';
-export type Temperature = 'froid' | 'tiede' | 'chaud';
+// 'neutre' (lot 1, 2026-09) : valeur d'ENTRÉE de tout nouveau lead — « pas encore
+// qualifié ». Se comporte exactement comme 'tiede' dans les alertes et risques
+// (seul 'chaud' y porte une règle). froid/tiede/chaud restent valides : choix des
+// commerciaux et anciennes sauvegardes restaurables.
+export type Temperature = 'neutre' | 'froid' | 'tiede' | 'chaud';
 export type Priority = 'basse' | 'normale' | 'haute' | 'critique';
 export type AlertLevel = 'none' | 'orange' | 'red';
 

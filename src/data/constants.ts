@@ -66,11 +66,21 @@ export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
   { value: 'critique', label: 'Critique', color: 'bg-red-100 text-red-700' },
 ];
 
+// Ordre d'affichage (menus, filtres) : Neutre d'abord — c'est la valeur d'entrée.
+// Neutre = gris discret à liseré, distinct des trois températures « choisies ».
 export const TEMPERATURES: { value: Temperature; label: string; color: string; dot: string }[] = [
+  { value: 'neutre', label: 'Neutre', color: 'bg-white text-gray-600 ring-1 ring-inset ring-gray-300', dot: 'bg-gray-400' },
   { value: 'froid', label: 'Froid', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
   { value: 'tiede', label: 'Tiède', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
   { value: 'chaud', label: 'Chaud', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
 ];
+
+/**
+ * Température de TOUT nouveau lead, quelle que soit l'origine (formulaire, vCard,
+ * boîte de réception, favoris Leboncoin, import Excel sans valeur explicite).
+ * Décision BOB (lot 1) : le système ne qualifie pas, le commercial choisit.
+ */
+export const DEFAULT_TEMPERATURE: Temperature = 'neutre';
 
 export const ACTION_TYPES: { value: ActionType; label: string }[] = [
   { value: 'appel', label: 'Appel' },
@@ -300,7 +310,9 @@ export function getStatusColor(status: LeadStatus): string {
 }
 
 export function getTemperatureInfo(temp: Temperature) {
-  return TEMPERATURES.find(t => t.value === temp) ?? TEMPERATURES[0];
+  // Repli sur NEUTRE (et non plus Froid) : une valeur inconnue ne doit pas
+  // afficher une qualification que personne n'a posée.
+  return TEMPERATURES.find(t => t.value === temp) ?? TEMPERATURES.find(t => t.value === DEFAULT_TEMPERATURE)!;
 }
 
 export function getPriorityInfo(p: Priority) {

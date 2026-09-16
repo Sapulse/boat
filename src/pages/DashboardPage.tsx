@@ -10,7 +10,7 @@ import KpiCard from '../components/ui/KpiCard';
 import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
-import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek } from '../lib/utils';
+import { formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek, isHotLeadWithoutAction } from '../lib/utils';
 import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES, QUOTE_STATUSES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 import { useIsCompact } from '../lib/useIsCompact';
@@ -54,7 +54,7 @@ export default function DashboardPage() {
     const signed = leads.filter(l => l.status === 'signe');
     const urgent = leads.filter(l => getAlertLevel(l) === 'red');
     const warning = leads.filter(l => getAlertLevel(l) === 'orange');
-    const hotNoAction = leads.filter(l => l.temperature === 'chaud' && isLeadActive(l.status) && !hasPlannedNextAction(l));
+    const hotNoAction = leads.filter(isHotLeadWithoutAction);
     const noRecentAction = leads.filter(isInactiveOverWeek);
     // Meme regle v3.4 que le risque "devis sans relance" de getLeadRisks : une
     // action future planifiee suspend l'inactivite (sinon ce bloc divergerait

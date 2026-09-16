@@ -167,6 +167,20 @@ export function isoDateDaysAgo(days: number): string {
 }
 
 /**
+ * Encart "Leads chauds" de l'Espace commercial : lead CHAUD et actif. Seule la
+ * temperature choisie 'chaud' y entre — un lead Neutre (a qualifier) n'y
+ * figure jamais, comme un tiede (lot 1).
+ */
+export function isActiveHotLead(lead: Lead): boolean {
+  return lead.temperature === 'chaud' && isLeadActive(lead.status);
+}
+
+/** Encart Dashboard "Leads chauds sans action" : chaud, actif, sans prochaine action datee. */
+export function isHotLeadWithoutAction(lead: Lead): boolean {
+  return isActiveHotLead(lead) && !hasPlannedNextAction(lead);
+}
+
+/**
  * Predicat partage entre le KPI Dashboard "Sans action >7j" et la vue
  * "Inactifs" de la page Leads (correspondance compteur <-> liste garantie).
  * Simple predicat d'AFFICHAGE : volontairement distinct de getLeadRisks /

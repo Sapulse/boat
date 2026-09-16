@@ -76,9 +76,9 @@ function main() {
   check('createdAt et contactDate = jour de validation', lead.createdAt === '2026-07-28' && lead.contactDate === '2026-07-28');
   check('commentaires : provenance + détail + objet + message',
     lead.comments.includes('Formulaire du site — YachtWorld') && lead.comments.includes('Objet : Objet') && lead.comments.includes('Message.'));
-  check('température NEUTRE : tiède, quel que soit le score (le système ne la décide plus)',
-    lead.temperature === 'tiede'
-    && buildLeadFromInbound(mail({ score: 50 }), 'fred', '2026-07-28').temperature === 'tiede');
+  check("température d'entrée : NEUTRE, quel que soit le score (le système ne la décide pas)",
+    lead.temperature === 'neutre'
+    && buildLeadFromInbound(mail({ score: 50 }), 'fred', '2026-07-28').temperature === 'neutre');
   check('« Non attribué » : commercialId vide accepté', buildLeadFromInbound(src, '', '2026-07-28').commercialId === '');
 
   section('Fixtures de démo : invariants');
@@ -292,20 +292,20 @@ function main() {
       score: 90, // volontairement TRÈS haut : la note ne décide plus de rien
       extracted: { firstName: '', lastName: '', email: '', phone: '', boatInterest: 'Antares 9', brand: 'Beneteau' },
     });
-    check('injoignable + score 90 -> tiède (plus de « froid » dérivé)',
-      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature === 'tiede',
+    check('injoignable + score 90 -> neutre (plus de « froid » dérivé)',
+      buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature === 'neutre',
       buildLeadFromInbound(noContact, 'fred', '2026-07-28').temperature);
 
     const emailOnly = mail({ score: 90, extracted: { firstName: '', lastName: '', email: 'a@b.c', phone: '', boatInterest: '', brand: '' } });
-    check('joignable + score 90 -> tiède (plus de « chaud » dérivé)',
-      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature === 'tiede',
+    check('joignable + score 90 -> neutre (plus de « chaud » dérivé)',
+      buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature === 'neutre',
       buildLeadFromInbound(emailOnly, 'fred', '2026-07-28').temperature);
 
     // Balayage de toute la plage de notes, seuils compris : la température est
     // CONSTANTE. Un futur ajout de règle casse forcément cette assertion.
     const scores = [0, 20, 39, 40, 45, 55, 69, 70, 75, 90, 100];
     check('température constante sur toute la plage de scores',
-      scores.every(s => buildLeadFromInbound(mail({ score: s }), 'fred', '2026-07-28').temperature === 'tiede'));
+      scores.every(s => buildLeadFromInbound(mail({ score: s }), 'fred', '2026-07-28').temperature === 'neutre'));
 
     // Ce qui reste automatique, LUI : le score. Le correctif du favori Leboncoin
     // (45) tient sans sa partie température — c'est le score qui trie la file.

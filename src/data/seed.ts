@@ -26,7 +26,7 @@ const firstNames = ['Jean', 'Pierre', 'Marie', 'Sophie', 'Laurent', 'Philippe', 
 const lastNames = ['Martin', 'Dupont', 'Bernard', 'Robert', 'Richard', 'Moreau', 'Leroy', 'Simon', 'Laurent', 'Michel', 'Lefebvre', 'Garcia', 'Thomas', 'David', 'Bertrand', 'Roux', 'Vincent', 'Fournier', 'Morel', 'Girard', 'Andre', 'Mercier', 'Blanc', 'Guerin', 'Boyer'];
 
 const statuses = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion', 'signe', 'perdu', 'reporte'] as const;
-const temperatures = ['froid', 'tiede', 'chaud'] as const;
+const temperatures = ['neutre', 'froid', 'tiede', 'chaud'] as const;
 const priorities = ['basse', 'normale', 'haute', 'critique'] as const;
 const boatTypes = ['Moteur', 'Voile', 'Semi-rigide'] as const;
 const boatConditions = ['Neuf', 'BO', 'DV'] as const;

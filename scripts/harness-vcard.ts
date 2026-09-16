@@ -199,6 +199,7 @@ section('Factory createLeadFromContact');
   const lead = createLeadFromContact({ firstName: 'Léa', lastName: 'Morvan', phone: '0601', email: 'l@m.fr' }, 'fred', 'Recommandation');
   check('statut nouveau, commercial + source rattaches', lead.status === 'nouveau' && lead.commercialId === 'fred' && lead.source === 'Recommandation');
   check('identite reprise, jalons vides', lead.firstName === 'Léa' && lead.signedAt === '' && lead.contactDate === '');
+  check('lot 1 — temperature d\'entree : neutre', lead.temperature === 'neutre');
 }
 
 // ---------------------------------------------------------------------------

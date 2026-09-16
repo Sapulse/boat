@@ -1,4 +1,5 @@
-import type { Lead, LeadStatus, BoatType, BoatCondition, Commercial } from '../data/types';
+import type { Lead, LeadStatus, BoatType, BoatCondition, Commercial, Temperature } from '../data/types';
+import { TEMPERATURES, DEFAULT_TEMPERATURE } from '../data/constants';
 
 // ===========================================================================
 // Import de leads depuis le fichier de suivi Ocean Boat (chantier import/export,
@@ -188,6 +189,23 @@ const TYPE_MAP: Record<string, BoatType> = {
   'semi rigide': 'Semi-rigide',
 };
 
+/**
+ * Colonne « Température » OPTIONNELLE (lot 1) : le fichier de suivi historique
+ * n'en a pas. En-tête reconnu sans casse ni accent (« Température »,
+ * « TEMPERATURE »). Valeur explicite valide -> gardée ; vide ou colonne absente
+ * -> Neutre (valeur d'entrée de tout nouveau lead) ; valeur inconnue -> Neutre
+ * AVEC avertissement (jamais d'invention de qualification).
+ */
+export function mapTemperature(row: RawRow): { value: Temperature; warning: string | null } {
+  const header = Object.keys(row).find(h => norm(h) === 'temperature');
+  const raw = header ? (row[header] ?? '').trim() : '';
+  const k = norm(raw);
+  if (!k) return { value: DEFAULT_TEMPERATURE, warning: null };
+  const found = TEMPERATURES.find(t => norm(t.value) === k || norm(t.label) === k);
+  if (found) return { value: found.value, warning: null };
+  return { value: DEFAULT_TEMPERATURE, warning: `Température « ${raw} » inconnue → Neutre` };
+}
+
 /** État -> code CRM brut (Neuf/BO/DV) + éventuel avertissement. */
 function mapCondition(raw: string): { value: BoatCondition | ''; warning: string | null } {
   const k = norm(raw);
@@ -339,6 +357,10 @@ function mapRow(row: RawRow, today: string, line: number): { prepared: PreparedL
   const commercial = resolveCommercial(get(row, COL.commercial));
   if (commercial.warning) warnings.push(commercial.warning);
 
+  // Température : explicite et valide -> gardée, sinon Neutre.
+  const temperature = mapTemperature(row);
+  if (temperature.warning) warnings.push(temperature.warning);
+
   // Commentaire = [marqueur orphelin] + texte source + résumé de suivi (option simple).
   const suiviParts: string[] = [];
   const pushSuivi = (label: string, col: string) => { const v = get(row, col); if (v) suiviParts.push(`${label} : ${v}`); };
@@ -372,7 +394,7 @@ function mapRow(row: RawRow, today: string, line: number): { prepared: PreparedL
     currentBoat: '',
     comments,
     deliveryDate: '',
-    temperature: 'tiede',
+    temperature: temperature.value,
     priority: 'normale',
     nextActionType: '',
     nextActionDate: '',

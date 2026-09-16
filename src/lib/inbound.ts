@@ -1,4 +1,5 @@
 ﻿import type { InboundEmail, Lead, LeadStatus } from '../data/types.js';
+import { DEFAULT_TEMPERATURE } from '../data/constants.js';
 
 // Cœur PUR de la boîte de réception prospects (Étape A, maquette) — aucune
 // dépendance React, testé par scripts/harness-inbound.ts (même découpage que
@@ -60,17 +61,16 @@ export function buildLeadFromInbound(mail: InboundEmail, commercialId: string, t
       `Reçu par email (${via}) le ${mail.receivedAt}.\n` +
       `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     deliveryDate: '',
-    // TIÈDE, en dur — comme TOUTE autre création de lead (formulaire manuel,
-    // import Excel, vCard). Décision de l'équipe (retour terrain 2026-09) : le
-    // système ne décide PLUS de la température à la place des commerciaux, qui
-    // veulent la poser eux-mêmes. Il n'existe donc plus qu'une seule valeur
-    // d'entrée dans tout le CRM, et un lead venu d'un email est un lead comme
-    // les autres.
+    // NEUTRE (lot 1) — la valeur d'entrée de TOUTE création de lead
+    // (formulaire, import Excel sans valeur, vCard, favoris compris). Décision de
+    // l'équipe : le système ne décide PAS de la température à la place des
+    // commerciaux, qui la posent eux-mêmes ; un lead venu d'un email est un lead
+    // comme les autres.
     //
     // Le SCORE, lui, reste entièrement automatique : c'est lui qui trie la file
     // et qui signale les notifications (favoris Leboncoin à 45, cf. lib/email/
     // score.ts). La priorisation n'a jamais reposé sur la température.
-    temperature: 'tiede',
+    temperature: DEFAULT_TEMPERATURE,
     priority: 'normale',
     nextActionType: '',
     nextActionDate: '',

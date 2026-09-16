@@ -226,6 +226,35 @@ section('buildPreview — stats, lignes vides ignorées, commercialsToCreate');
 }
 
 // ---------------------------------------------------------------------------
+section('Lot 1 — température : explicite et valide gardée, sinon Neutre');
+// ---------------------------------------------------------------------------
+{
+  // Fichier historique : PAS de colonne Température -> Neutre, sans avertissement.
+  const sans = buildPreview([row({ Nom: 'Sans' })], [], TODAY).leads[0];
+  check('colonne absente -> neutre, aucun warning de température',
+    sans.lead.temperature === 'neutre' && !sans.warnings.some(w => w.includes('Température')));
+
+  const withTemp = (v: string, header = 'Température') => buildPreview([{ ...row({ Nom: 'T' }), [header]: v }], [], TODAY).leads[0];
+  check('« Chaud » -> chaud', withTemp('Chaud').lead.temperature === 'chaud');
+  check('« tiède » (accent, minuscules) -> tiede', withTemp('tiède').lead.temperature === 'tiede');
+  check('« TIEDE » -> tiede', withTemp('TIEDE').lead.temperature === 'tiede');
+  check('« froid » -> froid', withTemp('froid').lead.temperature === 'froid');
+  check('« Neutre » -> neutre', withTemp('Neutre').lead.temperature === 'neutre');
+  check('en-tête sans accent ni casse (« TEMPERATURE ») reconnu', withTemp('chaud', 'TEMPERATURE').lead.temperature === 'chaud');
+  const vide = withTemp('   ');
+  check('cellule vide -> neutre, sans warning', vide.lead.temperature === 'neutre' && !vide.warnings.some(w => w.includes('Température')));
+  const inconnue = withTemp('brûlant');
+  check('valeur inconnue -> neutre AVEC warning (jamais de qualification inventée)',
+    inconnue.lead.temperature === 'neutre' && inconnue.warnings.some(w => w.includes('brûlant') && w.includes('Neutre')));
+
+  // Via le vrai parseur CSV, bout en bout.
+  const csv = parseImportCsv('Nom;Prénom;Température\nA;a;Chaud\nB;b;\nC;c;tiede');
+  const leads = buildPreview(csv, [], TODAY).leads;
+  check('CSV réel : chaud / neutre (vide) / tiede', leads.map(l => l.lead.temperature).join(',') === 'chaud,neutre,tiede',
+    leads.map(l => l.lead.temperature).join(','));
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Harnais import : ${passed} OK, ${failed} KO (${passed + failed} assertions)`);
 if (failed > 0) process.exitCode = 1;

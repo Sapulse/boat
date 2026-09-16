@@ -179,6 +179,25 @@ async function main() {
     check('status invalide rejeté', rejected);
   }
 
+  section('Lot 1 — température « neutre » acceptée par la validation serveur');
+  {
+    const n = await createLead(prisma, makeLead({ id: 'lt-neutre', temperature: 'neutre' }));
+    check('création avec « neutre » acceptée et relue telle quelle',
+      n.temperature === 'neutre' && (await getState(prisma)).leads.some(l => l.id === 'lt-neutre' && l.temperature === 'neutre'));
+    const up = await updateLead(prisma, 'lt-neutre', { temperature: 'chaud' });
+    check('passage neutre -> chaud (choix du commercial) accepté', up.temperature === 'chaud');
+    const back = await updateLead(prisma, 'lt-neutre', { temperature: 'neutre' });
+    check('retour chaud -> neutre accepté', back.temperature === 'neutre');
+    for (const t of ['froid', 'tiede'] as const) {
+      const r = await updateLead(prisma, 'lt-neutre', { temperature: t });
+      check(`« ${t} » reste accepté (anciennes valeurs valides)`, r.temperature === t);
+    }
+    let bad = false;
+    try { await updateLead(prisma, 'lt-neutre', { temperature: 'tiède' as Lead['temperature'] }); } catch { bad = true; }
+    check('valeur inconnue (« tiède » accentué) toujours rejetée', bad);
+    await deleteLead(prisma, 'lt-neutre');
+  }
+
   section('Validation zod — payloads INVALIDES refusés (400 clair) SANS écriture');
   {
     // Attend une HttpError au statut donné (400/404/409) ; échec si aucune erreur.
@@ -484,6 +503,28 @@ async function main() {
     try { await restoreBackup(prisma, { format: 'bob-crm-backup', version: 2, data: snap }); } catch (e) { badVer = (e as { status?: number }).status === 400; }
     check('version > 1 -> 400', badVer);
     check('enveloppe refusée -> base inchangée', norm(await getState(prisma)) === norm(b4));
+
+    // 4 bis) Lot 1 — une sauvegarde ANTÉRIEURE à « neutre » (uniquement froid /
+    // tiède / chaud, comme le dump pris avant la bascule) se restaure telle
+    // quelle : AUCUNE température réécrite. Puis un état mixte avec « neutre »
+    // fait l'aller-retour. C'est le filet de retour arrière de la bascule prod.
+    const oldBackup: AppState = {
+      ...snap,
+      leads: [
+        makeLead({ id: 'old-f', commercialId: 'com-a', temperature: 'froid' }),
+        makeLead({ id: 'old-t', commercialId: 'com-a', temperature: 'tiede' }),
+        makeLead({ id: 'old-c', commercialId: 'com-b', temperature: 'chaud' }),
+      ],
+      actions: [makeAction({ id: 'ac-old', leadId: 'old-t', authorId: 'com-a' })],
+    };
+    const repOld = await restoreBackup(prisma, { format: 'bob-crm-backup', version: 1, data: oldBackup });
+    const sOld = await getState(prisma);
+    check('sauvegarde d\'avant « neutre » restaurée (3 leads)', repOld.leads === 3 && sOld.leads.length === 3);
+    check('températures d\'origine intactes (froid / tiède / chaud, aucune conversion)',
+      ['old-f:froid', 'old-t:tiede', 'old-c:chaud'].every(p => { const [id, t] = p.split(':'); return sOld.leads.find(l => l.id === id)?.temperature === t; }));
+    const mixed: AppState = { ...sOld, leads: [...sOld.leads, makeLead({ id: 'new-n', commercialId: 'com-a', temperature: 'neutre' })] };
+    await restoreBackup(prisma, { format: 'bob-crm-backup', version: 1, data: mixed });
+    check('état mixte avec « neutre » : round-trip identique', norm(await getState(prisma)) === norm(mixed));
 
     // 5) Chemin HTTP complet (handler -> dispatch -> restoreBackup). L'env auth
     // (SESSION_SECRET/APP_*) + DATABASE_URL a été posé par la section Routage ;

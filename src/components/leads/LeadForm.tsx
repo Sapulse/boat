@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Priority } from '../../data/types';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, DEFAULT_TEMPERATURE, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 import { useSubmitLock } from '../../hooks/useSubmitLock';
@@ -28,7 +28,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
     brand: lead?.brand ?? '',
     budget: lead?.budget ?? null as number | null,
     status: lead?.status ?? 'nouveau' as LeadStatus,
-    temperature: lead?.temperature ?? 'tiede' as Temperature,
+    temperature: lead?.temperature ?? DEFAULT_TEMPERATURE as Temperature,
     priority: lead?.priority ?? 'normale' as Priority,
     contactDate: lead?.contactDate ?? '',
     quoteAmount: lead?.quoteAmount ?? null as number | null,

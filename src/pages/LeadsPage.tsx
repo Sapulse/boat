@@ -75,6 +75,9 @@ export default function LeadsPage() {
   const savedViews: SavedView[] = [
     { label: 'Urgents', key: 'urgent', apply: () => { clearAllFilters(); setFilterAlert('red'); setActiveView('urgent'); } },
     { label: 'Chauds', key: 'chaud', apply: () => { clearAllFilters(); setFilterTemp('chaud'); setActiveView('chaud'); } },
+    // « À qualifier » = température Neutre (lot 1) : les leads dont personne n'a
+    // encore posé la température. Même mécanique que « Chauds » (filtre temp).
+    { label: 'À qualifier', key: 'a-qualifier', apply: () => { clearAllFilters(); setFilterTemp('neutre'); setActiveView('a-qualifier'); } },
     { label: 'Sans action', key: 'no-action', apply: () => { clearAllFilters(); setActiveView('no-action'); } },
     { label: 'Devis à relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
     { label: 'Inactifs >7j', key: 'inactifs', apply: () => { clearAllFilters(); setActiveView('inactifs'); } },
