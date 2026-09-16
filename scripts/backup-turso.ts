@@ -19,10 +19,15 @@
  * dépôt git : le fichier contient les données personnelles de tous les
  * prospects (RGPD) ; conservation bornée à RETENTION_DAYS.
  *
- * Exécution : npm run backup            (prod Turso, lue depuis .env)
- *             npm run backup -- --local (base locale de dev, pour essayer)
+ * Exécution (cible explicite, voir scripts/lib/dbTarget — lecture seule) :
+ *   npm run backup:prod                                  (= --target=prod)
+ *   npm run backup -- --target=local --db=<fichier>      (base locale)
+ * Plus de lecture automatique de .env : sans --target, refus.
+ *
+ * Lit aussi une base PAS ENCORE MIGRÉE au lot 2 (schéma détecté) : la sauvegarde
+ * se prend AVANT la migration, avec le code du lot 2.
  */
-import 'dotenv/config';
+import { guardDbTarget, applyTargetToProcessEnv } from './lib/dbTarget';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { mkdirSync, writeFileSync, readdirSync, unlinkSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -42,26 +47,20 @@ function appVersion(): string {
 }
 
 async function main() {
-  const local = process.argv.includes('--local');
-  const tursoUrl = process.env.TURSO_DATABASE_URL;
-
-  // Garde-fou : sans TURSO_*, le client Prisma retombe SILENCIEUSEMENT sur la
-  // base locale de dev -> on produirait un fichier « sauvegarde » quasi vide en
-  // croyant avoir sauvé la prod. Refus explicite plutôt que fausse assurance.
-  if (!local && !tursoUrl) {
-    console.error('❌ TURSO_DATABASE_URL absente : ce serait une sauvegarde de la base LOCALE, pas de la prod.');
-    console.error("   Vérifie le .env, ou assume le coup d'essai avec : npm run backup -- --local");
-    process.exit(1);
-  }
-  const host = (() => { try { return new URL(tursoUrl!).host; } catch { return 'base locale de dev'; } })();
-  console.log(`Source : ${local && !tursoUrl ? 'base locale de dev (--local)' : host}`);
+  // Cible EXPLICITE (plus de repli silencieux sur la base locale de dev, ni de
+  // lecture automatique de .env) — lecture seule.
+  const guard = guardDbTarget({ scriptName: 'backup-turso', write: false });
+  if (!guard) process.exit(1);
+  applyTargetToProcessEnv(guard.target); // le client Prisma partagé lit l'environnement à l'import
 
   const { prisma } = await import('../api/_lib/prisma');
-  const { getState } = await import('../api/_lib/store');
+  const { getState, hasLot2Schema } = await import('../api/_lib/store');
   const { parseRestorePayload } = await import('../api/_lib/validate');
 
   const now = new Date();
-  const state = await getState(prisma);
+  const migrated = await hasLot2Schema(prisma);
+  console.log(`Schéma : ${migrated ? 'lot 2 (actions programmées)' : "d'avant le lot 2 (pas encore migré)"}`);
+  const state = await getState(prisma, { schema: migrated ? 'courant' : 'avant-lot2' });
   const inbound = await readInbound(prisma);
   await prisma.$disconnect();
 
@@ -77,6 +76,7 @@ async function main() {
     ['calendarEvents', state.calendarEvents.length],
     ['goals', state.goals.length],
     ['monthlyStats', state.monthlyStats.length],
+    ...(migrated ? [['plannedActions', state.plannedActions.length] as [string, number]] : []),
     ['inbound_emails *', inbound.length],
   ];
   for (const [label, n] of counts) console.log(`${label.padEnd(24)} ${String(n).padStart(6)}`);

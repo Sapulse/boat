@@ -235,10 +235,31 @@ function toDefaultGoal(r: Record<string, unknown>): DefaultGoal {
 // ---------------------------------------------------------------------------
 // Hydratation : AppState complet en une lecture (couvre getInitialState du repo).
 // ---------------------------------------------------------------------------
-export async function getState(prisma: PrismaClient): Promise<AppState> {
+/** Colonnes des leads / de l'historique AVANT le lot 2 (lecture d'une base pas encore migrée). */
+const LEGACY_LEAD_SELECT = Object.fromEntries(['id', 'createdAt', 'source', 'commercialId', 'firstName', 'lastName', 'phone', 'email', 'boatType', 'boatCondition', 'boatInterest', 'brand', 'budget', 'status', 'contactDate', 'quoteAmount', 'probability', 'currentBoat', 'comments', 'deliveryDate', 'temperature', 'priority', 'nextActionType', 'nextActionDate', 'nextActionTime', 'nextActionEndTime', 'lastActionDate', 'lossReason', 'signedAt', 'lostAt', 'reportedAt'].map(k => [k, true]));
+const LEGACY_ACTION_SELECT = Object.fromEntries(['id', 'leadId', 'authorId', 'type', 'date', 'result', 'notes', 'newStatus', 'nextActionType', 'nextActionDate'].map(k => [k, true]));
+
+/**
+ * Le schéma de la base contient-il le lot 2 ? Utilisé par la SAUVEGARDE, qui
+ * doit pouvoir lire une base PAS ENCORE migrée (procédure : sauvegarde AVANT la
+ * migration). L'app, elle, n'appelle jamais ce test (base déjà migrée).
+ */
+export async function hasLot2Schema(prisma: PrismaClient): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<{ n: number | bigint }[]>(
+    `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='planned_actions'`);
+  return Number(rows[0]?.n ?? 0) === 1;
+}
+
+/**
+ * `schema: 'avant-lot2'` (sauvegarde d'une base non migrée) : leads et historique
+ * lus SANS les colonnes du lot 2, et `plannedActions` ABSENT de l'état renvoyé —
+ * restaurer ce fichier déclenchera la reprise des prochaines actions.
+ */
+export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2' } = {}): Promise<AppState> {
+  const legacy = opts.schema === 'avant-lot2';
   const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
-    prisma.lead.findMany(),
-    prisma.leadAction.findMany(),
+    legacy ? prisma.lead.findMany({ select: LEGACY_LEAD_SELECT }) : prisma.lead.findMany(),
+    legacy ? prisma.leadAction.findMany({ select: LEGACY_ACTION_SELECT }) : prisma.leadAction.findMany(),
     prisma.commercial.findMany(),
     prisma.monthlyStat.findMany(),
     // Plus récent d'abord : la page Modèles retrie de toute façon (lib/templates,
@@ -248,11 +269,24 @@ export async function getState(prisma: PrismaClient): Promise<AppState> {
     prisma.calendarEvent.findMany(),
     prisma.commercialGoal.findMany(),
     prisma.defaultGoal.findUnique({ where: { id: 1 } }),
-    prisma.plannedAction.findMany({ include: { people: true } }),
+    legacy ? Promise.resolve([]) : prisma.plannedAction.findMany({ include: { people: true } }),
   ]);
+  if (legacy) {
+    const state = {
+      leads: leads.map(l => { const x = toLead(l as LeadRow); delete x.noNextActionReason; delete x.noNextActionAt; return x; }),
+      actions: actions.map(a => { const x = toAction(a as Record<string, unknown>); delete x.kind; delete x.plannedActionId; return x; }),
+      commercials: commercials.map(toCommercial),
+      monthlyStats: monthlyStats.map(toStat),
+      templates: templates.map(toTemplate),
+      calendarEvents: calendarEvents.map(toCalendarEvent),
+      goals: goals.map(toGoal),
+      defaultGoal: dg ? toDefaultGoal(dg as Record<string, unknown>) : EMPTY_DEFAULT_GOAL,
+    };
+    return state as unknown as AppState; // plannedActions volontairement absent
+  }
   return {
-    leads: leads.map(toLead),
-    actions: actions.map(toAction),
+    leads: leads.map(l => toLead(l as LeadRow)),
+    actions: actions.map(a => toAction(a as Record<string, unknown>)),
     commercials: commercials.map(toCommercial),
     monthlyStats: monthlyStats.map(toStat),
     templates: templates.map(toTemplate),

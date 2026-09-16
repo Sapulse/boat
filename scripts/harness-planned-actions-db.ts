@@ -26,7 +26,8 @@ import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import {
   applyPlannedActionsSchema, planReprise, applyReprise, proveMigration, leadsFingerprint, actionsFingerprint,
 } from './apply-planned-actions-turso';
-import { getState, upsertPlannedAction, restoreBackup } from '../api/_lib/store';
+import { getState, upsertPlannedAction, restoreBackup, hasLot2Schema } from '../api/_lib/store';
+import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError } from '../api/_lib/http';
 import type { AppState, PlannedAction } from '../src/data/types';
 
@@ -100,6 +101,23 @@ async function main() {
   }
   const before = { leads: await leadsFingerprint(db), actions: await actionsFingerprint(db) };
   check('437 leads et 98 lignes d\'historique en place', before.leads.count === 437 && before.actions.count === 98);
+
+  section('Sauvegarde AVANT migration, avec le code du lot 2 (procédure imposée)');
+  {
+    const legacyPrisma = new PrismaClient({ adapter: new PrismaLibSql({ url: `file:${DB_FILE}` }) });
+    check('schéma détecté : pas encore migré', !(await hasLot2Schema(legacyPrisma)));
+    let full = false;
+    try { await getState(legacyPrisma); } catch { full = true; }
+    check('la lecture COMPLÈTE échoue bien sur l\'ancien schéma (d\'où le mode dédié)', full);
+    const old = await getState(legacyPrisma, { schema: 'avant-lot2' });
+    check('lecture « avant-lot2 » : 437 leads, 98 lignes, sans plannedActions', old.leads.length === 437 && old.actions.length === 98 && !('plannedActions' in old));
+    check('lecture « avant-lot2 » : aucune colonne du lot 2 inventée', old.leads.every(l => !('noNextActionReason' in l)) && old.actions.every(a => !('kind' in a)));
+    let restorable = true;
+    try { parseRestorePayload({ format: 'bob-crm-backup', version: 1, data: old }); } catch { restorable = false; }
+    check('le fichier produit passe le validateur de restauration', restorable);
+    await legacyPrisma.$disconnect();
+    check('la sauvegarde n\'a rien écrit (leads identiques)', (await leadsFingerprint(db)).sha256 === before.leads.sha256);
+  }
 
   section('À blanc : rien n\'est écrit');
   const plan = await planReprise(db);

@@ -7,7 +7,9 @@
  *
  * Ne lit aucun contenu d'email : jeton + accès boîte + comptages uniquement.
  */
-import 'dotenv/config';
+// .env chargé SANS les variables de base (verrou scripts/lib/dbTarget) : seul Graph est utilisé.
+import { loadEnvWithoutDatabase } from './lib/dbTarget';
+loadEnvWithoutDatabase();
 import { readGraphEnv, checkGraphConnection, GRAPH_ENV_VARS } from '../api/_lib/graph';
 
 const mask = (v?: string) => (v ? `${v.slice(0, 4)}… (len ${v.length})` : '(absent)');

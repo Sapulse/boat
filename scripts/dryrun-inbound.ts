@@ -10,7 +10,11 @@
  * N'ÉCRIT RIEN : ni base (aucun client Prisma/Turso importé), ni Outlook
  * (Mail.Read app-only, aucune écriture possible), ni fichier.
  */
-import 'dotenv/config';
+// .env chargé SANS les variables de base (verrou scripts/lib/dbTarget) : la
+// lecture Graph n'a besoin que des AZURE_*. La prod n'est lue qu'avec
+// --dups-prod ET --target=prod explicites.
+import { loadEnvWithoutDatabase, guardDbTarget } from './lib/dbTarget';
+loadEnvWithoutDatabase();
 import { readGraphEnv } from '../api/_lib/graph';
 import { fetchRecentSourceEmails, toParseInput, DEFAULT_COLLECT_CAP } from '../api/_lib/inboundCollect';
 import { parseEmail, type ParsedEmail } from '../src/lib/email/parseEmail';
@@ -28,11 +32,11 @@ const days = daysArg !== -1 ? Math.max(1, Number(process.argv[daysArg + 1]) || 7
  */
 async function loadProdLeads(): Promise<Lead[] | null> {
   if (!process.argv.includes('--dups-prod')) return null;
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (!url || !authToken) { console.error('⚠ --dups-prod ignoré : TURSO_* absents du .env'); return null; }
+  const guard = guardDbTarget({ scriptName: 'dryrun-inbound --dups-prod', write: false });
+  if (!guard) process.exit(1);
+  const { target } = guard;
   const { createClient } = await import('@libsql/client');
-  const db = createClient({ url, authToken });
+  const db = createClient(target.kind === 'prod' ? { url: target.url, authToken: target.authToken } : { url: target.url });
   const rs = await db.execute('SELECT id, firstName, lastName, email, phone FROM leads');
   await db.close();
   return rs.rows.map(r => ({

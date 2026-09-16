@@ -3,8 +3,9 @@
  * Étape B) sur la base Turso — même patron éprouvé que
  * apply-login-attempts-turso.ts.
  *
- * Exécution : npx tsx scripts/apply-inbound-emails-turso.ts
- * Requiert : TURSO_DATABASE_URL + TURSO_AUTH_TOKEN dans .env
+ * Exécution (cible explicite, voir scripts/lib/dbTarget) :
+ *   à blanc  : npx tsx scripts/apply-inbound-emails-turso.ts --target=prod
+ *   écriture : BOB_CONFIRM_PROD=<base> npx tsx scripts/apply-inbound-emails-turso.ts --target=prod --apply
  *
  * Sûr et IDEMPOTENT :
  *  - CREATE TABLE/INDEX IF NOT EXISTS -> rejouable sans risque, ne touche
@@ -17,6 +18,7 @@
  * (scripts/harness-inbound-db.ts) teste EXACTEMENT le même SQL avant la prod.
  */
 import { createClient } from '@libsql/client';
+import { guardDbTarget } from './lib/dbTarget';
 
 // DDL identique à la migration Prisma 20260728154112_add_inbound_emails, en
 // version IF NOT EXISTS (idempotente pour une base déjà en service).
@@ -47,19 +49,18 @@ export const INBOUND_EMAILS_DDL: string[] = [
 ];
 
 async function main() {
-  const { config } = await import('dotenv');
-  config();
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (!url || !authToken) {
-    console.error('❌ TURSO_DATABASE_URL et TURSO_AUTH_TOKEN sont requis (dans .env).');
-    process.exit(1);
+  // VERROU (scripts/lib/dbTarget) : cible explicite ; écriture en prod =
+  // --apply + --target=prod + BOB_CONFIRM_PROD=<base>. Sans --apply : à blanc.
+  const guard = guardDbTarget({ scriptName: 'apply-inbound-emails-turso', write: true });
+  if (!guard) process.exit(1);
+  const { target, apply } = guard;
+  const db = createClient(target.kind === 'prod' ? { url: target.url, authToken: target.authToken } : { url: target.url });
+  if (!apply) {
+    const exists = (await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='inbound_emails'")).rows.length === 1;
+    console.log(`À blanc : table inbound_emails ${exists ? 'déjà présente' : 'absente (serait créée)'}. Rien n'a été écrit.`);
+    db.close();
+    return;
   }
-  // Masque le host, ne loggue jamais le token.
-  const host = (() => { try { return new URL(url).host; } catch { return '(url illisible)'; } })();
-  console.log(`Cible Turso : ${host}`);
-
-  const db = createClient({ url, authToken });
 
   // 1) Compte des leads AVANT (preuve d'intégrité).
   const before = await db.execute('SELECT COUNT(*) AS n FROM leads');

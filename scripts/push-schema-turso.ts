@@ -1,50 +1,57 @@
 /**
- * Pousse le schéma Prisma (migrations du Lot 1) vers la base Turso (région UE).
+ * Pousse le schéma Prisma (TOUTES les migrations) vers une base Turso VIERGE.
  *
- * Exécution : npx tsx scripts/push-schema-turso.ts
- * Requiert : TURSO_DATABASE_URL + TURSO_AUTH_TOKEN dans l'environnement
- *            (via .env — jamais commité). Voir docs/migration + les instructions
- *            du Lot 4 (création de la base Turso `cdg`/Paris).
+ * Exécution (cible explicite, voir scripts/lib/dbTarget) :
+ *   à blanc  : npx tsx scripts/push-schema-turso.ts --target=prod
+ *   écriture : BOB_CONFIRM_PROD=<base> npx tsx scripts/push-schema-turso.ts --target=prod --apply
+ * Plus de lecture automatique de .env : sans --target, refus.
  *
- * À utiliser UNE FOIS la vraie base Turso créée (étape web 4.4-4.5). Applique
- * toutes les migrations `prisma/migrations/<...>/migration.sql` dans l'ordre.
- * Base VIERGE attendue (D9) : aucune donnée poussée, seulement le schéma.
+ * À utiliser UNE FOIS, sur une base neuve (étape web 4.4-4.5 du Lot 4). Refus
+ * si la base contient déjà la moindre table : ce script n'est PAS un outil de
+ * migration d'une base en service (utiliser les scripts apply-*-turso.ts).
  *
  * Même esprit que SAForm (save saforme/scripts/push-schema-turso.ts).
  */
-import 'dotenv/config';
 import { createClient } from '@libsql/client';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { guardDbTarget } from './lib/dbTarget';
 
-const url = process.env.TURSO_DATABASE_URL;
-const authToken = process.env.TURSO_AUTH_TOKEN;
-if (!url || !authToken) {
-  console.error('TURSO_DATABASE_URL et TURSO_AUTH_TOKEN sont requis (dans .env).');
-  process.exit(1);
-}
-
-function allMigrationsSql(): string {
+function migrationDirs(): string[] {
   const dir = path.resolve('prisma/migrations');
   const subs = readdirSync(dir, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name)
     .sort(); // les dossiers sont préfixés d'un timestamp -> ordre chronologique
   if (subs.length === 0) throw new Error('Aucune migration trouvée sous prisma/migrations.');
+  return subs;
+}
+
+function allMigrationsSql(subs: string[]): string {
+  const dir = path.resolve('prisma/migrations');
   return subs
     .map(s => `-- migration ${s}\n${readFileSync(path.join(dir, s, 'migration.sql'), 'utf-8')}`)
     .join('\n\n');
 }
 
 async function main() {
-  const sql = allMigrationsSql();
-  console.log(`Cible Turso : ${url}`);
+  const guard = guardDbTarget({ scriptName: 'push-schema-turso', write: true });
+  if (!guard) process.exit(1);
+  const { target, apply } = guard;
+  const subs = migrationDirs();
+  const client = createClient(target.kind === 'prod' ? { url: target.url, authToken: target.authToken } : { url: target.url });
+  const tables = (await client.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")).rows.map(r => String(r.name));
+  console.log(`Migrations : ${subs.join(', ')}`);
+  if (tables.length > 0) {
+    console.error(`❌ Refus : la base n'est pas vierge (${tables.length} table(s) : ${tables.slice(0, 5).join(', ')}…). Ce script ne migre pas une base en service.`);
+    client.close();
+    process.exit(1);
+  }
+  if (!apply) { console.log('À blanc : base vierge, schéma applicable. Rien n\'a été écrit.'); client.close(); return; }
   console.log('Application du schéma (migrations Prisma)…\n');
-  const client = createClient({ url: url!, authToken: authToken! });
-  // executeMultiple applique tous les statements ; FK actives sur Turso.
-  await client.executeMultiple(sql);
-  await client.close();
-  console.log('✅ Schéma poussé sur Turso (base vierge prête).');
+  await client.executeMultiple(allMigrationsSql(subs));
+  client.close();
+  console.log('✅ Schéma poussé (base vierge prête).');
 }
 
 main().catch(e => { console.error('Échec du push Turso :', e); process.exit(1); });

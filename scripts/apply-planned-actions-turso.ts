@@ -3,10 +3,17 @@
  * actions déjà saisies, sur la base Turso. Même patron que
  * apply-inbound-emails-turso.ts, avec en plus un mode À BLANC par défaut.
  *
- * Exécution : npx tsx scripts/apply-planned-actions-turso.ts            (à blanc : n'écrit RIEN)
- *             npx tsx scripts/apply-planned-actions-turso.ts --apply    (écrit)
- * Requiert : TURSO_DATABASE_URL + TURSO_AUTH_TOKEN dans .env
- * AVANT --apply : `npm run backup` (vérif de restaurabilité incluse).
+ * Exécution (cible TOUJOURS explicite — scripts/lib/dbTarget) :
+ *   à blanc, prod    : npx tsx scripts/apply-planned-actions-turso.ts --target=prod
+ *   écriture, prod   : BOB_CONFIRM_PROD=bob-brestoceanboat npx tsx scripts/apply-planned-actions-turso.ts --target=prod --apply
+ *   écriture, locale : npx tsx scripts/apply-planned-actions-turso.ts --target=local --db=<fichier> --apply
+ * Sans --target : refus. --apply en prod sans BOB_CONFIRM_PROD exact : refus, aucune connexion.
+ * AVANT --apply en prod : `npm run backup:prod` (vérif de restaurabilité incluse).
+ *
+ * MIGRATION DE RÉFÉRENCE = CE SQL ÉCRIT À LA MAIN. Ne JAMAIS le remplacer par la
+ * sortie de `prisma migrate diff` / `migrate dev` : Prisma recrée les tables
+ * (copie + DROP TABLE) pour ajouter une colonne sous SQLite. Voir prisma/MIGRATIONS.md
+ * et le harnais harness-migrations-guard.ts (aucun DROP / RENAME / copie).
  *
  * Ce que fait --apply, dans cet ordre :
  *  1. relit l'état : leads et historique complets (empreintes), prochaines actions à reprendre ;
@@ -26,6 +33,7 @@
 import { createClient, type Client, type InValue } from '@libsql/client';
 import { createHash } from 'node:crypto';
 import { migrateLegacyNextActions } from '../src/lib/plannedActions';
+import { guardDbTarget } from './lib/dbTarget';
 import type { Lead, PlannedAction } from '../src/data/types';
 
 /** Colonnes ajoutées (ALTER TABLE ADD COLUMN si absentes). */
@@ -173,16 +181,13 @@ export async function proveMigration(db: Client, before: { leads: { count: numbe
 }
 
 async function main() {
-  const { config } = await import('dotenv');
-  config();
-  const apply = process.argv.includes('--apply');
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (!url || !authToken) { console.error('❌ TURSO_DATABASE_URL et TURSO_AUTH_TOKEN sont requis (dans .env).'); process.exit(1); }
-  const host = (() => { try { return new URL(url).host; } catch { return '(url illisible)'; } })();
-  console.log(`Cible  : ${host}`);
-  console.log(`Mode   : ${apply ? '⚠️  APPLICATION RÉELLE (--apply)' : 'à blanc (aucune écriture)'}`);
-  const db = createClient({ url, authToken });
+  // VERROU (scripts/lib/dbTarget) : cible explicite, affichée avant tout ;
+  // écriture en prod = --apply + --target=prod + BOB_CONFIRM_PROD=<base>.
+  const guard = guardDbTarget({ scriptName: 'apply-planned-actions-turso', write: true });
+  if (!guard) process.exit(1);
+  const { target, apply } = guard;
+  const t0 = Date.now();
+  const db = createClient(target.kind === 'prod' ? { url: target.url, authToken: target.authToken } : { url: target.url });
 
   const before = { leads: await leadsFingerprint(db), actions: await actionsFingerprint(db) };
   const missingColumns: string[] = [];
@@ -196,13 +201,16 @@ async function main() {
   console.log(`Prochaines actions à reprendre : ${reprise.length}`);
   for (const p of reprise) console.log(`  - ${p.id} · ${p.type} le ${p.date}${p.time ? ` à ${p.time}` : ''} · responsable ${p.people[0]?.commercialId}`);
 
-  if (!apply) { console.log('\nÀ blanc : rien n\'a été écrit. Relancer avec --apply après `npm run backup`.'); db.close(); return; }
+  if (!apply) { console.log('\nÀ blanc : rien n\'a été écrit. Relancer avec --apply (et, en prod, BOB_CONFIRM_PROD) après la sauvegarde.'); db.close(); return; }
 
+  const tWrite = Date.now();
   const schema = await applyPlannedActionsSchema(db);
   const inserted = await applyReprise(db, reprise, new Date().toISOString());
+  const writeMs = Date.now() - tWrite;
   console.log(`\nSchéma : colonnes ajoutées ${schema.addedColumns.length}, tables créées ${schema.createdTables.length} · reprise : ${inserted} insérée(s)`);
   const checks = await proveMigration(db, before, reprise);
   db.close();
+  console.log(`Durée : écriture (schéma + reprise) ${writeMs} ms · total avec lectures et preuve ${Date.now() - t0} ms`);
   console.log('\n— Preuve —');
   for (const c of checks) console.log(`  ${c.ok ? '✅' : '❌'} ${c.label}${c.detail ? ` (${c.detail})` : ''}`);
   if (checks.some(c => !c.ok)) { console.error('\n❌ Preuve en échec : vérifier la base (la sauvegarde permet la restauration).'); process.exit(1); }

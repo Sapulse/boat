@@ -13,10 +13,12 @@
  *  - à lancer APRÈS `npm run backup` : le dump contient inbound_emails, donc une
  *    purge trop enthousiaste reste rattrapable.
  *
- * Exécution : npm run purge:inbound              (à blanc, ne supprime rien)
- *             npm run purge:inbound -- --apply   (supprime pour de vrai)
+ * Exécution (cible explicite, voir scripts/lib/dbTarget) :
+ *   à blanc  : npm run purge:inbound -- --target=prod
+ *   écriture : BOB_CONFIRM_PROD=<base> npm run purge:inbound -- --target=prod --apply
+ * Plus de lecture automatique de .env : sans --target, refus.
  */
-import 'dotenv/config';
+import { guardDbTarget, applyTargetToProcessEnv } from './lib/dbTarget';
 import {
   INBOUND_RETENTION_DAYS, inboundRetentionCutoff,
   listPurgeableInbound, purgeRejectedInbound,
@@ -30,14 +32,12 @@ function maskEmail(a: string): string {
 }
 
 async function main() {
-  const apply = process.argv.includes('--apply');
-  const tursoUrl = process.env.TURSO_DATABASE_URL;
-  if (!tursoUrl) {
-    console.error('❌ TURSO_DATABASE_URL absente : refus (on ne purge pas une base dont on ignore laquelle).');
-    process.exit(1);
-  }
-  console.log(`Cible  : ${new URL(tursoUrl).host}`);
-  console.log(`Mode   : ${apply ? '⚠️  APPLICATION RÉELLE (--apply)' : 'à blanc (aucune suppression)'}`);
+  const guard = guardDbTarget({ scriptName: 'purge-inbound', write: true });
+  if (!guard) process.exit(1);
+  const { target, apply } = guard;
+  // Le client Prisma partagé lit l'environnement À L'IMPORT : on y pose la cible
+  // résolue, et SEULEMENT elle, avant de l'importer.
+  applyTargetToProcessEnv(target);
 
   const { prisma } = await import('../api/_lib/prisma');
   const now = new Date();
@@ -64,7 +64,7 @@ async function main() {
 
   if (!apply) {
     console.log(`\nÀ blanc : RIEN n'a été supprimé.`);
-    console.log('Pour appliquer (après un `npm run backup`) : npm run purge:inbound -- --apply');
+    console.log('Pour appliquer (après `npm run backup:prod`) : BOB_CONFIRM_PROD=<base> npm run purge:inbound -- --target=prod --apply');
     await prisma.$disconnect();
     return;
   }

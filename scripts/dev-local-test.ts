@@ -2,6 +2,9 @@
  * BANC DE TEST LOCAL du pipeline email — base JETABLE, prod INACCESSIBLE.
  *
  * Exécution : npx tsx scripts/dev-local-test.ts   (Ctrl+C pour tout arrêter)
+ *             npx tsx scripts/dev-local-test.ts --db=<fichier> --no-migrate --no-seed
+ *               (base locale déjà prête, ex. répétition de migration sur une copie des
+ *                données réelles : ni migration Prisma, ni commerciaux de test ajoutés)
  *
  * Ce lanceur :
  *  1. construit un environnement VERROUILLÉ : variables TURSO_* SUPPRIMÉES
@@ -17,20 +20,24 @@
  * Les seuls identifiants réels utilisés : AZURE_* (lecture SEULE de la boîte
  * mail — Mail.Read ne peut rien modifier dans Outlook).
  */
-import { config as dotenv } from 'dotenv';
+import { loadEnvWithoutDatabase } from './lib/dbTarget';
 import { randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
 import path from 'node:path';
 import { createClient } from '@libsql/client';
 
-const TEST_DB = path.resolve('test-inbound.db');
+const dbArg = process.argv.find(a => a.startsWith('--db='));
+if (dbArg && /^(libsql|https?|wss?):/i.test(dbArg.slice(5))) { console.error('❌ --db doit être un fichier local.'); process.exit(1); }
+const TEST_DB = path.resolve(dbArg ? dbArg.slice(5).replace(/^file:/, '') : 'test-inbound.db');
+const NO_MIGRATE = process.argv.includes('--no-migrate');
+const NO_SEED = process.argv.includes('--no-seed');
 const API_PORT = 3311;
 
 async function main() {
-  dotenv(); // charge .env (AZURE_* + TURSO_*) dans CE process…
-
-  // …puis VERROUILLAGE : la prod devient inaccessible à tout ce qui suit.
+  // .env chargé SANS les variables de base (verrou scripts/lib/dbTarget) :
+  // TURSO_* n'entrent jamais dans ce process ni dans ses enfants.
+  loadEnvWithoutDatabase();
   delete process.env.TURSO_DATABASE_URL;
   delete process.env.TURSO_AUTH_TOKEN;
   process.env.DATABASE_URL = `file:${TEST_DB}`;
@@ -62,10 +69,12 @@ async function main() {
 
   // 1) Base de test : migrations Prisma (idempotent) + seed des 5 commerciaux.
   console.log(`Base de test : ${TEST_DB}`);
-  const mig = spawnSync('npx', ['prisma', 'migrate', 'deploy'], { env: process.env, stdio: 'pipe', shell: true, encoding: 'utf8' });
-  if (mig.status !== 0) { console.error('❌ Échec des migrations :\n' + mig.stdout + mig.stderr); process.exit(1); }
+  if (!NO_MIGRATE) {
+    const mig = spawnSync('npx', ['prisma', 'migrate', 'deploy'], { env: process.env, stdio: 'pipe', shell: true, encoding: 'utf8' });
+    if (mig.status !== 0) { console.error('❌ Échec des migrations :\n' + mig.stdout + mig.stderr); process.exit(1); }
+  }
   const db = createClient({ url: `file:${TEST_DB}` });
-  for (const [id, name] of [['fred', 'Fred'], ['tom', 'Tom'], ['nicolas', 'Nicolas'], ['oceane', 'Océane'], ['camaret', 'Camaret']]) {
+  for (const [id, name] of NO_SEED ? [] : [['fred', 'Fred'], ['tom', 'Tom'], ['nicolas', 'Nicolas'], ['oceane', 'Océane'], ['camaret', 'Camaret']]) {
     await db.execute({
       sql: `INSERT INTO commercials (id, name, active, createdAt, updatedAt)
             VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
