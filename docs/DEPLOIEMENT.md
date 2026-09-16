@@ -57,3 +57,76 @@ git show prod-2026-09-16     # dernier en date : 78ec522 (lot 1 Neutre)
 Cible toujours explicite ; écriture en prod = `--apply` **et** `--target=prod` **et**
 `BOB_CONFIRM_PROD=bob-brestoceanboat` (voir `scripts/lib/dbTarget.ts`).
 Sauvegarde : `npm run backup:prod`.
+
+---
+
+## Mise en production du lot 2 (plan — RIEN n'est exécuté sans GO)
+
+Répétition du 2026-09-16 sur une copie fraîche des données réelles (437 leads,
+98 actions, 143 emails) : chargement 6 s, migration à blanc 2 s, `--apply` 126 ms
+(dont 56 ms d'écriture), preuve complète ✅, rejeu : 0 ajout ✅, 11 prochaines
+actions reprises pour 11 leads (N = N), aucun écart lead / action.
+
+### Ordre exact (fenêtre sans utilisateurs)
+
+| # | Étape | Commande / contrôle | Durée |
+|---|---|---|---|
+| 0 | Prévenir l'équipe, personne connecté | message ; `vercel whoami` = `brestoceanboat` | 5 min |
+| 1 | Figer le code : copie propre de `main` au commit validé | `git worktree add --detach ../deploy-lot2 <commit>` ; copier `.vercel/project.json` | 2 min |
+| 2 | Sauvegarde | `npm run backup:prod` → « Restaurable : oui ✅ » ; noter le fichier | 1 min |
+| 3 | Migration **à blanc** | `npx tsx scripts/apply-planned-actions-turso.ts --target=prod` → relire colonnes, tables, N reprises | 2 min |
+| 4 | **GO** (César) | N à blanc = N attendu ; hôte = `bob-brestoceanboat` | — |
+| 5 | Migration réelle | `BOB_CONFIRM_PROD=bob-brestoceanboat npx tsx scripts/apply-planned-actions-turso.ts --target=prod --apply` | 1 min |
+| 6 | Preuve | les 6 ✅ du script ; relancer `--apply` : 0 ajout | 2 min |
+| 7 | Déploiement du code | `cd ../deploy-lot2 && vercel --prod --yes` | 2 min |
+| 8 | Vérif prod (lecture seule) | nouveau hash de bundle, headers, `/api/*` en 401 sans session, connexion, Agenda en accueil, pastille = retards attendus, une fiche, la boîte de réception | 10 min |
+| 9 | Tag | `git tag -a prod-AAAA-MM-JJ <commit> -m "Lot 2 — <dpl id>"` ; `git push origin prod-AAAA-MM-JJ` | 1 min |
+| 10 | Ouvrir à l'équipe, envoyer la fiche | `docs/FICHE-EQUIPE-LOT2.md` relue | — |
+
+**Fenêtre à réserver : 30 min** (≈ 25 min d'opérations + marge), **45 min** avec un
+retour arrière complet.
+
+### Retour arrière
+
+**Principe : on ne revient PAS en arrière sur la base.** La migration est
+purement additive (colonnes avec valeur par défaut, 2 tables) : prouvé le
+2026-09-16 en faisant tourner le code du tag `prod-2026-09-16` sur une copie migrée
+des données réelles — lecture ✅, modification de lead ✅, nouvelle action
+(kind `realisee` par défaut) ✅, nouveau lead ✅, suppression d'un lead avec action
+programmée (cascade, aucun orphelin) ✅. Seul le **code** revient en arrière.
+
+**Procédure (≈ 5 min)**
+1. `vercel rollback dpl_6fCTheuCDSUkmaAhFzPtzKQq59pa --yes` (redéploiement instantané
+   de la version du tag `prod-2026-09-16`, sans rebuild). Plan Hobby : seul le
+   déploiement de production **immédiatement précédent** est accessible — donc ne
+   faire AUCUN autre déploiement prod entre le lot 2 et un éventuel retour arrière.
+   À défaut : copie propre du tag + `vercel --prod`.
+2. Vérifier le bundle `index-CCw9ZR1e.js`, connexion, une fiche.
+3. Prévenir l'équipe : **ne pas utiliser « Restaurer »** tant que le lot 2 n'est pas revenu.
+4. Ne rien supprimer en base (tables et colonnes du lot 2 restent, inertes).
+
+**Limites pendant le retour arrière (mesurées sur la copie)**
+- **Désynchronisation** : l'ancien code écrit la prochaine action sur le lead
+  seulement ; les actions programmées ne suivent pas (test : 12 leads divergents
+  après quelques modifications et une restauration).
+- **« Restaurer » dans l'ancien code vide TOUTES les actions programmées**
+  (cascade à la suppression des leads) : interdit pendant le retour arrière.
+- Les traces « report » / « sans suite » écrites pendant le lot 2 apparaissent dans
+  l'historique de l'ancien code comme des actions ordinaires et **comptent dans ses
+  objectifs** (l'ancien calcul ne filtre pas `kind`) : chiffres du mois gonflés.
+- Les motifs « Aucune prochaine action » sont invisibles (conservés en base).
+- L'agenda de l'ancien code ne montre qu'une action par lead (celle du lead) :
+  les participants ne la voient plus chez eux.
+
+**Revenir ensuite au lot 2 (re-déploiement)** : les champs du lead font foi
+(ce sont les plus récents). AVANT de redéployer, il faut un script de
+**réalignement** — À ÉCRIRE si on veut garder cette porte ouverte :
+- lead non Signé / Perdu avec prochaine action ≠ action à faire → mettre à jour
+  l'action à faire (ou l'annuler et en créer une) ;
+- lead avec prochaine action et aucune action À FAIRE → créer (le script de
+  reprise actuel ne crée que pour un lead SANS AUCUNE action programmée, même
+  faite ou annulée) ;
+- lead sans prochaine action mais avec une action à faire → l'annuler.
+Sans ce script : agenda faux pour les leads touchés pendant le retour arrière.
+**Recommandation** : un retour arrière ne se décide que dans l'heure qui suit la
+mise en production ; au-delà, corriger en avant (hotfix sur le lot 2).
