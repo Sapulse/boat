@@ -449,18 +449,24 @@ export function doneFlowFor(type: ActionType): DoneFlow {
   return 'compte_rendu';
 }
 
+/** Auteur PROPOSÉ pour « Fait » : le premier responsable, repli sur le commercial du lead. */
+export function defaultDoneAuthor(pa: Pick<PlannedAction, 'people'>, lead: Pick<Lead, 'commercialId'>): string {
+  return pa.people.find(p => p.role === 'responsable')?.commercialId ?? lead.commercialId;
+}
+
 /**
- * Ligne d'historique RÉALISÉE créée par « Fait ». Auteur = premier responsable
- * de l'action (c'est lui qui l'a faite : objectifs), repli sur le commercial du lead.
+ * Ligne d'historique RÉALISÉE créée par « Fait ». Auteur = celui choisi dans le
+ * panneau (un participant qui a fait l'action se l'attribue : objectifs justes) ;
+ * sans choix, l'auteur proposé (defaultDoneAuthor).
  */
-export function buildDoneAction(pa: PlannedAction, lead: Pick<Lead, 'id' | 'commercialId'>, args: { result: string; notes: string; today: string }): Omit<LeadAction, 'id'> {
+export function buildDoneAction(pa: PlannedAction, lead: Pick<Lead, 'id' | 'commercialId'>, args: { result: string; notes: string; today: string; authorId?: string }): Omit<LeadAction, 'id'> {
   return {
     leadId: lead.id,
     type: pa.type,
     date: args.today,
     result: args.result,
     notes: args.notes,
-    authorId: pa.people.find(p => p.role === 'responsable')?.commercialId ?? lead.commercialId,
+    authorId: args.authorId || defaultDoneAuthor(pa, lead),
   };
 }
 

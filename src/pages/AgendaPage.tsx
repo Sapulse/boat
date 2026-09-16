@@ -25,7 +25,7 @@ import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { useIsCompact } from '../lib/useIsCompact';
 import { activateOnKey } from '../lib/a11y';
 import {
-  groupEventsByDay, getCommercialColor, buildPlannedAgendaItems, plannedItemsFor, splitByPersonColumns, getPlannableLeads,
+  groupEventsByDay, getCommercialColor, buildPlannedAgendaItems, plannedItemsFor, splitByPersonColumns, getPlannableLeads, defaultDoneAuthor,
   buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots,
   type PlannedAgendaItem, type DayGridLayout, type PositionedEvent,
 } from '../lib/agenda';
@@ -1215,6 +1215,14 @@ function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
   const endInvalid = !!endTime && !isEndAfterStart(time, endTime);
   const lead = state.leads.find(l => l.id === item.leadId);
   const planned = state.plannedActions.find(p => p.id === item.plannedId);
+  // « Réalisée par » : pré-rempli avec le premier responsable, modifiable (un
+  // participant qui a fait l'action se l'attribue — objectifs justes).
+  const [authorId, setAuthorId] = useState(() => (lead && planned ? defaultDoneAuthor(planned, lead) : item.colorCommercialId));
+  const authorChoices = useMemo(() => {
+    const list = eligibleCommercials(state.commercials);
+    const current = state.commercials.find(c => c.id === authorId);
+    return current && !list.some(c => c.id === current.id) ? [current, ...list] : list;
+  }, [state.commercials, authorId]);
 
   const when = `${formatDate(item.date)}${item.time ? ` à ${timeLabel(item)}` : ''}`;
   const status = item.done
@@ -1245,7 +1253,7 @@ function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
       <button type="button" onClick={() => { onClose(); toast.info('Action laissée à faire'); }} className="btn-secondary btn-sm justify-center">Pas fait</button>
       <button
         type="button"
-        onClick={() => { if (lead && planned) { onClose(); flow.markDone(lead, planned); } }}
+        onClick={() => { if (lead && planned) { onClose(); flow.markDone(lead, planned, authorId); } }}
         className="btn-primary btn-sm justify-center"
       >
         <Check className="w-4 h-4" /> Fait
@@ -1299,6 +1307,14 @@ function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
               })}
             </ul>
           </div>
+          {!item.done && (
+            <div>
+              <label className="label" htmlFor="done-author">Réalisée par (si « Fait »)</label>
+              <select id="done-author" className="select" value={authorId} onChange={e => setAuthorId(e.target.value)}>
+                {authorChoices.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
           {item.note && (
             <div>
               <p className="label">Note</p>

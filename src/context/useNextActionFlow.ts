@@ -12,8 +12,8 @@ export interface NextActionFlowApi {
   confirmMessage(args: { lead: Lead; channel: 'email' | 'sms' | 'whatsapp'; detail: string; action: Omit<LeadAction, 'id'> }): void;
   /** Appel : note obligatoire, puis action + fenêtre. */
   askCallNote(lead: Lead): void;
-  /** Agenda, « Fait » : appel (puces), envoi (confirmation) ou compte rendu, puis action faite + fenêtre. */
-  markDone(lead: Lead, planned: PlannedAction): void;
+  /** Agenda, « Fait » : appel (puces), envoi (confirmation) ou compte rendu, puis action faite + fenêtre. `authorId` = qui l'a réalisée. */
+  markDone(lead: Lead, planned: PlannedAction, authorId: string): void;
   /** Toast « Lead créé — Planifier » (acceptation depuis la boîte de réception). */
   toastPlanifier(leadId: string, message: string): void;
 }

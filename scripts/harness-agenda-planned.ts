@@ -14,7 +14,7 @@
  */
 import {
   buildPlannedAgendaItems, plannedItemsFor, splitByPersonColumns, getPlannableLeads,
-  doneFlowFor, buildDoneAction, doneResultLabel,
+  doneFlowFor, buildDoneAction, doneResultLabel, defaultDoneAuthor,
 } from '../src/lib/agenda';
 import { countOverdue, isValidCallNote, nextActionDecision } from '../src/lib/plannedActions';
 import { countActions } from '../src/lib/goals';
@@ -127,7 +127,17 @@ section('« Fait » : fenêtre selon le type, ligne réalisée, puis fenêtre A 
 
   const rdv = pa({ id: 'rdv', type: 'rdv', people: [{ commercialId: 'fred', role: 'participant' }, { commercialId: 'tom', role: 'responsable' }] });
   const act = buildDoneAction(rdv, lead({ commercialId: 'fred' }), { result: doneResultLabel(rdv), notes: 'Visite faite, devis demandé', today: TODAY });
-  check('auteur = premier responsable (objectifs)', act.authorId === 'tom' && act.type === 'rdv' && act.date === TODAY);
+  check('auteur proposé = premier responsable (objectifs)', act.authorId === 'tom' && act.type === 'rdv' && act.date === TODAY && defaultDoneAuthor(rdv, lead()) === 'tom');
+  check('auteur proposé sans responsable : commercial du lead', defaultDoneAuthor({ people: [] }, lead({ commercialId: 'fred' })) === 'fred');
+  {
+    // Le participant Fred a fait le RDV et se l'attribue : l'objectif compte pour LUI, pas pour Tom.
+    const byFred = buildDoneAction(rdv, lead(), { result: doneResultLabel(rdv), notes: 'Visite faite, devis demandé', today: TODAY, authorId: 'fred' });
+    let f = state({ plannedActions: [rdv] });
+    f = reducer(f, { type: 'COMPLETE_PLANNED_ACTION', payload: { plannedId: 'rdv', action: { ...byFred, id: 'hf' }, doneAt: '2026-09-16T10:00:00Z' } });
+    check('auteur MODIFIÉ (participant) : ligne à son nom', byFred.authorId === 'fred' && f.actions[0].authorId === 'fred');
+    check('auteur modifié : objectif compté pour Fred, pas pour Tom', countActions(f.actions, 'fred', 2026, 9, ['rdv']) === 1 && countActions(f.actions, 'tom', 2026, 9, ['rdv']) === 0);
+    check('auteur vide : repli sur l\'auteur proposé', buildDoneAction(rdv, lead(), { result: 'x', notes: '', today: TODAY, authorId: '' }).authorId === 'tom');
+  }
 
   let s = state({ plannedActions: [rdv] });
   s = reducer(s, { type: 'COMPLETE_PLANNED_ACTION', payload: { plannedId: 'rdv', action: { ...act, id: 'h1' }, doneAt: '2026-09-16T10:00:00Z' } });

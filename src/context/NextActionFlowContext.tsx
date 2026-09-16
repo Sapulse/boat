@@ -27,7 +27,7 @@ type Item =
   | { id: number; kind: 'message'; leadId: string; channel: 'email' | 'sms' | 'whatsapp'; detail: string; action: Omit<LeadAction, 'id'> }
   | { id: number; kind: 'call'; leadId: string }
   /** « Fait » depuis l'agenda (arrêt 3) : fenêtre selon le type, puis action faite + fenêtre A. */
-  | { id: number; kind: 'done'; leadId: string; plannedId: string };
+  | { id: number; kind: 'done'; leadId: string; plannedId: string; authorId: string };
 type ItemInput = Item extends infer T ? (T extends Item ? Omit<T, 'id'> : never) : never;
 
 export function NextActionFlowProvider({ children }: { children: ReactNode }) {
@@ -52,7 +52,7 @@ export function NextActionFlowProvider({ children }: { children: ReactNode }) {
     decide,
     confirmMessage: ({ lead, channel, detail, action }) => push({ kind: 'message', leadId: lead.id, channel, detail, action }),
     askCallNote: (lead: Lead) => push({ kind: 'call', leadId: lead.id }),
-    markDone: (lead: Lead, planned: PlannedAction) => push({ kind: 'done', leadId: lead.id, plannedId: planned.id }),
+    markDone: (lead: Lead, planned: PlannedAction, authorId: string) => push({ kind: 'done', leadId: lead.id, plannedId: planned.id, authorId }),
     toastPlanifier: (leadId, message) => toast.success(message, {
       label: 'Planifier',
       onClick: () => {
@@ -99,7 +99,7 @@ export function NextActionFlowProvider({ children }: { children: ReactNode }) {
       const label = plannedActionLabel(planned);
       const finish = (result: string, notes: string, entry: NextActionEntry, message: string) => {
         shift();
-        completePlannedAction(planned.id, buildDoneAction(planned, lead, { result, notes, today }));
+        completePlannedAction(planned.id, buildDoneAction(planned, lead, { result, notes, today, authorId: current.authorId }));
         toast.success(message);
         decide(lead.id, entry);
       };
