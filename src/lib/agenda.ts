@@ -3,7 +3,8 @@ import {
   AGENDA_HOUR_START, AGENDA_HOUR_END, AGENDA_SLOT_MIN,
 } from '../data/constants';
 import { isLeadActive } from './utils';
-import type { Lead, Commercial, ActionType } from '../data/types';
+import type { Lead, Commercial, ActionType, LeadAction, PlannedAction, PlannedActionPerson } from '../data/types';
+import { concernsCommercial, isPlannedActionOverdue, isPlanningClosed, plannedActionLabel } from './plannedActions';
 
 // Module PUR (sans React ni JSX) : helpers de l'agenda, testables au harnais.
 
@@ -346,3 +347,122 @@ export function layoutDayEvents(events: AgendaEvent[]): DayLayout {
   }
   return { allDay, outOfRange, bySlot };
 }
+
+// ---------------------------------------------------------------------------
+// Lot 2, arrêt 3 — agenda des ACTIONS PROGRAMMÉES (state.plannedActions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Élément d'agenda issu d'une action programmée. Une action concerne une ou
+ * plusieurs personnes (responsables + participants) : elle est visible dans
+ * l'agenda de CHACUNE. Faite = grisée (reste à sa date) ; à faire et date
+ * passée = en retard, rouge À SA DATE (jamais déplacée à aujourd'hui).
+ * Annulée = absente.
+ */
+export interface PlannedAgendaItem {
+  id: string;             // = plannedId
+  plannedId: string;
+  leadId: string;
+  leadName: string;
+  type: ActionType;
+  label: string;          // « Appel », ou le texte libre de « Autre »
+  date: string;
+  time?: string;
+  endTime?: string;
+  done: boolean;
+  overdue: boolean;
+  note: string;
+  people: PlannedActionPerson[];
+  /** Couleur du bloc : le premier responsable (repli : le commercial du lead). */
+  colorCommercialId: string;
+}
+
+export function buildPlannedAgendaItems(planned: PlannedAction[], leads: Lead[], todayISO: string): PlannedAgendaItem[] {
+  const leadById = new Map(leads.map(l => [l.id, l]));
+  const items: PlannedAgendaItem[] = [];
+  for (const pa of planned) {
+    if (pa.status === 'annulee') continue;
+    const lead = leadById.get(pa.leadId);
+    if (!lead) continue; // lead supprimé : rien à afficher
+    const responsable = pa.people.find(p => p.role === 'responsable');
+    items.push({
+      id: pa.id,
+      plannedId: pa.id,
+      leadId: pa.leadId,
+      leadName: `${lead.firstName} ${lead.lastName}`.trim() || 'Sans nom',
+      type: pa.type,
+      label: plannedActionLabel(pa),
+      date: pa.date,
+      time: pa.time || undefined,
+      endTime: pa.time && pa.endTime ? pa.endTime : undefined,
+      done: pa.status === 'faite',
+      overdue: isPlannedActionOverdue(pa, lead, todayISO),
+      note: pa.note,
+      people: pa.people,
+      colorCommercialId: responsable?.commercialId ?? pa.people[0]?.commercialId ?? lead.commercialId,
+    });
+  }
+  return items;
+}
+
+/** Filtre « un commercial » : l'action le concerne (responsable OU participant). Sans filtre : tout. */
+export function plannedItemsFor(items: PlannedAgendaItem[], commercialId?: string): PlannedAgendaItem[] {
+  return commercialId ? items.filter(i => concernsCommercial(i, commercialId)) : items;
+}
+
+/**
+ * Vue Journée (colonnes = personnes) : chaque action apparaît dans la colonne de
+ * CHAQUE personne concernée. Une action dont aucune personne n'a de colonne
+ * (commercial désactivé, hors filtre) va dans « Autres » : rien n'est masqué.
+ */
+export function splitByPersonColumns(items: PlannedAgendaItem[], columnIds: string[]): { byColumn: Map<string, PlannedAgendaItem[]>; orphans: PlannedAgendaItem[] } {
+  const byColumn = new Map<string, PlannedAgendaItem[]>(columnIds.map(id => [id, []]));
+  const orphans: PlannedAgendaItem[] = [];
+  for (const item of items) {
+    const cols = [...new Set(item.people.map(p => p.commercialId))].filter(id => byColumn.has(id));
+    if (cols.length === 0) orphans.push(item);
+    for (const id of cols) byColumn.get(id)!.push(item);
+  }
+  return { byColumn, orphans };
+}
+
+/**
+ * Leads proposés à la CRÉATION sur la grille : ni Signé ni Perdu (Reporté
+ * inclus : il lui faut une reprise) et SANS action à faire. Règle « une seule
+ * action à faire par lead » : aucun écrasement possible par construction.
+ */
+export function getPlannableLeads(leads: Lead[], planned: PlannedAction[]): Lead[] {
+  const pendingLeads = new Set(planned.filter(p => p.status === 'a_faire').map(p => p.leadId));
+  return leads.filter(l => !isPlanningClosed(l.status) && !pendingLeads.has(l.id));
+}
+
+/**
+ * « Fait » depuis l'agenda : quelle fenêtre avant d'enregistrer ?
+ *  - appel : résultat (puces) + note selon la puce ;
+ *  - email / SMS / WhatsApp : « Avez-vous bien envoyé le message ? » ;
+ *  - tout le reste (RDV, visite, devis, Autre…) : compte rendu OBLIGATOIRE.
+ */
+export type DoneFlow = 'appel' | 'message' | 'compte_rendu';
+export function doneFlowFor(type: ActionType): DoneFlow {
+  if (type === 'appel') return 'appel';
+  if (type === 'email' || type === 'sms' || type === 'whatsapp') return 'message';
+  return 'compte_rendu';
+}
+
+/**
+ * Ligne d'historique RÉALISÉE créée par « Fait ». Auteur = premier responsable
+ * de l'action (c'est lui qui l'a faite : objectifs), repli sur le commercial du lead.
+ */
+export function buildDoneAction(pa: PlannedAction, lead: Pick<Lead, 'id' | 'commercialId'>, args: { result: string; notes: string; today: string }): Omit<LeadAction, 'id'> {
+  return {
+    leadId: lead.id,
+    type: pa.type,
+    date: args.today,
+    result: args.result,
+    notes: args.notes,
+    authorId: pa.people.find(p => p.role === 'responsable')?.commercialId ?? lead.commercialId,
+  };
+}
+
+/** Libellé d'historique d'une action faite sans puce : « Rendez-vous — fait », « Essai en mer — fait ». */
+export const doneResultLabel = (pa: Pick<PlannedAction, 'type' | 'customLabel'>) => `${plannedActionLabel(pa)} — fait`;

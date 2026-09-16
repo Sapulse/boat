@@ -7,7 +7,8 @@ import { USE_API } from '../../lib/flags';
 import { SyncIndicator } from '../ui/SyncIndicator';
 
 const titles: Record<string, string> = {
-  '/': 'Dashboard',
+  '/dashboard': 'Dashboard',
+  '/agenda': 'Agenda',
   '/leads': 'Leads / Prospects',
   '/clients': 'Clients',
   '/pipeline': 'Pipeline',

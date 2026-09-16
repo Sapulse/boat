@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../context/useApp';
 import { useToast } from '../../context/useToast';
 import { ACTION_TYPES, NO_NEXT_ACTION_REASONS, getStatusLabel } from '../../data/constants';
-import type { ActionType, Lead, PlannedActionPerson, PlannedActionRole } from '../../data/types';
+import type { ActionType, Lead, PlannedActionPerson } from '../../data/types';
 import {
   eligibleCommercials, defaultPeople, pendingActionOf, validateNextActionChoice, resolveNoNextActionReason,
   plannedActionLabel, isPlanningClosed, type NextActionChoice, type NextActionPrompt,
 } from '../../lib/plannedActions';
-import { cn, formatDate, getLeadFullName, isLeadActive } from '../../lib/utils';
+import { formatDate, getLeadFullName, isLeadActive } from '../../lib/utils';
 import DialogShell from './DialogShell';
+import PeoplePicker from './PeoplePicker';
 
 /**
  * Fenêtre « Prochaine action » (lot 2, décision A).
@@ -48,10 +49,6 @@ export default function NextActionDialog({ lead, prompt, onDone }: {
   useEffect(() => {
     if (attempt > 0) errorsRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [attempt]);
-
-  const roleOf = (id: string) => people.find(p => p.commercialId === id)?.role ?? null;
-  const setRole = (id: string, role: PlannedActionRole | null) =>
-    setPeople(prev => (role ? [...prev.filter(p => p.commercialId !== id), { commercialId: id, role }] : prev.filter(p => p.commercialId !== id)));
 
   const planChoice: NextActionChoice = {
     kind: 'planifier', type: (type || '') as ActionType, customLabel, date,
@@ -143,36 +140,12 @@ export default function NextActionDialog({ lead, prompt, onDone }: {
             </div>
           </div>
 
-          <fieldset>
-            <legend className="label">Qui s'en occupe ? *</legend>
-            {leadUnassigned && (
-              <p className="text-xs text-amber-700 mb-2">Lead non attribué : choisissez au moins un responsable.</p>
-            )}
-            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-              {eligible.map(c => {
-                const role = roleOf(c.id);
-                return (
-                  <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                    <span className="text-sm text-gray-800">{c.name}</span>
-                    <div className="inline-flex rounded-lg bg-gray-100 p-0.5" role="radiogroup" aria-label={`Rôle de ${c.name}`}>
-                      {([[null, '—'], ['responsable', 'Responsable'], ['participant', 'Participant']] as const).map(([r, label]) => (
-                        <button
-                          key={label}
-                          type="button"
-                          role="radio"
-                          aria-checked={role === r}
-                          onClick={() => setRole(c.id, r)}
-                          className={cn('px-2.5 py-1 text-xs rounded-md', role === r ? 'bg-white shadow-sm font-medium text-gray-900' : 'text-gray-500')}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </fieldset>
+          <PeoplePicker
+            eligible={eligible}
+            people={people}
+            onChange={setPeople}
+            warning={leadUnassigned ? 'Lead non attribué : choisissez au moins un responsable.' : undefined}
+          />
 
           <div>
             <label className="label" htmlFor="na-note">Note</label>

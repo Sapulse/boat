@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2,
+  ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2, Check,
   Users, Palmtree, Plane, User, Tag, type LucideIcon,
 } from 'lucide-react';
 import {
@@ -14,18 +14,23 @@ import {
   pointerWithin, rectIntersection, type CollisionDetection, type DragEndEvent,
 } from '@dnd-kit/core';
 import { useApp } from '../context/useApp';
+import { useToast } from '../context/useToast';
+import { useNextActionFlow } from '../context/useNextActionFlow';
 import { useSubmitLock } from '../hooks/useSubmitLock';
 import Modal from '../components/ui/Modal';
+import DialogShell from '../components/nextAction/DialogShell';
+import PeoplePicker from '../components/nextAction/PeoplePicker';
 import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo, AGENDA_HOUR_START, AGENDA_SLOT_MIN, AGENDA_SCROLL_TO_HOUR } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { useIsCompact } from '../lib/useIsCompact';
 import { activateOnKey } from '../lib/a11y';
 import {
-  buildAgendaEvents, groupEventsByDay, getCommercialColor, getCreatableLeads,
+  groupEventsByDay, getCommercialColor, buildPlannedAgendaItems, plannedItemsFor, splitByPersonColumns, getPlannableLeads,
   buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots,
-  type AgendaEvent, type DayGridLayout, type PositionedEvent,
+  type PlannedAgendaItem, type DayGridLayout, type PositionedEvent,
 } from '../lib/agenda';
-import type { Commercial, ActionType, Lead, CalendarEvent, CalendarEventCategory } from '../data/types';
+import { defaultPeople, eligibleCommercials, validateNextActionChoice, type NextActionChoice } from '../lib/plannedActions';
+import type { Commercial, ActionType, CalendarEvent, CalendarEventCategory, PlannedActionPerson } from '../data/types';
 
 // Creneaux horaires FIGES au niveau module (audit perf) : buildTimeSlots() ne
 // depend que de constantes (AGENDA_*) — il etait rappele a chaque render des
@@ -41,21 +46,25 @@ const CATEGORY_ICON: Record<CalendarEventCategory, LucideIcon> = {
   autre: Tag,
 };
 
-// Item unifie de la grille : action de lead OU evenement libre. Le layout
-// (layoutDayGrid) et la grille (TimeGrid) operent dessus ; le rendu branche sur
-// `kind`. Champs horaires a plat (date/time/endTime) pour le positionnement.
+// Item unifie de la grille : action programmee (lot 2) OU evenement libre. Le
+// layout (layoutDayGrid) et la grille (TimeGrid) operent dessus ; le rendu
+// branche sur `kind`. Champs horaires a plat (date/time/endTime) pour le
+// positionnement. `id` est unique DANS LA PAGE (cle React + id de drag) : en vue
+// Journee, une action a plusieurs personnes est dupliquee par colonne (suffixe).
 type GridItem =
-  | { kind: 'lead'; id: string; date: string; time?: string; endTime?: string; lead: AgendaEvent }
+  | { kind: 'lead'; id: string; date: string; time?: string; endTime?: string; lead: PlannedAgendaItem }
   | { kind: 'event'; id: string; date: string; time?: string; endTime?: string; event: CalendarEvent };
 
-function leadToItem(ev: AgendaEvent): GridItem {
-  return { kind: 'lead', id: ev.leadId, date: ev.date, time: ev.time, endTime: ev.endTime, lead: ev };
+function plannedToItem(it: PlannedAgendaItem, suffix = ''): GridItem {
+  return { kind: 'lead', id: it.id + suffix, date: it.date, time: it.time, endTime: it.endTime, lead: it };
 }
 function calToItem(ce: CalendarEvent): GridItem {
   return { kind: 'event', id: ce.id, date: ce.date, time: ce.time, endTime: ce.endTime, event: ce };
 }
-function itemCommercialId(item: GridItem): string | undefined {
-  return item.kind === 'lead' ? item.lead.commercialId : item.event.commercialId;
+
+/** Auteur d'un report fait depuis l'agenda : le premier responsable de l'action. */
+function reportAuthor(it: PlannedAgendaItem): string {
+  return it.people.find(p => p.role === 'responsable')?.commercialId ?? it.colorCommercialId;
 }
 
 type AgendaView = 'semaine' | 'mois' | 'jour';
@@ -78,10 +87,6 @@ const dayCollision: CollisionDetection = (args) => {
   return within.length > 0 ? within : rectIntersection(args);
 };
 
-function actionLabel(type: AgendaEvent['type']): string {
-  return ACTION_TYPES.find(a => a.value === type)?.label ?? 'Action';
-}
-
 // Libelle horaire d'un evenement : "" (all-day), "14:00" (ponctuel) ou
 // "14:00–16:00" (avec duree).
 function timeLabel(event: { time?: string; endTime?: string }): string {
@@ -89,8 +94,8 @@ function timeLabel(event: { time?: string; endTime?: string }): string {
   return event.endTime ? `${event.time}–${event.endTime}` : event.time;
 }
 
-// onReplan : re-selecteur de DATE d'une action de lead (type/heure/duree preserves).
-type OnReplan = (event: AgendaEvent, newDate: string) => void;
+// onReplan : re-selecteur de DATE d'une action programmee (heure/duree preservees).
+type OnReplan = (event: PlannedAgendaItem, newDate: string) => void;
 // Drag par creneau d'un item (lead OU evenement) : la page calcule la cible
 // (computeDrop) et route l'ecriture selon kind (setNextAction / updateCalendarEvent).
 type OnItemMove = (item: GridItem, newDate: string, deltaY: number) => void;
@@ -100,8 +105,9 @@ type OnItemResize = (item: GridItem, slotDelta: number) => void;
 type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
 export default function AgendaPage() {
-  const { state, setNextAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
+  const { state, reschedulePlannedAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
   const navigate = useNavigate();
+  const toast = useToast();
 
   // Vue par DÉFAUT selon l'écran (audit mobile) : la grille Semaine fait
   // ~950px — 2 jours visibles sur 7 au doigt. Sous 640px on ouvre en Journée ;
@@ -115,49 +121,62 @@ export default function AgendaPage() {
   const [creator, setCreator] = useState<{ date: string; time?: string; mode: 'choose' | 'lead' | 'event' } | null>(null);
   // Edition d'un evenement libre existant (clic sur le bloc).
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
+  // Action programmee ouverte (clic sur le bloc) : Fait / Pas fait / Reporter.
+  const [openPlannedId, setOpenPlannedId] = useState<string | null>(null);
 
   const todayISO = toISODate(new Date());
 
-  // Items unifies (actions de leads + evenements libres), indexes par jour,
-  // filtres par commercial. Memo : recalcul si leads / evenements / filtre changent.
-  const byDay = useMemo(() => {
-    const items: GridItem[] = [
-      ...buildAgendaEvents(state.leads, todayISO).map(leadToItem),
-      ...state.calendarEvents.map(calToItem),
-    ].filter(it => !filterCommercial || itemCommercialId(it) === filterCommercial);
-    return groupEventsByDay(items);
-  }, [state.leads, state.calendarEvents, filterCommercial, todayISO]);
+  // Actions programmees (faites grisees, en retard rouges A LEUR DATE, annulees
+  // absentes) + evenements libres, filtres par commercial : une action concerne
+  // chacune de ses personnes (responsable OU participant).
+  const plannedItems = useMemo(
+    () => plannedItemsFor(buildPlannedAgendaItems(state.plannedActions, state.leads, todayISO), filterCommercial || undefined),
+    [state.plannedActions, state.leads, filterCommercial, todayISO],
+  );
+  const calendarEvents = useMemo(
+    () => state.calendarEvents.filter(ce => !filterCommercial || ce.commercialId === filterCommercial),
+    [state.calendarEvents, filterCommercial],
+  );
+  const byDay = useMemo(
+    () => groupEventsByDay<GridItem>([...plannedItems.map(it => plannedToItem(it)), ...calendarEvents.map(calToItem)]),
+    [plannedItems, calendarEvents],
+  );
+  const overdueCount = plannedItems.filter(it => it.overdue).length;
 
   const activeCommercials = state.commercials.filter(c => c.active);
-  const onOpen = (id: string) => navigate(`/leads/${id}`);
+  const onOpen = (item: PlannedAgendaItem) => setOpenPlannedId(item.plannedId);
   const onEditEvent = (event: CalendarEvent) => setEditEvent(event);
-  // Replanification (re-selecteur de date) = on change UNIQUEMENT la date ; type,
-  // heure ET duree preserves (leads, vue Journee).
-  const onReplan: OnReplan = (event, newDate) => setNextAction(event.leadId, event.type, newDate, event.time, event.endTime);
-  // Drag par creneau (lead OU evenement) : la page calcule la cible et route
-  // l'ecriture selon kind. Lead -> SET_NEXT_ACTION ; evenement -> UPDATE_CALENDAR_EVENT.
+  // Reporter / glisser / etirer : MEME ecriture (RESCHEDULE_PLANNED_ACTION). Trace
+  // « report » dans l'historique si la DATE change ; pas de fenetre Prochaine action.
+  const reschedule = (it: PlannedAgendaItem, when: { date: string; time?: string; endTime?: string }) => {
+    if (it.done) return;
+    reschedulePlannedAction(it.plannedId, when, reportAuthor(it));
+    if (when.date !== it.date) toast.success(`Report enregistré — ${it.label} le ${formatDate(when.date)}${when.time ? ` à ${when.time}` : ''}`);
+  };
+  // Re-selecteur de date (Mois / Journee) : seule la date change.
+  const onReplan: OnReplan = (it, newDate) => reschedule(it, { date: newDate, time: it.time, endTime: it.endTime });
+  // Drag par creneau (action OU evenement) : la page calcule la cible et route
+  // l'ecriture selon kind.
   const onItemMove: OnItemMove = (item, newDate, deltaY) => {
     const drop = computeDrop(item, newDate, deltaY);
     if (!drop) return;
-    if (item.kind === 'lead') setNextAction(item.lead.leadId, item.lead.type, drop.date, drop.time, drop.endTime);
+    if (item.kind === 'lead') reschedule(item.lead, drop);
     else updateCalendarEvent(item.event.id, { date: drop.date, time: drop.time, endTime: drop.endTime });
   };
   // Resize = seule la fin change (debut/jour fixes), min 1 creneau, clamp fin de plage.
   const onItemResize: OnItemResize = (item, slotDelta) => {
     if (item.kind === 'lead') {
       if (!item.lead.time) return;
-      setNextAction(item.lead.leadId, item.lead.type, item.lead.date, item.lead.time, resizeEventBySlots(item.lead.time, item.lead.endTime, slotDelta));
+      reschedule(item.lead, { date: item.lead.date, time: item.lead.time, endTime: resizeEventBySlots(item.lead.time, item.lead.endTime, slotDelta) });
     } else {
       if (!item.event.time) return;
       updateCalendarEvent(item.event.id, { endTime: resizeEventBySlots(item.event.time, item.event.endTime, slotDelta) });
     }
   };
   const onCreate: OnCreate = (dateISO, timeHHmm) => setCreator({ date: dateISO, time: timeHHmm, mode: 'choose' });
-  // Action de lead : heure debut/fin viennent du createur (debut pre-rempli).
-  const doCreate = (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => {
-    if (creator) setNextAction(leadId, type, creator.date, timeHHmm, endTimeHHmm);
-    setCreator(null);
-  };
+  const openPlanned = openPlannedId
+    ? buildPlannedAgendaItems(state.plannedActions.filter(p => p.id === openPlannedId), state.leads, todayISO)[0]
+    : undefined;
   // Evenement libre : creation (ADD) ou edition (UPDATE), + suppression.
   const saveEvent = (data: Omit<CalendarEvent, 'id'>) => {
     if (editEvent) updateCalendarEvent(editEvent.id, data);
@@ -184,8 +203,13 @@ export default function AgendaPage() {
             <CalendarDays className="w-5 h-5 text-primary-600" /> Agenda
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Actions des leads et événements d'agenda, par commercial. Cliquez un créneau pour planifier, glissez pour replanifier.
+            Cliquez une action pour la marquer faite ou la reporter, un créneau vide pour planifier ; glissez pour reporter.
           </p>
+          {overdueCount > 0 && (
+            <p className="text-sm text-danger-700 font-medium mt-1 flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4" /> {overdueCount} action{overdueCount > 1 ? 's' : ''} en retard
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
@@ -222,7 +246,8 @@ export default function AgendaPage() {
         <DayView
           anchor={anchor}
           setAnchor={setAnchor}
-          byDay={byDay}
+          plannedItems={plannedItems}
+          calendarEvents={calendarEvents}
           columns={filterCommercial ? activeCommercials.filter(c => c.id === filterCommercial) : activeCommercials}
           onOpen={onOpen}
           onEditEvent={onEditEvent}
@@ -243,7 +268,16 @@ export default function AgendaPage() {
         </Modal>
       )}
       {creator?.mode === 'lead' && (
-        <CreateActionModal dateISO={creator.date} initialTime={creator.time} leads={state.leads} onClose={() => setCreator(null)} onCreate={doCreate} />
+        <CreateActionModal dateISO={creator.date} initialTime={creator.time} onClose={() => setCreator(null)} />
+      )}
+      {openPlanned && (
+        <PlannedActionSheet
+          key={openPlanned.plannedId}
+          item={openPlanned}
+          onClose={() => setOpenPlannedId(null)}
+          onOpenLead={() => navigate(`/leads/${openPlanned.leadId}`)}
+          onReschedule={when => { reschedule(openPlanned, when); setOpenPlannedId(null); }}
+        />
       )}
       {(creator?.mode === 'event' || editEvent) && (
         <CalendarEventModal
@@ -276,6 +310,13 @@ function CommercialLegend() {
         );
       })}
       <span className="text-gray-300">|</span>
+      <span className="inline-flex items-center gap-1 text-danger-700">
+        <AlertTriangle className="w-3 h-3" /> En retard
+      </span>
+      <span className="inline-flex items-center gap-1 text-gray-400">
+        <Check className="w-3 h-3" /> Faite
+      </span>
+      <span className="text-gray-300">|</span>
       {CALENDAR_EVENT_CATEGORIES.map(cat => {
         const Icon = CATEGORY_ICON[cat.value];
         return (
@@ -290,54 +331,51 @@ function CommercialLegend() {
 }
 
 // --- Pastille evenement : classes communes (couleur commercial OU categorie) ---
-function chipClasses(color: { bg: string; text: string; border: string; dot: string }, overdue: boolean, compact: boolean): string {
+// Etat d'une action programmee : faite = GRISEE (barree), en retard = ROUGE ;
+// sinon couleur du premier responsable.
+type ChipState = 'normal' | 'overdue' | 'done';
+function chipClasses(color: { bg: string; text: string; border: string; dot: string }, chipState: ChipState, compact: boolean): string {
   return cn(
     compact ? 'rounded px-1 py-0.5 text-[10px]' : 'rounded-md px-1.5 py-1 text-[11px]',
     'w-full flex items-center gap-1 border leading-tight transition-shadow hover:shadow-sm cursor-pointer',
-    color.bg, color.text, color.border,
-    overdue && 'ring-1 ring-danger-400'
+    chipState === 'done' ? 'bg-gray-100 text-gray-400 border-gray-200'
+      : chipState === 'overdue' ? 'bg-danger-50 text-danger-700 border-danger-500'
+        : [color.bg, color.text, color.border],
   );
 }
+const plannedChipState = (it: PlannedAgendaItem): ChipState => (it.done ? 'done' : it.overdue ? 'overdue' : 'normal');
 
-function EventChipInner({ event, compact }: { event: AgendaEvent; compact: boolean }) {
-  const overdue = event.status === 'overdue';
+function EventChipInner({ event }: { event: PlannedAgendaItem }) {
   const tl = timeLabel(event);
-  if (compact) {
-    return (
-      <span className="flex-1 min-w-0 flex items-center gap-1">
-        {overdue && <AlertTriangle className="w-2.5 h-2.5 text-danger-600 shrink-0" />}
-        {tl && <span className="font-semibold shrink-0">{tl}</span>}
-        <span className="truncate">{event.leadName}</span>
-      </span>
-    );
-  }
+  const others = new Set(event.people.map(p => p.commercialId)).size - 1;
   return (
-    <span className="flex-1 min-w-0">
-      <span className="flex items-center gap-1 font-medium">
-        {overdue && <AlertTriangle className="w-3 h-3 text-danger-600 shrink-0" />}
-        <span className="truncate">{tl ? `${tl} · ${actionLabel(event.type)}` : actionLabel(event.type)}</span>
-      </span>
-      <span className="block truncate text-gray-600">{event.leadName}</span>
+    <span className={cn('flex-1 min-w-0 flex items-center gap-1', event.done && 'line-through')}>
+      {event.overdue && <AlertTriangle className="w-2.5 h-2.5 text-danger-600 shrink-0" />}
+      {event.done && <Check className="w-2.5 h-2.5 shrink-0" />}
+      {tl && <span className="font-semibold shrink-0">{tl}</span>}
+      <span className="truncate">{event.label} · {event.leadName}</span>
+      {others > 0 && <span className="shrink-0 rounded-full bg-black/10 px-1 no-underline">+{others}</span>}
     </span>
   );
 }
 
-function chipTitle(event: AgendaEvent): string {
+function chipTitle(event: PlannedAgendaItem): string {
   const tl = timeLabel(event);
   const prefix = tl ? `${tl} · ` : '';
-  return `${prefix}${actionLabel(event.type)} — ${event.leadName}${event.status === 'overdue' ? ' (échu)' : ''}`;
+  const suffix = event.done ? ' (faite)' : event.overdue ? ' (en retard)' : '';
+  return `${prefix}${event.label} — ${event.leadName}${suffix}`;
 }
 
 // Bouton de replanification : ouvre le selecteur de date natif (showPicker) ;
 // au changement, deplace l'action via onReplan (type preserve). stopPropagation
 // pour ne declencher ni l'ouverture de fiche ni la creation sur la cellule.
-function ReplanControl({ event, onReplan }: { event: AgendaEvent; onReplan: OnReplan }) {
+function ReplanControl({ event, onReplan }: { event: PlannedAgendaItem; onReplan: OnReplan }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <span className="shrink-0" onClick={e => e.stopPropagation()}>
       <button
         type="button"
-        title="Replanifier (changer la date)"
+        title="Reporter (changer la date)"
         onClick={e => { e.stopPropagation(); ref.current?.showPicker?.(); }}
         className="p-0.5 rounded hover:bg-black/5"
       >
@@ -356,27 +394,26 @@ function ReplanControl({ event, onReplan }: { event: AgendaEvent; onReplan: OnRe
   );
 }
 
-// Pastille NON draggable (Mois / Journee) : clic -> fiche, bouton -> replanifier.
+// Pastille NON draggable (Mois) : clic -> Fait / Pas fait / Reporter, bouton -> reporter.
 function EventChip({ event, onOpen, compact = false, onReplan }: {
-  event: AgendaEvent;
-  onOpen: (leadId: string) => void;
+  event: PlannedAgendaItem;
+  onOpen: (item: PlannedAgendaItem) => void;
   compact?: boolean;
   onReplan?: OnReplan;
 }) {
   const { state } = useApp();
-  const color = getCommercialColor(event.commercialId, state.commercials);
-  const overdue = event.status === 'overdue';
+  const color = getCommercialColor(event.colorCommercialId, state.commercials);
   return (
     <div
       role="button"
       tabIndex={0}
       title={chipTitle(event)}
-      onClick={e => { e.stopPropagation(); onOpen(event.leadId); }}
-      onKeyDown={activateOnKey(() => onOpen(event.leadId))}
-      className={chipClasses(color, overdue, compact)}
+      onClick={e => { e.stopPropagation(); onOpen(event); }}
+      onKeyDown={activateOnKey(() => onOpen(event))}
+      className={chipClasses(color, plannedChipState(event), compact)}
     >
-      <EventChipInner event={event} compact={compact} />
-      {onReplan && <ReplanControl event={event} onReplan={onReplan} />}
+      <EventChipInner event={event} />
+      {onReplan && !event.done && <ReplanControl event={event} onReplan={onReplan} />}
     </div>
   );
 }
@@ -408,7 +445,7 @@ function CalendarEventChip({ event, onOpen, compact = false }: { event: Calendar
       title={calendarEventTitle(event)}
       onClick={e => { e.stopPropagation(); onOpen(event); }}
       onKeyDown={activateOnKey(() => onOpen(event))}
-      className={chipClasses(getCategoryInfo(event.category), false, compact)}
+      className={chipClasses(getCategoryInfo(event.category), 'normal', compact)}
     >
       <CalendarEventInner event={event} />
     </div>
@@ -421,19 +458,20 @@ function CalendarEventChip({ event, onOpen, compact = false }: { event: Calendar
 // re-selecteur de DATE. La drag-data porte le GridItem (handleDragEnd branche).
 function DraggableGridItem({ item, onOpen, onEditEvent, onReplan, compact = false }: {
   item: GridItem;
-  onOpen: (leadId: string) => void;
+  onOpen: (item: PlannedAgendaItem) => void;
   onEditEvent: (event: CalendarEvent) => void;
   onReplan?: OnReplan;
   compact?: boolean;
 }) {
   const { state } = useApp();
   const pointerDownAt = useRef<{ x: number; y: number } | null>(null);
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id, data: { item } });
-
   const isLead = item.kind === 'lead';
-  const color = isLead ? getCommercialColor(item.lead.commercialId, state.commercials) : getCategoryInfo(item.event.category);
-  const overdue = isLead && item.lead.status === 'overdue';
-  const open = () => isLead ? onOpen(item.lead.leadId) : onEditEvent(item.event);
+  // Une action FAITE reste à sa date, grisée : on ne la déplace plus.
+  const locked = isLead && item.lead.done;
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id, data: { item }, disabled: locked });
+
+  const color = isLead ? getCommercialColor(item.lead.colorCommercialId, state.commercials) : getCategoryInfo(item.event.category);
+  const open = () => isLead ? onOpen(item.lead) : onEditEvent(item.event);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -458,10 +496,10 @@ function DraggableGridItem({ item, onOpen, onEditEvent, onReplan, compact = fals
       }}
       {...attributes}
       {...listeners}
-      className={chipClasses(color, overdue, compact)}
+      className={chipClasses(color, isLead ? plannedChipState(item.lead) : 'normal', compact)}
     >
-      {isLead ? <EventChipInner event={item.lead} compact={compact} /> : <CalendarEventInner event={item.event} />}
-      {isLead && onReplan && <ReplanControl event={item.lead} onReplan={onReplan} />}
+      {isLead ? <EventChipInner event={item.lead} /> : <CalendarEventInner event={item.event} />}
+      {isLead && onReplan && !locked && <ReplanControl event={item.lead} onReplan={onReplan} />}
     </div>
   );
 }
@@ -488,7 +526,7 @@ function WeekView({ anchor, setAnchor, byDay, onOpen, onEditEvent, onCreate, onI
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, GridItem[]>;
-  onOpen: (leadId: string) => void;
+  onOpen: (item: PlannedAgendaItem) => void;
   onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
   onItemMove: OnItemMove;
@@ -572,7 +610,7 @@ function MonthView({ anchor, setAnchor, byDay, onOpen, onEditEvent, onCreate, on
   anchor: Date;
   setAnchor: (d: Date) => void;
   byDay: Map<string, GridItem[]>;
-  onOpen: (leadId: string) => void;
+  onOpen: (item: PlannedAgendaItem) => void;
   onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
@@ -850,12 +888,13 @@ function TimeGrid({ slots, columns, renderEvent, droppable = false, onSlotClick,
 // lead encore assigne, hors filtre) tombe dans "Autres" -> aucune action masquee.
 // Drag = change l'HEURE (la date reste le jour affiche ; le commercial ne change
 // jamais) ; le re-selecteur de DATE reste sur le bloc pour changer le jour.
-function DayView({ anchor, setAnchor, byDay, columns, onOpen, onEditEvent, onCreate, onReplan, onItemMove, onItemResize }: {
+function DayView({ anchor, setAnchor, plannedItems, calendarEvents, columns, onOpen, onEditEvent, onCreate, onReplan, onItemMove, onItemResize }: {
   anchor: Date;
   setAnchor: (d: Date) => void;
-  byDay: Map<string, GridItem[]>;
+  plannedItems: PlannedAgendaItem[];
+  calendarEvents: CalendarEvent[];
   columns: Commercial[];
-  onOpen: (leadId: string) => void;
+  onOpen: (item: PlannedAgendaItem) => void;
   onEditEvent: (event: CalendarEvent) => void;
   onCreate: OnCreate;
   onReplan: OnReplan;
@@ -864,7 +903,6 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onEditEvent, onCre
 }) {
   const { state } = useApp();
   const dayISO = toISODate(anchor);
-  const events = byDay.get(dayISO) ?? [];
   const isToday = isSameDay(anchor, new Date());
   const slots = TIME_SLOTS;
 
@@ -882,11 +920,22 @@ function DayView({ anchor, setAnchor, byDay, columns, onOpen, onEditEvent, onCre
     onItemMove(item, dayISO, delta.y);
   };
 
+  // Une action à plusieurs personnes apparaît dans la colonne de CHACUNE (id
+  // suffixé par colonne : clé React et id de glisser uniques). Évènement libre :
+  // colonne de son commercial. Sans colonne -> « Autres » (rien de masqué).
   const colIds = new Set(columns.map(c => c.id));
-  const orphans = events.filter(e => !colIds.has(itemCommercialId(e) ?? ''));
+  const { byColumn, orphans: plannedOrphans } = splitByPersonColumns(plannedItems.filter(it => it.date === dayISO), columns.map(c => c.id));
+  const dayEvents = calendarEvents.filter(ce => ce.date === dayISO);
+  const orphans = groupEventsByDay<GridItem>([
+    ...plannedOrphans.map(it => plannedToItem(it, '@autres')),
+    ...dayEvents.filter(ce => !colIds.has(ce.commercialId ?? '')).map(calToItem),
+  ]).get(dayISO) ?? [];
 
   const gridColumns: GridColumn[] = columns.map(c => {
-    const colEvents = events.filter(e => itemCommercialId(e) === c.id);
+    const colEvents = groupEventsByDay<GridItem>([
+      ...(byColumn.get(c.id) ?? []).map(it => plannedToItem(it, `@${c.id}`)),
+      ...dayEvents.filter(ce => ce.commercialId === c.id).map(calToItem),
+    ]).get(dayISO) ?? [];
     const color = getCommercialColor(c.id, state.commercials);
     return {
       id: c.id,
@@ -1033,67 +1082,232 @@ function CalendarEventModal({ existing, initialDate, initialTime, commercials, o
   );
 }
 
-// --- Createur : lead ELIGIBLE (sans action) + type + heure (pre-remplie depuis
-// le creneau clique, modifiable ; vide = action toute la journee) ---
-function CreateActionModal({ dateISO, initialTime, leads, onClose, onCreate }: {
+// --- Createur (lot 2) : action programmee SANS fenetre Prochaine action. Leads
+// proposes : ni Signe ni Perdu, SANS action a faire (aucun ecrasement possible).
+// Type (+ Autre), heure/fin (pre-remplie depuis le creneau), personnes, note. ---
+function CreateActionModal({ dateISO, initialTime, onClose }: {
   dateISO: string;
   initialTime?: string;
-  leads: Lead[];
   onClose: () => void;
-  onCreate: (leadId: string, type: ActionType, timeHHmm?: string, endTimeHHmm?: string) => void;
 }) {
-  const { getCommercialName } = useApp();
-  const eligible = useMemo(() => getCreatableLeads(leads), [leads]);
+  const { state, planNextAction, getCommercialName } = useApp();
+  const toast = useToast();
+  const eligibleLeads = useMemo(() => getPlannableLeads(state.leads, state.plannedActions), [state.leads, state.plannedActions]);
+  const eligiblePeople = useMemo(() => eligibleCommercials(state.commercials), [state.commercials]);
   const [leadId, setLeadId] = useState('');
   const [type, setType] = useState<ActionType>('appel');
+  const [customLabel, setCustomLabel] = useState('');
   const [time, setTime] = useState(initialTime ?? '');
   const [endTime, setEndTime] = useState('');
-  const endTimeInvalid = !!endTime && !isEndAfterStart(time, endTime);
+  const [note, setNote] = useState('');
+  const [people, setPeople] = useState<PlannedActionPerson[]>([]);
+  const [tried, setTried] = useState(false);
+  const { locked, guard } = useSubmitLock();
+
+  const lead = eligibleLeads.find(l => l.id === leadId);
+  const choice: NextActionChoice = {
+    kind: 'planifier', type, customLabel, date: dateISO, time: time || undefined, endTime: endTime || undefined, note: note.trim(), people,
+  };
+  const errors = [
+    ...(lead ? [] : ['Choisissez un lead.']),
+    ...validateNextActionChoice(choice, 'obligatoire', state.commercials),
+  ];
+
+  const pickLead = (id: string) => {
+    setLeadId(id);
+    const l = eligibleLeads.find(x => x.id === id);
+    // Responsable par défaut = commercial du lead (s'il est éligible) ; une
+    // sélection déjà faite n'est pas remplacée.
+    if (l && people.length === 0) setPeople(defaultPeople(l, state.commercials));
+  };
+
+  const submit = () => {
+    setTried(true);
+    if (errors.length > 0 || !lead) return;
+    guard(() => {
+      const authorId = people.find(p => p.role === 'responsable')?.commercialId ?? lead.commercialId;
+      planNextAction(lead.id, { type, customLabel, date: dateISO, time: time || undefined, endTime: endTime || undefined, note: note.trim(), people }, authorId);
+      toast.success(`Action planifiée — ${getLeadFullName(lead)}, ${formatDate(dateISO)}${time ? ` à ${time}` : ''}`);
+      onClose();
+    });
+  };
 
   return (
     <Modal open onClose={onClose} title={`Planifier une action — ${formatDate(dateISO)}`} size="sm">
-      {eligible.length === 0 ? (
+      {eligibleLeads.length === 0 ? (
         <div className="text-center py-4">
-          <p className="text-sm text-gray-600">Tous les leads actifs ont déjà une action planifiée.</p>
-          <p className="text-xs text-gray-400 mt-1">Pour déplacer une action existante, utilisez la replanification (glisser en vue Semaine, ou le bouton date).</p>
+          <p className="text-sm text-gray-600">Tous les leads en cours ont déjà une action à faire.</p>
+          <p className="text-xs text-gray-400 mt-1">Pour déplacer une action existante, glissez-la ou utilisez « Reporter ».</p>
           <button onClick={onClose} className="btn-secondary btn-sm mt-4">Fermer</button>
         </div>
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="label">Lead</label>
-            <select className="select" value={leadId} onChange={e => setLeadId(e.target.value)}>
+            <label className="label" htmlFor="create-lead">Lead *</label>
+            <select id="create-lead" className="select" value={leadId} onChange={e => pickLead(e.target.value)}>
               <option value="">— Choisir un lead —</option>
-              {eligible.map(l => (
+              {eligibleLeads.map(l => (
                 <option key={l.id} value={l.id}>{getLeadFullName(l)} · {getCommercialName(l.commercialId)}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Type d'action</label>
-            <select className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
-              {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="create-type">Type *</label>
+              <select id="create-type" className="select" value={type} onChange={e => setType(e.target.value as ActionType)}>
+                {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            {type === 'autre' && (
+              <div>
+                <label className="label" htmlFor="create-custom">Précisez *</label>
+                <input id="create-custom" className="input" maxLength={80} value={customLabel} onChange={e => setCustomLabel(e.target.value)} placeholder="Ex. essai en mer" />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Heure (facultative)</label>
-              <input className="input" type="time" value={time} onChange={e => { setTime(e.target.value); if (!e.target.value) setEndTime(''); }} />
+              <label className="label" htmlFor="create-time">Heure</label>
+              <input id="create-time" className="input" type="time" value={time} onChange={e => { setTime(e.target.value); if (!e.target.value) setEndTime(''); }} />
             </div>
             <div>
-              <label className="label">Fin (facultative)</label>
-              <input className="input" type="time" value={endTime} disabled={!time} onChange={e => setEndTime(e.target.value)} />
+              <label className="label" htmlFor="create-end">Fin</label>
+              <input id="create-end" className="input" type="time" value={endTime} disabled={!time} onChange={e => setEndTime(e.target.value)} />
             </div>
           </div>
-          {endTimeInvalid && (
-            <p className="text-xs text-danger-600">L'heure de fin doit être postérieure à l'heure de début.</p>
+          <PeoplePicker eligible={eligiblePeople} people={people} onChange={setPeople} />
+          <div>
+            <label className="label" htmlFor="create-note">Note</label>
+            <textarea id="create-note" className="input min-h-[60px]" maxLength={300} value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+          {tried && errors.length > 0 && (
+            <ul className="space-y-1 rounded-lg bg-danger-50 border border-danger-100 px-3 py-2 text-sm text-danger-700" role="alert">
+              {errors.map(e => <li key={e}>{e}</li>)}
+            </ul>
           )}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="btn-secondary btn-sm">Annuler</button>
-            <button onClick={() => onCreate(leadId, type, time || undefined, endTime || undefined)} disabled={!leadId || endTimeInvalid} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
+            <button onClick={submit} disabled={locked} className="btn-primary btn-sm disabled:opacity-50">Planifier</button>
           </div>
         </div>
       )}
     </Modal>
+  );
+}
+
+// --- Action programmee ouverte : Fait / Pas fait / Reporter (panneau en bas
+// d'ecran sur telephone). « Fait » -> fenetre selon le type (appel, envoi,
+// compte rendu), action grisee, puis fenetre Prochaine action non fermable.
+// « Pas fait » -> rien. « Reporter » -> date/heure, trace dans l'historique. ---
+function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
+  item: PlannedAgendaItem;
+  onClose: () => void;
+  onOpenLead: () => void;
+  onReschedule: (when: { date: string; time?: string; endTime?: string }) => void;
+}) {
+  const { state, getCommercialName } = useApp();
+  const toast = useToast();
+  const flow = useNextActionFlow();
+  const [reporting, setReporting] = useState(false);
+  const [date, setDate] = useState(item.date);
+  const [time, setTime] = useState(item.time ?? '');
+  const [endTime, setEndTime] = useState(item.endTime ?? '');
+  const endInvalid = !!endTime && !isEndAfterStart(time, endTime);
+  const lead = state.leads.find(l => l.id === item.leadId);
+  const planned = state.plannedActions.find(p => p.id === item.plannedId);
+
+  const when = `${formatDate(item.date)}${item.time ? ` à ${timeLabel(item)}` : ''}`;
+  const status = item.done
+    ? <span className="text-gray-500">Faite</span>
+    : item.overdue
+      ? <span className="text-danger-700 font-medium">En retard</span>
+      : null;
+
+  const footer = item.done ? (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button type="button" onClick={onClose} className="btn-secondary btn-sm w-full sm:w-auto">Fermer</button>
+    </div>
+  ) : reporting ? (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button type="button" onClick={() => setReporting(false)} className="btn-ghost btn-sm w-full sm:w-auto">Retour</button>
+      <button
+        type="button"
+        disabled={!date || endInvalid}
+        onClick={() => onReschedule({ date, time: time || undefined, endTime: time && endTime ? endTime : undefined })}
+        className="btn-primary btn-sm w-full sm:w-auto disabled:opacity-50"
+      >
+        Enregistrer le report
+      </button>
+    </div>
+  ) : (
+    <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-end">
+      <button type="button" onClick={() => setReporting(true)} className="btn-secondary btn-sm justify-center">Reporter</button>
+      <button type="button" onClick={() => { onClose(); toast.info('Action laissée à faire'); }} className="btn-secondary btn-sm justify-center">Pas fait</button>
+      <button
+        type="button"
+        onClick={() => { if (lead && planned) { onClose(); flow.markDone(lead, planned); } }}
+        className="btn-primary btn-sm justify-center"
+      >
+        <Check className="w-4 h-4" /> Fait
+      </button>
+    </div>
+  );
+
+  return (
+    <DialogShell
+      size="sm"
+      mobileSheet
+      closable
+      onClose={onClose}
+      title={`${item.label} — ${item.leadName}`}
+      subtitle={<>{when}{status && <> · {status}</>}</>}
+      footer={footer}
+    >
+      {reporting ? (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">La date prévue ({formatDate(item.date)}) restera dans l'historique du lead.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="label" htmlFor="report-date">Nouvelle date *</label>
+              <input id="report-date" className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="report-time">Heure</label>
+              <input id="report-time" className="input" type="time" value={time} onChange={e => { setTime(e.target.value); if (!e.target.value) setEndTime(''); }} />
+            </div>
+            <div>
+              <label className="label" htmlFor="report-end">Fin</label>
+              <input id="report-end" className="input" type="time" value={endTime} disabled={!time} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+          {endInvalid && <p className="text-xs text-danger-600">L'heure de fin doit suivre l'heure de début.</p>}
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <div>
+            <p className="label">Qui</p>
+            <ul className="flex flex-wrap gap-1.5">
+              {item.people.map(p => {
+                const color = getCommercialColor(p.commercialId, state.commercials);
+                return (
+                  <li key={p.commercialId} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">
+                    <span className={cn('w-2 h-2 rounded-full', color.dot)} />
+                    {getCommercialName(p.commercialId)}
+                    <span className="text-gray-400">{p.role === 'responsable' ? 'responsable' : 'participant'}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          {item.note && (
+            <div>
+              <p className="label">Note</p>
+              <p className="text-gray-700 whitespace-pre-line">{item.note}</p>
+            </div>
+          )}
+          <button type="button" onClick={onOpenLead} className="text-primary-700 underline hover:text-primary-900">Ouvrir la fiche du lead</button>
+        </div>
+      )}
+    </DialogShell>
   );
 }

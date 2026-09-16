@@ -21,12 +21,17 @@ import {
   Crosshair,
   type LucideIcon,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, toISODate } from '../../lib/utils';
+import { useApp } from '../../context/useApp';
+import { countOverdue } from '../../lib/plannedActions';
 import { useInboundDemo } from '../../context/useInboundDemo';
 import logo from '../../assets/logo.png';
 
 type NavItem = { name: string; href: string; icon: LucideIcon };
 type NavSection = { id: string; label: string; defaultOpen: boolean; items: NavItem[] };
+
+// Lot 2, arrêt 3 : l'Agenda (page d'accueil) est en tête du menu, hors section.
+const agendaItem: NavItem = { name: 'Agenda', href: '/agenda', icon: CalendarDays };
 
 // Menu organisé en sections repliables. L'ordre des items reflète l'usage par rôle.
 const sections: NavSection[] = [
@@ -35,7 +40,7 @@ const sections: NavSection[] = [
     label: 'Pilotage',
     defaultOpen: true,
     items: [
-      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { name: 'Performance', href: '/performance', icon: BarChart3 },
       { name: 'Objectifs', href: '/objectifs', icon: Target },
       { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
@@ -52,7 +57,6 @@ const sections: NavSection[] = [
       { name: 'Clients', href: '/clients', icon: UserCheck },
       { name: 'Pipeline', href: '/pipeline', icon: Kanban },
       { name: 'À relancer', href: '/relances', icon: CalendarClock },
-      { name: 'Agenda', href: '/agenda', icon: CalendarDays },
     ],
   },
   {
@@ -84,6 +88,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   // Compteur d'emails « à traiter » (maquette import prospects) : badge sur
   // l'entrée Boîte de réception uniquement, masqué à zéro.
   const { pendingCount } = useInboundDemo();
+  // Pastille rouge de l'Agenda : actions à faire en retard (hors Signé / Perdu), masquée à zéro.
+  const { state } = useApp();
+  const overdueCount = countOverdue(state.plannedActions, state.leads, toISODate(new Date()));
 
   const renderItem = (item: NavItem) => (
     <NavLink
@@ -101,6 +108,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     >
       <item.icon className="w-5 h-5 shrink-0" />
       {item.name}
+      {item.href === '/agenda' && overdueCount > 0 && (
+        <span className="ml-auto rounded-full bg-danger-600 px-2 py-0.5 text-xs font-semibold text-white" title={`${overdueCount} action(s) en retard`}>
+          {overdueCount}
+        </span>
+      )}
       {item.href === '/boite-reception' && pendingCount > 0 && (
         <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white">
           {pendingCount}
@@ -134,6 +146,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
+          {renderItem(agendaItem)}
           {sections.map((section) => {
             const isOpen = openSections[section.id];
             return (

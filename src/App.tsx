@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
 import { InboundDemoProvider } from './context/InboundDemoContext';
@@ -45,7 +45,9 @@ export default function App() {
         <NextActionFlowProvider>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/" element={<DashboardPage />} />
+            {/* Lot 2, arrêt 3 : l'Agenda est la page d'accueil ; le Dashboard a sa propre adresse. */}
+            <Route path="/" element={<Navigate to="/agenda" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/leads" element={<LeadsPage />} />
             <Route path="/leads/new" element={<NewLeadPage />} />
             <Route path="/leads/:id" element={<LeadDetailPage />} />

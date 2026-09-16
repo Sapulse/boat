@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Lead, LeadAction } from '../data/types';
+import type { Lead, LeadAction, PlannedAction } from '../data/types';
 import type { NextActionEntry } from '../lib/plannedActions';
 
 // Contexte + hook (module sans composant, règle react-refresh) — le provider
@@ -12,6 +12,8 @@ export interface NextActionFlowApi {
   confirmMessage(args: { lead: Lead; channel: 'email' | 'sms' | 'whatsapp'; detail: string; action: Omit<LeadAction, 'id'> }): void;
   /** Appel : note obligatoire, puis action + fenêtre. */
   askCallNote(lead: Lead): void;
+  /** Agenda, « Fait » : appel (puces), envoi (confirmation) ou compte rendu, puis action faite + fenêtre. */
+  markDone(lead: Lead, planned: PlannedAction): void;
   /** Toast « Lead créé — Planifier » (acceptation depuis la boîte de réception). */
   toastPlanifier(leadId: string, message: string): void;
 }
