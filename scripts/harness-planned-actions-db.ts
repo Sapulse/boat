@@ -26,7 +26,7 @@ import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import {
   applyPlannedActionsSchema, planReprise, applyReprise, proveMigration, leadsFingerprint, actionsFingerprint,
 } from './apply-planned-actions-turso';
-import { getState, upsertPlannedAction, restoreBackup, hasLot2Schema } from '../api/_lib/store';
+import { getState, upsertPlannedAction, restoreBackup, hasLot2Schema, updateLead } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError, toHttpError, SCHEMA_NOT_MIGRATED } from '../api/_lib/http';
 import type { AppState, PlannedAction } from '../src/data/types';
@@ -185,6 +185,22 @@ async function main() {
   check('Fred réintégré : réactivé (pas de doublon)', refred.people.some(p => p.commercialId === 'fred') && (await prisma.plannedActionPerson.count({ where: { plannedActionId: 'pa-new' } })) === 3);
   const done = await upsertPlannedAction(prisma, 'pa-new', { ...newPa, status: 'faite', doneAt: '2026-09-30T10:30:00Z', doneActionId: 'act-1' });
   check('PUT status faite + lien historique', done.status === 'faite' && done.doneActionId === 'act-1');
+
+  // Arrêt 4 : le serveur fait foi pour le résumé nextAction* (onglet resté ouvert).
+  const leadOf = async (id: string) => (await getState(prisma)).leads.find(l => l.id === id)!;
+  await upsertPlannedAction(prisma, 'pa-sum', { ...newPa, id: 'pa-sum', date: '2026-10-05', time: '09:00', status: 'a_faire', doneAt: undefined, doneActionId: undefined });
+  const l1 = await leadOf('lead-100');
+  check('résumé : PUT action à faire -> résumé du lead recalculé par le serveur', l1.nextActionDate === '2026-10-05' && l1.nextActionType === 'rdv' && l1.nextActionTime === '09:00', `${l1.nextActionType} ${l1.nextActionDate} ${l1.nextActionTime}`);
+  const stale = await updateLead(prisma, 'lead-100', { ...l1, phone: '0611223344', nextActionDate: '2026-09-21', nextActionType: 'relance', nextActionTime: undefined });
+  check('résumé : PATCH lead avec une ANCIENNE date (onglet en retard) -> date de l\'action conservée', stale.nextActionDate === '2026-10-05' && stale.nextActionType === 'rdv' && stale.phone === '0611223344', `${stale.nextActionDate} ${stale.phone}`);
+  const withReason = await updateLead(prisma, 'lead-100', { noNextActionReason: 'A acheté ailleurs', noNextActionAt: '2026-09-16T10:00:00Z' });
+  check('résumé : le serveur ne touche jamais au motif « Aucune » (ordre des écritures)', withReason.noNextActionReason === 'A acheté ailleurs' && withReason.nextActionDate === '2026-10-05');
+  await upsertPlannedAction(prisma, 'pa-sum', { ...newPa, id: 'pa-sum', date: '2026-10-05', time: '09:00', status: 'annulee', doneAt: undefined, doneActionId: undefined });
+  const l2 = await leadOf('lead-100');
+  check('résumé : action annulée -> résumé vidé, motif conservé', l2.nextActionDate === '' && l2.nextActionType === '' && l2.nextActionTime === undefined && l2.noNextActionReason === 'A acheté ailleurs', `${l2.nextActionDate}|${l2.nextActionTime}|${l2.noNextActionReason}`);
+  const free = st.leads.find(l => !st.plannedActions.some(p => p.leadId === l.id) && l.id !== 'lead-100')!;
+  const kept = await updateLead(prisma, free.id, { nextActionDate: '2026-11-01', nextActionType: 'appel' });
+  check('résumé : lead SANS aucune action programmée -> champs laissés tels quels (import, ancien)', kept.nextActionDate === '2026-11-01' && kept.nextActionType === 'appel');
   await expectStatus('id du corps ≠ id du chemin -> 400', 400, () => upsertPlannedAction(prisma, 'autre-id', newPa));
   await expectStatus('sans responsable -> 400', 400, () => upsertPlannedAction(prisma, 'pa-x', { ...newPa, id: 'pa-x', people: [{ commercialId: 'tom', role: 'participant' }] }));
   await expectStatus('personne en double -> 400', 400, () => upsertPlannedAction(prisma, 'pa-x', { ...newPa, id: 'pa-x', people: [{ commercialId: 'tom', role: 'responsable' }, { commercialId: 'tom', role: 'participant' }] }));

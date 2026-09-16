@@ -14,7 +14,7 @@ import {
 } from './validate.js';
 // Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
-import { migrateLegacyNextActions } from '../../src/lib/plannedActions.js';
+import { migrateLegacyNextActions, pendingActionOf, summarizeNextAction } from '../../src/lib/plannedActions.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -322,9 +322,34 @@ export async function upsertPlannedAction(prisma: PrismaClient, id: string, body
       where: { plannedActionId: id, commercialId: { notIn: p.people.map(x => x.commercialId) }, active: true },
       data: { active: false },
     });
+    await realignLeadSummary(tx, p.leadId);
     return tx.plannedAction.findUniqueOrThrow({ where: { id }, include: { people: true } });
   });
   return toPlannedAction(row as unknown as PlannedRow);
+}
+
+type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+
+/**
+ * Le SERVEUR fait foi pour le résumé nextAction* d'un lead qui a des actions
+ * programmées : il est recalculé depuis l'action à faire après chaque écriture
+ * de lead ou d'action programmée. Un onglet resté ouvert (données locales en
+ * retard) ne peut donc plus ramener une ancienne date sur le lead pendant que
+ * l'agenda affiche la nouvelle — et le résultat ne dépend pas de l'ordre
+ * d'arrivée des écritures (PATCH lead / PUT action).
+ *  - lead SANS aucune action programmée : champs laissés tels quels (import,
+ *    données d'avant le lot 2 — la reprise les convertit) ;
+ *  - le motif « Aucune prochaine action » n'est JAMAIS touché ici (l'effacer
+ *    dépendrait de l'ordre des écritures) : c'est le client qui l'expire.
+ */
+async function realignLeadSummary(tx: Tx, leadId: string): Promise<void> {
+  const rows = await tx.plannedAction.findMany({ where: { leadId }, include: { people: true } });
+  if (rows.length === 0) return;
+  const s = summarizeNextAction(pendingActionOf(leadId, rows.map(r => toPlannedAction(r as unknown as PlannedRow))));
+  await tx.lead.updateMany({
+    where: { id: leadId },
+    data: { nextActionType: s.nextActionType, nextActionDate: s.nextActionDate, nextActionTime: s.nextActionTime ?? null, nextActionEndTime: s.nextActionEndTime ?? null },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +366,11 @@ export async function updateLead(prisma: PrismaClient, id: string, patch: Partia
   // Le schéma PATCH n'a pas de champ `id` -> strippé : un PATCH ne peut jamais
   // renommer une clé primaire (l'id du chemin fait foi).
   const data = parseLeadPatch(patch) as Partial<Lead>;
-  const row = await prisma.lead.update({ where: { id }, data });
+  const row = await prisma.$transaction(async (tx) => {
+    await tx.lead.update({ where: { id }, data });
+    await realignLeadSummary(tx, id);
+    return tx.lead.findUniqueOrThrow({ where: { id } });
+  });
   return toLead(row as LeadRow);
 }
 export async function deleteLead(prisma: PrismaClient, id: string): Promise<void> {
