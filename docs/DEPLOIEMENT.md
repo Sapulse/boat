@@ -119,7 +119,11 @@ programmée (cascade, aucun orphelin) ✅. Seul le **code** revient en arrière.
   les participants ne la voient plus chez eux.
 
 **Revenir ensuite au lot 2 (re-déploiement)** : les champs du lead font foi
-(ce sont les plus récents). AVANT de redéployer, il faut un script de
+(ce sont les plus récents). ATTENTION : depuis `1f5940d`, le serveur du lot 2
+recalcule le résumé du lead depuis ses actions programmées à CHAQUE écriture du
+lead ou de ses actions — sans réalignement préalable, la première modification
+d'un lead touché pendant le retour arrière ramènerait l'ANCIENNE date de l'action
+programmée sur le lead. AVANT de redéployer, il faut donc un script de
 **réalignement** — À ÉCRIRE si on veut garder cette porte ouverte :
 - lead non Signé / Perdu avec prochaine action ≠ action à faire → mettre à jour
   l'action à faire (ou l'annuler et en créer une) ;
