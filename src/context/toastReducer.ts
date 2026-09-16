@@ -4,10 +4,17 @@
 
 export type ToastKind = 'success' | 'error' | 'info';
 
+/** Bouton facultatif dans le toast (lot 2 : « Lead créé — Planifier »). */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 }
 
 export type ToastEvent =
@@ -20,7 +27,9 @@ export const TOAST_LIMIT = 3;
 
 // Une erreur se lit plus longtemps qu'une confirmation ; les durées vivent ici
 // (pur) pour être couvertes par le harnais.
-export function toastDuration(kind: ToastKind): number {
+export function toastDuration(kind: ToastKind, hasAction = false): number {
+  // Un toast qui porte un BOUTON doit laisser le temps de cliquer.
+  if (hasAction) return 8000;
   return kind === 'error' ? 6000 : 3000;
 }
 

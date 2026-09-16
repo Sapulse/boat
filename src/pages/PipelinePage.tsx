@@ -17,6 +17,8 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
+import { useNextActionFlow } from '../context/useNextActionFlow';
+import { pendingActionOf } from '../lib/plannedActions';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import StatusConfirmModal, { type StatusConfirmExtras } from '../components/leads/StatusConfirmModal';
 import { formatCurrency, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn } from '../lib/utils';
@@ -163,6 +165,8 @@ function Column({ status, leads, collapsed, onToggle }: { status: LeadStatus; le
 
 export default function PipelinePage() {
   const { state, updateLeadStatus } = useApp();
+  // Lot 2 : un glisser-déposer de statut suit la règle 4 (fenêtre Prochaine action).
+  const flow = useNextActionFlow();
   const toast = useToast();
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   // Drop sur une colonne sensible (Signé) : la bascule attend la confirmation
@@ -242,13 +246,17 @@ export default function PipelinePage() {
         setPendingDrop({ leadId: currentLead.id, status: newStatus });
         return;
       }
+      const hadPendingAction = !!pendingActionOf(currentLead.id, state.plannedActions);
       updateLeadStatus(currentLead.id, newStatus);
+      flow.decide(currentLead.id, { kind: 'statut_change', target: newStatus, hadPendingAction });
     }
   };
 
   const confirmPendingDrop = (extras: StatusConfirmExtras) => {
     if (!pendingDrop) return;
+    const hadPendingAction = !!pendingActionOf(pendingDrop.leadId, state.plannedActions);
     updateLeadStatus(pendingDrop.leadId, pendingDrop.status, extras);
+    flow.decide(pendingDrop.leadId, { kind: 'statut_change', target: pendingDrop.status, hadPendingAction });
     setPendingDrop(null);
     if (extras.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
     else if (extras.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);

@@ -379,3 +379,74 @@ export function isValidCallNote(note: string): boolean {
   const t = note.trim();
   return t.length >= 10 && t.split(/\s+/).filter(Boolean).length >= 2;
 }
+
+// ---------------------------------------------------------------------------
+// Arrêt 2 — QUEL point d'entrée ouvre QUOI (source unique, prouvée au harnais)
+// ---------------------------------------------------------------------------
+
+/** Fenêtre à ouvrir : mode (ce qui est permis) + fermable ou non (croix / Échap / Annuler). */
+export interface NextActionPrompt { mode: NextActionWindowMode; closable: boolean }
+
+export type NextActionEntry =
+  /** « + Action » de la fiche (newStatus éventuel choisi dans le formulaire). */
+  | { kind: 'action_enregistree'; newStatus?: LeadStatus; currentStatus: LeadStatus }
+  /** Appel : note validée puis enregistrée. */
+  | { kind: 'appel_enregistre'; currentStatus: LeadStatus }
+  /** Email / SMS / WhatsApp : « Avez-vous bien envoyé le message ? » -> Oui. */
+  | { kind: 'message_confirme'; currentStatus: LeadStatus }
+  /** … -> Non : rien n'est enregistré, rien ne s'ouvre. */
+  | { kind: 'message_non_envoye' }
+  /** Changement de statut seul : fiche, bouton suivant, confirmation Signé/Perdu, pipeline, formulaire du lead. */
+  | { kind: 'statut_change'; target: LeadStatus; hadPendingAction: boolean }
+  /** Création manuelle d'un lead (formulaire). */
+  | { kind: 'lead_cree'; status: LeadStatus }
+  /** Éditeur « Prochaine action » / « Relancer » de la fiche : planification volontaire. */
+  | { kind: 'editeur_prochaine_action'; status: LeadStatus }
+  /** Boîte de réception. */
+  | { kind: 'boite_rattacher' }
+  | { kind: 'boite_rouvrir'; hadPendingAction: boolean }
+  | { kind: 'boite_accepter' }
+  /** Lien « Planifier » du toast d'acceptation : planification volontaire. */
+  | { kind: 'toast_planifier'; status: LeadStatus }
+  /** Agenda : traité à l'arrêt 3. */
+  | { kind: 'agenda_creer' }
+  | { kind: 'agenda_reporter' };
+
+export interface NextActionDecision {
+  prompt: NextActionPrompt | null;
+  /** Boîte de réception / acceptation : toast « Lead créé — Planifier » au lieu d'une fenêtre. */
+  toastPlanifier?: boolean;
+}
+
+export function nextActionDecision(entry: NextActionEntry): NextActionDecision {
+  switch (entry.kind) {
+    case 'action_enregistree':
+      return { prompt: { mode: windowAfterAction(entry.newStatus, entry.currentStatus), closable: false } };
+    case 'appel_enregistre':
+    case 'message_confirme':
+      return { prompt: { mode: windowAfterAction(undefined, entry.currentStatus), closable: false } };
+    case 'lead_cree':
+      return { prompt: { mode: windowAfterAction(undefined, entry.status), closable: false } };
+    case 'statut_change': {
+      const mode = windowAfterStatusChange(entry.target, entry.hadPendingAction);
+      return { prompt: mode ? { mode, closable: false } : null };
+    }
+    case 'boite_rouvrir': {
+      // Rouvrir = passage en « À contacter » : même règle qu'un changement de statut.
+      const mode = windowAfterStatusChange('a_contacter', entry.hadPendingAction);
+      return { prompt: mode ? { mode, closable: false } : null };
+    }
+    case 'editeur_prochaine_action':
+    case 'toast_planifier':
+      // Planification VOLONTAIRE : fermable, mais les règles du statut s'appliquent
+      // (Reporté : « Aucune » interdite ; Signé / Perdu : « Passer »).
+      return { prompt: { mode: windowAfterAction(undefined, entry.status), closable: true } };
+    case 'boite_accepter':
+      return { prompt: null, toastPlanifier: true };
+    case 'message_non_envoye':
+    case 'boite_rattacher':
+    case 'agenda_creer':
+    case 'agenda_reporter':
+      return { prompt: null };
+  }
+}

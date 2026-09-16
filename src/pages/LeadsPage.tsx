@@ -2,11 +2,12 @@ import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { useNextActionFlow } from '../context/useNextActionFlow';
+import { needsPlanning } from '../lib/plannedActions';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import Modal from '../components/ui/Modal';
-import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, toISODate, ageLabelFromDays } from '../lib/utils';
-import { buildCommunicationAction } from '../lib/communication';
+import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn, isLeadActive, hasPlannedNextAction, isoDateDaysAgo, isInactiveOverWeek, ageLabelFromDays } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
@@ -30,7 +31,9 @@ function reasonLabel(reason: DuplicateMatch['reason']): string {
 }
 
 export default function LeadsPage() {
-  const { state, getCommercialName, addLead, addAction } = useApp();
+  const { state, getCommercialName, addLead } = useApp();
+  // Lot 2 (F) : appel = note obligatoire puis fenêtre Prochaine action.
+  const flow = useNextActionFlow();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -60,7 +63,7 @@ export default function LeadsPage() {
   );
   const [activeView, setActiveView] = useState(() => {
     const v = searchParams.get('view');
-    return v === 'inactifs' || v === 'devis-en-cours' ? v : '';
+    return v === 'inactifs' || v === 'devis-en-cours' || v === 'a-planifier' ? v : '';
   });
 
   // Commerciaux valides + présence de leads orphelins (pour l'option de filtre).
@@ -79,6 +82,9 @@ export default function LeadsPage() {
     // encore posé la température. Même mécanique que « Chauds » (filtre temp).
     { label: 'À qualifier', key: 'a-qualifier', apply: () => { clearAllFilters(); setFilterTemp('neutre'); setActiveView('a-qualifier'); } },
     { label: 'Sans action', key: 'no-action', apply: () => { clearAllFilters(); setActiveView('no-action'); } },
+    // Lot 2 : leads non fermés sans action à faire ET sans « Aucune prochaine
+    // action » motivée (création, acceptation d'un email, fenêtre quittée de force…).
+    { label: 'À planifier', key: 'a-planifier', apply: () => { clearAllFilters(); setActiveView('a-planifier'); } },
     { label: 'Devis à relancer', key: 'devis', apply: () => { clearAllFilters(); setFilterStatus('devis_envoye'); setActiveView('devis'); } },
     { label: 'Inactifs >7j', key: 'inactifs', apply: () => { clearAllFilters(); setActiveView('inactifs'); } },
   ];
@@ -109,6 +115,7 @@ export default function LeadsPage() {
     }
     if (activeView === 'devis-en-cours') leads = leads.filter(l => QUOTE_STATUSES.includes(l.status));
     if (activeView === 'no-action') leads = leads.filter(l => isLeadActive(l.status) && !hasPlannedNextAction(l));
+    if (activeView === 'a-planifier') leads = leads.filter(needsPlanning);
     // Vue "Inactifs >7j" : predicat partage avec le KPI Dashboard "Sans action
     // >7j" (isInactiveOverWeek) — correspondance compteur <-> liste exacte.
     if (activeView === 'inactifs') leads = leads.filter(isInactiveOverWeek);
@@ -309,9 +316,7 @@ export default function LeadsPage() {
                       href={`tel:${lead.phone}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('Enregistrer un appel passé ?')) {
-                          addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }));
-                        }
+                        flow.askCallNote(lead);
                       }}
                       className="p-2 -my-2 text-gray-400 active:text-success-600"
                       title="Appeler"
@@ -441,12 +446,10 @@ export default function LeadsPage() {
                             href={`tel:${lead.phone}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Le numéro se compose (lien tel: natif) ; l'action n'est
-                              // journalisée QUE si l'utilisateur confirme (clic "Appeler"
-                              // ambigu : peut être un mauvais clic ou juste voir le numéro).
-                              if (confirm('Enregistrer un appel passé ?')) {
-                                addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }));
-                              }
+                              // Le numéro se compose (lien tel: natif) ; l'appel n'est
+                              // enregistré QU'AVEC une note (lot 2) — « Appel non passé »
+                              // n'enregistre rien (mauvais clic, numéro juste consulté).
+                              flow.askCallNote(lead);
                             }}
                             className="p-1 text-gray-400 hover:text-success-600 rounded"
                             title="Appeler"

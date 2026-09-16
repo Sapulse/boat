@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
+import { useNextActionFlow } from '../context/useNextActionFlow';
+import { pendingActionOf, plannedActionLabel } from '../lib/plannedActions';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import LeadForm from '../components/leads/LeadForm';
@@ -19,16 +21,17 @@ import { buildSms } from '../lib/sms';
 import { buildWhatsApp } from '../lib/whatsapp';
 import { buildCommunicationAction } from '../lib/communication';
 import { generateVCard } from '../lib/vcard';
-import { isEndAfterStart } from '../lib/agenda';
 import { useAutoReveal } from '../hooks/useAutoReveal';
 import { diffLeadForConflict, canCheckConflict, type FieldChange } from '../lib/concurrencyGuard';
-import type { Lead, LeadStatus, MessageTemplate, ActionType } from '../data/types';
+import type { Lead, LeadStatus, MessageTemplate } from '../data/types';
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, setNextAction, getLeadActions, getCommercialName, updateLeadStatus, readServerState, sync } = useApp();
+  const { state, updateLead, deleteLead, addAction, updateAction, deleteAction, getLeadActions, getCommercialName, updateLeadStatus, readServerState, sync } = useApp();
   const toast = useToast();
+  // Lot 2 : confirmation d'envoi, note d'appel, fenêtre Prochaine action.
+  const flow = useNextActionFlow();
   const [editMode, setEditMode] = useState(false);
   // Contrôle de conflit multi-postes (option b′) : le lead TEL QU'IL ÉTAIT à
   // l'ouverture du formulaire. Sert de base de comparaison à l'enregistrement.
@@ -36,15 +39,12 @@ export default function LeadDetailPage() {
   const [conflict, setConflict] = useState<{ changes: FieldChange[]; draft: Omit<Lead, 'id'> } | null>(null);
   const [showActionForm, setShowActionForm] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
-  const [editingNextAction, setEditingNextAction] = useState(false);
   // Bascule de statut en attente de confirmation (B1 : Signé exige un montant).
   const [pendingStatus, setPendingStatus] = useState<LeadStatus | null>(null);
-  const [nextActionDraft, setNextActionDraft] = useState<{ type: ActionType | ''; date: string; time: string; endTime: string }>({ type: '', date: '', time: '', endTime: '' });
   // Confort de navigation (A1) : à l'ouverture d'un formulaire inline, on défile
   // jusqu'à lui (dans <main>) + focus le 1er champ. Un ref par bloc inline.
   const addActionRef = useAutoReveal<HTMLDivElement>(showActionForm);
   const editActionRef = useAutoReveal<HTMLDivElement>(editingActionId !== null);
-  const nextActionRef = useAutoReveal<HTMLDivElement>(editingNextAction);
   const [showEmailMenu, setShowEmailMenu] = useState(false);
   const [showSmsMenu, setShowSmsMenu] = useState(false);
   const [showWhatsappMenu, setShowWhatsappMenu] = useState(false);
@@ -71,12 +71,22 @@ export default function LeadDetailPage() {
   const isActive = isLeadActive(lead.status);
   const nextStatus = getNextStatus(lead.status);
 
+  // Lot 2 : l'action à faire (avant tout changement) décide si un changement de
+  // statut ouvre la fenêtre Prochaine action (règle 4).
+  const pendingAction = pendingActionOf(lead.id, state.plannedActions);
+
   const commitSave = (data: Omit<Lead, 'id'>) => {
-    updateLead(lead.id, data);
+    // Les champs nextAction* ne sont plus édités par le formulaire (lot 2) : on ne
+    // les renvoie pas, pour ne jamais écraser une programmation faite entre-temps.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { nextActionType, nextActionDate, nextActionTime, nextActionEndTime, ...rest } = data;
+    const statusChanged = rest.status !== lead.status;
+    updateLead(lead.id, rest);
     setEditMode(false);
     setEditBaseline(null);
     setConflict(null);
     toast.success('Lead mis à jour');
+    if (statusChanged) flow.decide(lead.id, { kind: 'statut_change', target: rest.status, hadPendingAction: !!pendingAction });
   };
 
   /**
@@ -144,11 +154,13 @@ export default function LeadDetailPage() {
       return;
     }
     updateLeadStatus(lead.id, status);
+    flow.decide(lead.id, { kind: 'statut_change', target: status, hadPendingAction: !!pendingAction });
   };
 
   const confirmPendingStatus = (extras: StatusConfirmExtras) => {
     if (!pendingStatus) return;
     updateLeadStatus(lead.id, pendingStatus, extras);
+    flow.decide(lead.id, { kind: 'statut_change', target: pendingStatus, hadPendingAction: !!pendingAction });
     setPendingStatus(null);
     if (extras.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
     else if (extras.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);
@@ -177,10 +189,15 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const { subject, body } = template ? renderEmail(template, vars) : { subject: '', body: '' };
     window.location.assign(buildMailto(lead.email, subject, body));
-    addAction(buildCommunicationAction(lead, 'email', toISODate(new Date()), {
-      result: template ? `Email envoyé — ${template.title}` : 'Email envoyé — sans modèle',
-      notes: subject,
-    }));
+    // Lot 2 (F) : l'action n'est enregistrée QUE si l'utilisateur confirme l'envoi.
+    flow.confirmMessage({
+      lead, channel: 'email',
+      detail: template ? `Modèle « ${template.title} »${subject ? ` — ${subject}` : ''}` : 'Email sans modèle',
+      action: buildCommunicationAction(lead, 'email', toISODate(new Date()), {
+        result: template ? `Email envoyé — ${template.title}` : 'Email envoyé — sans modèle',
+        notes: subject,
+      }),
+    });
     setShowEmailMenu(false);
   };
 
@@ -198,10 +215,14 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const body = template ? renderTemplate(template.body, vars) : '';
     window.location.assign(buildSms(lead.phone, body));
-    addAction(buildCommunicationAction(lead, 'sms', toISODate(new Date()), {
-      result: template ? `SMS envoyé — ${template.title}` : 'SMS envoyé — sans modèle',
-      notes: body,
-    }));
+    flow.confirmMessage({
+      lead, channel: 'sms',
+      detail: template ? `Modèle « ${template.title} »` : 'SMS sans modèle',
+      action: buildCommunicationAction(lead, 'sms', toISODate(new Date()), {
+        result: template ? `SMS envoyé — ${template.title}` : 'SMS envoyé — sans modèle',
+        notes: body,
+      }),
+    });
     setShowSmsMenu(false);
   };
 
@@ -216,37 +237,20 @@ export default function LeadDetailPage() {
     const vars = buildLeadVars(lead, commercial);
     const body = template ? renderTemplate(template.body, vars) : '';
     window.open(buildWhatsApp(lead.phone, body), '_blank', 'noopener,noreferrer');
-    addAction(buildCommunicationAction(lead, 'whatsapp', toISODate(new Date()), {
-      result: template ? `WhatsApp envoyé — ${template.title}` : 'WhatsApp envoyé — sans modèle',
-      notes: body,
-    }));
+    flow.confirmMessage({
+      lead, channel: 'whatsapp',
+      detail: template ? `Modèle « ${template.title} »` : 'WhatsApp sans modèle',
+      action: buildCommunicationAction(lead, 'whatsapp', toISODate(new Date()), {
+        result: template ? `WhatsApp envoyé — ${template.title}` : 'WhatsApp envoyé — sans modèle',
+        notes: body,
+      }),
+    });
     setShowWhatsappMenu(false);
   };
 
-  // --- Prochaine action (Amelioration 1) : confine a nextActionType/Date via setNextAction ---
-  const openNextActionEditor = () => {
-    setNextActionDraft({ type: lead.nextActionType, date: lead.nextActionDate, time: lead.nextActionTime ?? '', endTime: lead.nextActionEndTime ?? '' });
-    setEditingNextAction(true);
-  };
-  const saveNextAction = () => {
-    // Pas de type -> on efface date, heure ET fin. Pas d'heure sans jour ; pas de
-    // fin sans heure de debut, et seulement si fin > debut (sinon undefined).
-    const date = nextActionDraft.type ? nextActionDraft.date : '';
-    const time = date ? (nextActionDraft.time || undefined) : undefined;
-    const endTime = time && nextActionDraft.endTime && isEndAfterStart(time, nextActionDraft.endTime)
-      ? nextActionDraft.endTime
-      : undefined;
-    setNextAction(lead.id, nextActionDraft.type, date, time, endTime);
-    setEditingNextAction(false);
-    toast.success(nextActionDraft.type ? 'Prochaine action planifiée' : 'Prochaine action effacée');
-  };
-  // Fin saisie mais incoherente (sans debut, ou <= debut) -> blocage + message.
-  const endTimeInvalid = !!nextActionDraft.endTime && !isEndAfterStart(nextActionDraft.time, nextActionDraft.endTime);
-  const clearNextAction = () => {
-    setNextAction(lead.id, '', '');
-    setEditingNextAction(false);
-    toast.info('Prochaine action effacée');
-  };
+  // --- Prochaine action (lot 2) : l'éditeur devient la fenêtre A, en planification
+  // VOLONTAIRE (fermable) ; les règles du statut s'appliquent (Reporté, Signé/Perdu).
+  const openNextActionEditor = () => flow.decide(lead.id, { kind: 'editeur_prochaine_action', status: lead.status });
 
   // --- Historique (Amelioration 2) : suppression confirmee, sans effet sur le lead ---
   const handleDeleteAction = (actionId: string) => {
@@ -337,7 +341,7 @@ export default function LeadDetailPage() {
             {lead.phone && (
               <a
                 href={`tel:${lead.phone}`}
-                onClick={() => addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: 'Appel passé' }))}
+                onClick={() => flow.askCallNote(lead)}
                 className="btn-secondary btn-sm"
               >
                 <Phone className="w-3 h-3" /> Appeler
@@ -511,6 +515,8 @@ export default function LeadDetailPage() {
                   leadId={lead.id}
                   onSave={(action, extras) => {
                     addAction(action);
+                    // Lot 2 : après TOUTE action, la fenêtre Prochaine action (règles du statut).
+                    flow.decide(lead.id, { kind: 'action_enregistree', newStatus: action.newStatus, currentStatus: lead.status });
                     // Signature/perte via le formulaire d'action (B1/B2) : la
                     // donnée saisie inline est écrite sur le lead (updateLead
                     // séparé — ADD_ACTION pose déjà statut + jalons à la date
@@ -578,66 +584,37 @@ export default function LeadDetailPage() {
               {lead.temperature === 'chaud' && <Flame className="w-4 h-4 text-danger-500" />}
               <ExternalLink className="w-4 h-4 text-primary-600" /> Prochaine action
             </h3>
-            {editingNextAction ? (
-              <div ref={nextActionRef} className="space-y-3">
-                <div>
-                  <label className="label">Type</label>
-                  <select className="select" value={nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, type: e.target.value as ActionType | '' }))}>
-                    <option value="">--</option>
-                    {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-                  </select>
+            {pendingAction ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Action</span>
+                  <span className="text-gray-900 font-medium text-right">{plannedActionLabel(pendingAction)}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="label">Date</label>
-                    <input className="input" type="date" value={nextActionDraft.date} disabled={!nextActionDraft.type} onChange={e => setNextActionDraft(d => ({ ...d, date: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Heure</label>
-                    <input className="input" type="time" value={nextActionDraft.time} disabled={!nextActionDraft.date} onChange={e => setNextActionDraft(d => ({ ...d, time: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Fin</label>
-                    <input className="input" type="time" value={nextActionDraft.endTime} disabled={!nextActionDraft.time} onChange={e => setNextActionDraft(d => ({ ...d, endTime: e.target.value }))} />
-                  </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Date</span>
+                  <span className="text-gray-900 text-right">
+                    {formatDate(pendingAction.date)}
+                    {pendingAction.time ? (pendingAction.endTime ? ` de ${pendingAction.time} à ${pendingAction.endTime}` : ` à ${pendingAction.time}`) : ''}
+                  </span>
                 </div>
-                {endTimeInvalid && (
-                  <p className="text-xs text-danger-600">L'heure de fin doit être postérieure à l'heure de début.</p>
-                )}
-                <div className="flex justify-end gap-2 pt-1">
-                  <button onClick={() => setEditingNextAction(false)} className="btn-secondary btn-sm">Annuler</button>
-                  <button onClick={saveNextAction} disabled={!nextActionDraft.type || endTimeInvalid} className="btn-primary btn-sm disabled:opacity-50">Enregistrer</button>
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Qui</span>
+                  <span className="text-gray-900 text-right">
+                    {pendingAction.people.map(p => `${getCommercialName(p.commercialId)}${p.role === 'participant' ? ' (participant)' : ''}`).join(', ')}
+                  </span>
                 </div>
+                {pendingAction.note && <p className="text-xs text-gray-500">{pendingAction.note}</p>}
               </div>
+            ) : lead.noNextActionReason ? (
+              <p className="text-sm text-gray-600">Aucune prochaine action — {lead.noNextActionReason}</p>
             ) : (
-              <>
-                {lead.nextActionType ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Action</span>
-                      <span className="text-gray-900 font-medium">{ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Date</span>
-                      <span className="text-gray-900">
-                        {formatDate(lead.nextActionDate)}
-                        {lead.nextActionTime ? (lead.nextActionEndTime ? ` de ${lead.nextActionTime} à ${lead.nextActionEndTime}` : ` à ${lead.nextActionTime}`) : ''}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-warning-600">Aucune action planifiée</p>
-                )}
-                <div className="mt-3 flex gap-2">
-                  <button onClick={openNextActionEditor} className="btn-secondary btn-sm">
-                    {lead.nextActionType ? 'Modifier' : 'Définir'}
-                  </button>
-                  {lead.nextActionType && (
-                    <button onClick={clearNextAction} className="btn-ghost btn-sm text-gray-500">Effacer</button>
-                  )}
-                </div>
-              </>
+              <p className="text-sm text-warning-600">Aucune action planifiée</p>
             )}
+            <div className="mt-3 flex gap-2">
+              <button onClick={openNextActionEditor} className="btn-secondary btn-sm">
+                {pendingAction ? 'Modifier' : 'Planifier'}
+              </button>
+            </div>
           </div>
 
           {/* Commercial tracking */}

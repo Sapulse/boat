@@ -29,8 +29,6 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
     notes: action?.notes ?? '',
     authorId: action?.authorId ?? state.commercials[0]?.id ?? '',
     newStatus: (action?.newStatus ?? '') as LeadStatus | '',
-    nextActionType: (action?.nextActionType ?? '') as ActionType | '',
-    nextActionDate: action?.nextActionDate ?? '',
   });
   // Montant de la vente (B1) : requis seulement si newStatus === 'signe'.
   // Pré-rempli devis ?? budget — cas nominal : rien à retaper.
@@ -66,8 +64,8 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
       notes: form.notes,
       authorId: form.authorId,
       newStatus: form.newStatus || undefined,
-      nextActionType: form.nextActionType || undefined,
-      nextActionDate: form.nextActionDate || undefined,
+      // Lot 2 : la prochaine action ne se saisit plus ici — la fenêtre Prochaine
+      // action s'ouvre APRÈS l'enregistrement (fiche du lead).
     }, extras));
   };
 
@@ -113,17 +111,6 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
               <option value="">Ne pas changer</option>
               {LEAD_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="label">Prochaine action</label>
-            <select className="select" value={form.nextActionType} onChange={e => setForm(f => ({ ...f, nextActionType: e.target.value as ActionType }))}>
-              <option value="">--</option>
-              {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Date prochaine action</label>
-            <input className="input" type="date" value={form.nextActionDate} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} />
           </div>
           {signing && (
             <div className="md:col-span-3">

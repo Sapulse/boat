@@ -30,6 +30,14 @@ export default function ToastContainer({ toasts, onDismiss }: { toasts: Toast[];
           >
             <Icon className={`w-4 h-4 shrink-0 ${KIND_COLOR[toast.kind]}`} />
             <span className="flex-1">{toast.message}</span>
+            {toast.action && (
+              <button
+                onClick={() => { toast.action!.onClick(); onDismiss(toast.id); }}
+                className="text-sm font-semibold text-primary-600 hover:text-primary-700 whitespace-nowrap"
+              >
+                {toast.action.label}
+              </button>
+            )}
             <button onClick={() => onDismiss(toast.id)} className="p-0.5 text-gray-400 hover:text-gray-600 rounded" title="Fermer">
               <X className="w-3.5 h-3.5" />
             </button>

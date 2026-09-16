@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Priority } from '../../data/types';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, DEFAULT_TEMPERATURE, SOURCES, ACTION_TYPES, PRIORITIES } from '../../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, DEFAULT_TEMPERATURE, SOURCES, PRIORITIES } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 import { useSubmitLock } from '../../hooks/useSubmitLock';
@@ -329,17 +329,8 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
           <label className="label">Date de contact</label>
           <input className="input" type="date" value={form.contactDate} onChange={e => update('contactDate', e.target.value)} />
         </div>
-        <div>
-          <label className="label">Prochaine action</label>
-          <select className="select" value={form.nextActionType} onChange={e => update('nextActionType', e.target.value)}>
-            <option value="">--</option>
-            {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Date prochaine action</label>
-          <input className="input" type="date" value={form.nextActionDate} onChange={e => update('nextActionDate', e.target.value)} />
-        </div>
+        {/* Lot 2 : plus de prochaine action ici — la fenêtre Prochaine action
+            s'ouvre à la création du lead, et depuis la fiche ensuite. */}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

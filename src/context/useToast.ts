@@ -1,13 +1,14 @@
 import { createContext, useContext } from 'react';
+import type { ToastAction } from './toastReducer';
 
 // Module sans composant : contexte + hook d'accès. Séparé de ToastContext.tsx
 // (qui ne garde que le composant ToastProvider) pour la règle
 // react-refresh/only-export-components — même découpage que AppContext/useApp.
 
 export interface ToastApi {
-  success(message: string): void;
-  error(message: string): void;
-  info(message: string): void;
+  success(message: string, action?: ToastAction): void;
+  error(message: string, action?: ToastAction): void;
+  info(message: string, action?: ToastAction): void;
 }
 
 export const ToastContext = createContext<ToastApi | null>(null);

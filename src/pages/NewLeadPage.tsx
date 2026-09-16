@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
+import { useNextActionFlow } from '../context/useNextActionFlow';
 import LeadForm from '../components/leads/LeadForm';
 import type { Lead } from '../data/types';
 import { cn } from '../lib/utils';
@@ -11,12 +12,16 @@ export default function NewLeadPage() {
   const navigate = useNavigate();
   const { addLead } = useApp();
   const toast = useToast();
+  // Lot 2 : création manuelle = fenêtre Prochaine action OBLIGATOIRE, ouverte sur
+  // la fiche du lead créé (le fournisseur survit au changement de page).
+  const flow = useNextActionFlow();
   const [isQuickMode, setIsQuickMode] = useState(true);
 
   const handleSave = (data: Omit<Lead, 'id'>) => {
     const id = addLead(data);
     toast.success('Lead créé');
     navigate(`/leads/${id}`);
+    flow.decide(id, { kind: 'lead_cree', status: data.status });
   };
 
   return (

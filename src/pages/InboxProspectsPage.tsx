@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, FlaskConical, Inbox, Info, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, Search, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
+import { useNextActionFlow } from '../context/useNextActionFlow';
+import { pendingActionOf } from '../lib/plannedActions';
 import { useInboundDemo } from '../context/useInboundDemo';
 import { findDuplicateLeads } from '../lib/duplicateLeads';
 import {
@@ -46,6 +48,9 @@ const FOLD_THRESHOLD = 40;
 
 export default function InboxProspectsPage() {
   const { state, updateLeadStatus } = useApp();
+  // Lot 2 : Accepter → toast « Planifier » (pas de fenêtre, la file reste fluide) ;
+  // Rouvrir → fenêtre Prochaine action ; Rattacher → rien.
+  const flow = useNextActionFlow();
   const { emails, pendingCount, realData, apiMode, collecting, collectNow, updateExtracted, accept, reject, attach, reopen } = useInboundDemo();
   const toast = useToast();
   // Lead CLOS (perdu / reporté / signé) qui vient de recevoir une demande
@@ -72,8 +77,8 @@ export default function InboxProspectsPage() {
     if (processedRef.current.has(mail.id)) return;
     processedRef.current.add(mail.id);
     try {
-      await accept(mail, assignees[mail.id] ?? '');
-      toast.success(`Lead créé — ${inboundDisplayName(mail)}`);
+      const leadId = await accept(mail, assignees[mail.id] ?? '');
+      flow.toastPlanifier(leadId, `Lead créé — ${inboundDisplayName(mail)}`);
     } catch (e) {
       processedRef.current.delete(mail.id);
       toast.error(`Échec de l'acceptation : ${(e as Error).message}`);
@@ -124,7 +129,9 @@ export default function InboxProspectsPage() {
    * action).
    */
   const handleReopenLead = (lead: Lead) => {
+    const hadPendingAction = !!pendingActionOf(lead.id, state.plannedActions);
     updateLeadStatus(lead.id, REOPEN_TARGET_STATUS);
+    flow.decide(lead.id, { kind: 'boite_rouvrir', hadPendingAction });
     setReopenOfferId(null);
     toast.success(`${`${lead.firstName} ${lead.lastName}`.trim() || lead.email} rouvert — ${getStatusLabel(REOPEN_TARGET_STATUS)}`);
   };

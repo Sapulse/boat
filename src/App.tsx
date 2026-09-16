@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
 import { InboundDemoProvider } from './context/InboundDemoContext';
+import { NextActionFlowProvider } from './context/NextActionFlowContext';
 import AppLayout from './components/layout/AppLayout';
 
 // Code-splitting par route (React.lazy) : chaque page part dans son propre chunk,
@@ -39,6 +40,9 @@ export default function App() {
         {/* Boîte de réception prospects (Étape A, maquette) : store en mémoire
             dans la coquille — la page consomme la file, la Sidebar le compteur. */}
         <InboundDemoProvider>
+        {/* Lot 2 : confirmation d'envoi / note d'appel / fenêtre Prochaine action,
+            au-dessus des routes pour survivre aux changements de page. */}
+        <NextActionFlowProvider>
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
@@ -64,6 +68,7 @@ export default function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+        </NextActionFlowProvider>
         </InboundDemoProvider>
         </ToastProvider>
       </AppProvider>

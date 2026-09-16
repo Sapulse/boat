@@ -21,7 +21,7 @@ import {
   needsPlanning, hasExplicitNoNextAction, buildReportEntry, isRealizedAction, planNextAction,
   reschedulePlannedAction, completePlannedAction, cancelPendingAction, migrateLegacyNextActions, legacyPlannedId,
   windowAfterAction, windowAfterStatusChange, validateNextActionChoice, isValidCallNote,
-  resolveNoNextActionReason, plannedActionLabel, type PlanInput, type NextActionChoice,
+  resolveNoNextActionReason, plannedActionLabel, nextActionDecision, type PlanInput, type NextActionChoice,
 } from '../src/lib/plannedActions';
 import { getAlertLevel, getLeadRisks, toISODate } from '../src/lib/utils';
 import { countActions } from '../src/lib/goals';
@@ -325,6 +325,44 @@ section('Reducer : écrans existants rebranchés sur le modèle (aucune perte)')
   check('DELETE_LEAD : ses actions programmées suivent (cascade), les autres restent', del.plannedActions.length === 1 && del.plannedActions[0].leadId === 'l2');
   const legacyServer = { ...state(), plannedActions: undefined } as unknown as AppState;
   check('SET_STATE d\'un serveur d\'avant le lot 2 : plannedActions = []', Array.isArray(reducer(state(), { type: 'SET_STATE', payload: legacyServer }).plannedActions));
+}
+
+section('Arrêt 2 — quel point d\'entrée ouvre quelle fenêtre');
+{
+  const ALL = LEAD_STATUSES.map(s => s.value) as LeadStatus[];
+  const p = (e: Parameters<typeof nextActionDecision>[0]) => nextActionDecision(e).prompt;
+  const ACTIVE_OTHERS: LeadStatus[] = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion'];
+
+  check('« + Action » sans changement de statut -> obligatoire, NON fermable', JSON.stringify(p({ kind: 'action_enregistree', currentStatus: 'contacte' })) === JSON.stringify({ mode: 'obligatoire', closable: false }));
+  check('« + Action » qui passe en Reporté -> reprise', p({ kind: 'action_enregistree', newStatus: 'reporte', currentStatus: 'contacte' })?.mode === 'reprise');
+  check('« + Action » qui passe en Signé / Perdu -> passable', p({ kind: 'action_enregistree', newStatus: 'signe', currentStatus: 'negociation' })?.mode === 'passable' && p({ kind: 'action_enregistree', newStatus: 'perdu', currentStatus: 'contacte' })?.mode === 'passable');
+  check('« + Action » même si une action est déjà à faire : la fenêtre s\'ouvre (pré-remplie)', p({ kind: 'action_enregistree', currentStatus: 'qualifie' }) !== null);
+  check('appel enregistré (note) -> fenêtre, non fermable', p({ kind: 'appel_enregistre', currentStatus: 'nouveau' })?.closable === false);
+  check('message confirmé « Oui » -> fenêtre, non fermable', p({ kind: 'message_confirme', currentStatus: 'contacte' })?.mode === 'obligatoire');
+  check('message « Non » -> RIEN', nextActionDecision({ kind: 'message_non_envoye' }).prompt === null);
+  check('appel / message sur un lead Reporté -> reprise', p({ kind: 'appel_enregistre', currentStatus: 'reporte' })?.mode === 'reprise' && p({ kind: 'message_confirme', currentStatus: 'reporte' })?.mode === 'reprise');
+
+  for (const s of ALL) {
+    const withP = p({ kind: 'statut_change', target: s, hadPendingAction: true });
+    const without = p({ kind: 'statut_change', target: s, hadPendingAction: false });
+    if (s === 'reporte') check('statut -> Reporté : reprise non fermable, action en cours ou non', withP?.mode === 'reprise' && without?.mode === 'reprise' && withP?.closable === false);
+    else if (s === 'signe' || s === 'perdu') check(`statut -> ${s} : passable, action en cours ou non`, withP?.mode === 'passable' && without?.mode === 'passable');
+    else if (ACTIVE_OTHERS.includes(s)) check(`statut -> ${s} : AUCUNE fenêtre si action à faire, sinon obligatoire`, withP === null && without?.mode === 'obligatoire' && without?.closable === false);
+  }
+
+  check('création manuelle -> obligatoire non fermable', JSON.stringify(p({ kind: 'lead_cree', status: 'nouveau' })) === JSON.stringify({ mode: 'obligatoire', closable: false }));
+  check('création directement en Signé -> passable ; en Reporté -> reprise', p({ kind: 'lead_cree', status: 'signe' })?.mode === 'passable' && p({ kind: 'lead_cree', status: 'reporte' })?.mode === 'reprise');
+  check('éditeur « Prochaine action » -> FERMABLE', p({ kind: 'editeur_prochaine_action', status: 'contacte' })?.closable === true);
+  check('éditeur sur un Reporté -> reprise (« Aucune » interdite) mais fermable', JSON.stringify(p({ kind: 'editeur_prochaine_action', status: 'reporte' })) === JSON.stringify({ mode: 'reprise', closable: true }));
+  check('boîte : Rattacher -> rien', nextActionDecision({ kind: 'boite_rattacher' }).prompt === null && !nextActionDecision({ kind: 'boite_rattacher' }).toastPlanifier);
+  check('boîte : Rouvrir sans action à faire -> obligatoire', p({ kind: 'boite_rouvrir', hadPendingAction: false })?.mode === 'obligatoire');
+  check('boîte : Rouvrir avec une action à faire -> rien (règle 4)', p({ kind: 'boite_rouvrir', hadPendingAction: true }) === null);
+  const accept = nextActionDecision({ kind: 'boite_accepter' });
+  check('boîte : Accepter -> PAS de fenêtre, toast « Planifier »', accept.prompt === null && accept.toastPlanifier === true);
+  check('toast « Planifier » -> fenêtre fermable', p({ kind: 'toast_planifier', status: 'nouveau' })?.closable === true);
+  check('agenda (créer, reporter) -> pas de fenêtre à l\'arrêt 2', nextActionDecision({ kind: 'agenda_creer' }).prompt === null && nextActionDecision({ kind: 'agenda_reporter' }).prompt === null);
+  check('aucune fenêtre NON fermable ne peut être « passable » hors Signé / Perdu',
+    ALL.every(s => { const x = p({ kind: 'action_enregistree', currentStatus: s }); return x?.mode !== 'passable' || s === 'signe' || s === 'perdu'; }));
 }
 
 console.log(`\n${'='.repeat(50)}`);

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { toastReducer, toastDuration } from './toastReducer';
-import type { ToastKind } from './toastReducer';
+import type { ToastKind, ToastAction } from './toastReducer';
 import { ToastContext } from './useToast';
 import ToastContainer from '../components/ui/ToastContainer';
 
@@ -18,16 +18,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const seq = useRef(0);
 
   const dismiss = useCallback((id: string) => dispatch({ type: 'DISMISS', id }), []);
-  const show = useCallback((kind: ToastKind, message: string) => {
+  const show = useCallback((kind: ToastKind, message: string, action?: ToastAction) => {
     const id = `toast-${++seq.current}`;
-    dispatch({ type: 'PUSH', toast: { id, kind, message } });
-    window.setTimeout(() => dispatch({ type: 'DISMISS', id }), toastDuration(kind));
+    dispatch({ type: 'PUSH', toast: { id, kind, message, action } });
+    window.setTimeout(() => dispatch({ type: 'DISMISS', id }), toastDuration(kind, !!action));
   }, []);
 
   const api = useMemo(() => ({
-    success: (message: string) => show('success', message),
-    error: (message: string) => show('error', message),
-    info: (message: string) => show('info', message),
+    success: (message: string, action?: ToastAction) => show('success', message, action),
+    error: (message: string, action?: ToastAction) => show('error', message, action),
+    info: (message: string, action?: ToastAction) => show('info', message, action),
   }), [show]);
 
   return (
