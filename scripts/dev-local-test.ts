@@ -65,7 +65,10 @@ async function main() {
   // (un identifiant nu y serait bloqué par la validation navigateur).
   process.env.APP_USERNAME = 'test@local.test';
   process.env.APP_PASSWORD_HASH = hashPassword(password);
-  process.env.SESSION_SECRET = randomBytes(32).toString('hex');
+  // BOB_TEST_SESSION_SECRET (facultatif, banc local uniquement) : garde la session
+  // de test valable d'un redémarrage à l'autre (changer de base jetable sans se
+  // reconnecter). Absent -> secret aléatoire à chaque lancement.
+  process.env.SESSION_SECRET = process.env.BOB_TEST_SESSION_SECRET || randomBytes(32).toString('hex');
 
   // 1) Base de test : migrations Prisma (idempotent) + seed des 5 commerciaux.
   console.log(`Base de test : ${TEST_DB}`);
