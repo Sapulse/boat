@@ -66,8 +66,12 @@ function TemplateEditor({ template, canDelete, open, onToggle }: {
 
   return (
     <div className="card overflow-hidden">
+      {/* Sous 640px, DEUX lignes : badge + titre en pleine largeur, puis les
+          boutons. Sur une seule ligne, `flex-1` (base 0) laissait les boutons
+          ecraser le titre a ~26px, illisible et colle a « Supprimer ». Le
+          `w-full` force le retour a la ligne ; >= 640px strictement inchange. */}
       <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto sm:flex-1">
           <button
             type="button"
             onClick={onToggle}
@@ -79,7 +83,7 @@ function TemplateEditor({ template, canDelete, open, onToggle }: {
             <TypeBadge type={template.type} />
           </button>
           <input
-            className="input font-semibold text-gray-900 max-w-xs"
+            className="input font-semibold text-gray-900 min-w-0 flex-1 sm:flex-initial sm:max-w-xs"
             value={draft.title}
             onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
             aria-label="Nom du modèle"
@@ -87,7 +91,7 @@ function TemplateEditor({ template, canDelete, open, onToggle }: {
           {/* REPLIE : de quoi reconnaitre le modele sans le deplier — et surtout
               ne jamais laisser croire qu'une saisie en cours a ete perdue. */}
           {!open && dirty && (
-            <span className="badge bg-amber-100 text-amber-700 shrink-0">Non enregistré</span>
+            <span className="badge bg-amber-100 text-amber-700 shrink-0 hidden sm:inline-flex">Non enregistré</span>
           )}
           {!open && !dirty && preview && (
             <span className="text-xs text-gray-400 truncate hidden md:block">{preview}</span>
@@ -96,7 +100,12 @@ function TemplateEditor({ template, canDelete, open, onToggle }: {
         {/* Replie et rien a enregistrer : aucun bouton. Une liste repliee doit se
             lire d'un coup d'oeil, pas presenter deux boutons par ligne. */}
         {(open || dirty || saved) && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2 w-full sm:w-auto sm:justify-start">
+            {/* Mobile : le badge descend sur la ligne des boutons, sinon il ecrase
+                le titre replie (~80px). Desktop : il reste a cote du titre. */}
+            {!open && dirty && (
+              <span className="badge bg-amber-100 text-amber-700 mr-auto sm:hidden">Non enregistré</span>
+            )}
             {open && (
               <button
                 onClick={remove}
