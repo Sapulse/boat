@@ -8,9 +8,11 @@ import { findDuplicateLeads } from '../lib/duplicateLeads';
 import {
   sortInboundByScore, scoreLevel, SCORE_LEVELS,
   inboundDisplayName, formatReceivedShort, formatReceivedAge, scoreReasonSign,
+  shouldOfferReopen, REOPEN_TARGET_STATUS,
 } from '../lib/inbound';
 import { cn, formatDate } from '../lib/utils';
 import { getStatusLabel } from '../data/constants';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import type { InboundEmail, Lead } from '../data/types';
 
 // Écran « Leads entrants à valider » (spec §6). Une carte par email, triées par
@@ -41,9 +43,16 @@ import type { InboundEmail, Lead } from '../data/types';
 const FOLD_THRESHOLD = 40;
 
 export default function InboxProspectsPage() {
-  const { state } = useApp();
+  const { state, updateLeadStatus } = useApp();
   const { emails, pendingCount, realData, apiMode, collecting, collectNow, updateExtracted, accept, reject, attach, reopen } = useInboundDemo();
   const toast = useToast();
+  // Lead CLOS (perdu / reporté / signé) qui vient de recevoir une demande
+  // rattachée : on PROPOSE de le rouvrir, sans jamais le faire seul. Seul l'id
+  // est gardé : le statut est relu en direct dans le state, donc le bandeau
+  // disparaît de lui-même si le lead est rouvert ailleurs (fiche, pipeline).
+  const [reopenOfferId, setReopenOfferId] = useState<string | null>(null);
+  const reopenLead = reopenOfferId ? state.leads.find(l => l.id === reopenOfferId) : undefined;
+  const showReopenOffer = !!reopenLead && shouldOfferReopen(reopenLead.status);
   // Commercial choisi par carte ('' = Non attribué, défaut). Etat de PAGE (pas
   // du store) : un choix non validé n'a pas à survivre à la navigation.
   const [assignees, setAssignees] = useState<Record<string, string>>({});
@@ -94,12 +103,29 @@ export default function InboxProspectsPage() {
     try {
       await attach(mail, leadId);
       const target = state.leads.find(l => l.id === leadId);
-      const name = target ? `${target.firstName} ${target.lastName}`.trim() || target.email : 'lead existant';
-      toast.success(`Demande rattachée à ${name}`);
+      if (target && shouldOfferReopen(target.status)) {
+        // Le bandeau dit déjà « rattachée » : pas de toast en double.
+        setReopenOfferId(target.id);
+      } else {
+        const name = target ? `${target.firstName} ${target.lastName}`.trim() || target.email : 'lead existant';
+        toast.success(`Demande rattachée à ${name}`);
+      }
     } catch (e) {
       processedRef.current.delete(mail.id);
       toast.error(`Échec du rattachement : ${(e as Error).message}`);
     }
+  };
+
+  /**
+   * ROUVRIR le lead clos, sur clic UNIQUEMENT : même appel que le changement de
+   * statut de la fiche et du pipeline (updateLeadStatus), donc mêmes effets —
+   * dates jalons comprises — et rien d'autre (ni température, ni prochaine
+   * action).
+   */
+  const handleReopenLead = (lead: Lead) => {
+    updateLeadStatus(lead.id, REOPEN_TARGET_STATUS);
+    setReopenOfferId(null);
+    toast.success(`${`${lead.firstName} ${lead.lastName}`.trim() || lead.email} rouvert — ${getStatusLabel(REOPEN_TARGET_STATUS)}`);
   };
 
   /**
@@ -226,6 +252,32 @@ export default function InboxProspectsPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Proposition de réouverture : COLLANTE en haut de la zone de défilement,
+          car la carte rattachée disparaît et l'utilisateur peut être loin dans
+          la file. Deux issues explicites, aucune action par défaut. */}
+      {showReopenOffer && reopenLead && (
+        <div
+          role="status"
+          className="sticky top-2 z-10 rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-900 shadow-sm space-y-2"
+        >
+          <p>
+            Demande rattachée à{' '}
+            <Link to={`/leads/${reopenLead.id}`} className="font-semibold underline hover:text-sky-700">
+              {`${reopenLead.firstName} ${reopenLead.lastName}`.trim() || reopenLead.email}
+            </Link>
+            . Ce lead est <StatusBadge status={reopenLead.status} />. Rouvrir le lead ?
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-primary btn-sm" onClick={() => handleReopenLead(reopenLead)}>
+              <RotateCcw className="w-4 h-4" /> Rouvrir ({getStatusLabel(REOPEN_TARGET_STATUS)})
+            </button>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setReopenOfferId(null)}>
+              Laisser {getStatusLabel(reopenLead.status).toLowerCase()}
+            </button>
+          </div>
         </div>
       )}
 
@@ -399,13 +451,15 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
             <AlertTriangle className="w-4 h-4 shrink-0" />
             Doublon possible : {duplicates.length > 1 ? 'des leads existent déjà' : 'un lead existe déjà'} avec cet email ou ce téléphone
           </p>
-          <p className="text-amber-700">
-            {duplicates.slice(0, 3).map((l, i) => (
-              <span key={l.id}>
-                {i > 0 && ', '}
+          {/* Statut de CHAQUE candidat en badge : rattacher à un lead perdu ou
+              signé n'a pas le même sens qu'à un lead en cours (décision 2026-09). */}
+          <p className="text-amber-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {duplicates.slice(0, 3).map(l => (
+              <span key={l.id} className="inline-flex items-center gap-1.5">
                 <Link to={`/leads/${l.id}`} className="underline hover:text-amber-900">
                   {`${l.firstName} ${l.lastName}`.trim() || l.email || l.phone}
                 </Link>
+                <StatusBadge status={l.status} />
               </span>
             ))}
             {duplicates.length > 3 ? ` +${duplicates.length - 3}` : ''}
@@ -417,10 +471,13 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
               <div>
                 <label className="label">Rattacher à</label>
                 <select className="select" value={attachId} onChange={e => setAttachId(e.target.value)}>
+                  {/* Statut EN TÊTE : sur mobile la fin de l'option est coupée,
+                      le statut doit rester lisible sans ouvrir la liste. */}
                   {duplicates.map(l => (
                     <option key={l.id} value={l.id}>
+                      {`${getStatusLabel(l.status)} · `}
                       {`${l.firstName} ${l.lastName}`.trim() || l.email || l.phone}
-                      {` — ${getStatusLabel(l.status)} — créé le ${formatDate(l.createdAt)}`}
+                      {` · créé le ${formatDate(l.createdAt)}`}
                     </option>
                   ))}
                 </select>

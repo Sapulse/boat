@@ -1,4 +1,4 @@
-﻿import type { InboundEmail, Lead } from '../data/types.js';
+﻿import type { InboundEmail, Lead, LeadStatus } from '../data/types.js';
 
 // Cœur PUR de la boîte de réception prospects (Étape A, maquette) — aucune
 // dépendance React, testé par scripts/harness-inbound.ts (même découpage que
@@ -189,4 +189,27 @@ export function scoreReasonSign(reason: string): 'positif' | 'negatif' | 'inconn
   if (!r) return 'inconnu';
   if (NEGATIVE_REASON_PREFIXES.some(p => r.startsWith(p))) return 'negatif';
   return POSITIVE_REASON_PREFIXES.some(p => r.startsWith(p)) ? 'positif' : 'inconnu';
+}
+
+// ---------------------------------------------------------------------------
+// Rattachement à un lead CLOS : proposer de le rouvrir, jamais le faire seul.
+// ---------------------------------------------------------------------------
+
+/**
+ * Statuts « clos » pour lesquels une demande rattachée risque de passer
+ * inaperçue : le lead n'apparaît plus dans les vues de travail (hors
+ * ACTIVE_STATUSES), donc la note « Demande entrante » dort dans un historique
+ * que personne n'ouvre.
+ *
+ * Décision d'équipe (retour terrain 2026-09) : le système ne modifie RIEN
+ * automatiquement. Il PROPOSE de rouvrir ; seul le clic du commercial agit.
+ */
+export const REOPENABLE_LEAD_STATUSES: readonly LeadStatus[] = ['perdu', 'reporte', 'signe'];
+
+/** Statut posé par « Rouvrir le lead » — un changement de statut ordinaire. */
+export const REOPEN_TARGET_STATUS: LeadStatus = 'a_contacter';
+
+/** Faut-il proposer de rouvrir ce lead après un rattachement ? */
+export function shouldOfferReopen(status: LeadStatus): boolean {
+  return REOPENABLE_LEAD_STATUSES.includes(status);
 }

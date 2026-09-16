@@ -10,7 +10,10 @@
 import {
   scoreLevel, sortInboundByScore, buildLeadFromInbound,
   inboundDisplayName, parseReceivedAt, formatReceivedAge, formatReceivedShort, scoreReasonSign,
+  shouldOfferReopen, REOPEN_TARGET_STATUS, REOPENABLE_LEAD_STATUSES,
 } from '../src/lib/inbound';
+import { LEAD_STATUSES } from '../src/data/constants';
+import { isLeadActive } from '../src/lib/utils';
 import { extractLeboncoin } from '../src/lib/email/extractors';
 import { scoreEmail } from '../src/lib/email/score';
 import type { ExtractResult } from '../src/lib/email/types';
@@ -307,6 +310,23 @@ function main() {
     // (45) tient sans sa partie température — c'est le score qui trie la file.
     check('le SCORE reste le signal : 45 = à vérifier, jamais « prospect probable »',
       scoreLevel(45) === 'a_verifier');
+  }
+
+  section('Rattachement à un lead clos : PROPOSER de rouvrir, jamais le faire');
+  {
+    check('perdu / reporté / signé -> proposition',
+      shouldOfferReopen('perdu') && shouldOfferReopen('reporte') && shouldOfferReopen('signe'));
+    // Balayage de TOUS les statuts connus : seuls les trois clos proposent. Un
+    // statut ajouté plus tard ne déclenche rien tant qu'on ne l'a pas décidé.
+    const offering = LEAD_STATUSES.map(s => s.value).filter(shouldOfferReopen).sort();
+    check('aucun autre statut ne propose de rouvrir',
+      JSON.stringify(offering) === JSON.stringify(['perdu', 'reporte', 'signe']), offering.join(','));
+    check('chaque statut « rouvrable » est bien HORS des statuts actifs',
+      REOPENABLE_LEAD_STATUSES.every(s => !isLeadActive(s)));
+    check('rouvrir -> « À contacter »', REOPEN_TARGET_STATUS === 'a_contacter');
+    check('le statut cible est ACTIF (le lead revient dans les vues de travail)',
+      isLeadActive(REOPEN_TARGET_STATUS));
+    check('le statut cible ne re-propose pas (pas de boucle)', !shouldOfferReopen(REOPEN_TARGET_STATUS));
   }
 
   console.log(`\n${passed} OK, ${failed} KO`);
