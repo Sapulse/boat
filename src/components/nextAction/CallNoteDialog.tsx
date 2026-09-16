@@ -1,25 +1,26 @@
 import { useState } from 'react';
 import type { Lead } from '../../data/types';
-import { isValidCallNote } from '../../lib/plannedActions';
+import { CALL_RESULTS, validateCallEntry, type CallResult } from '../../lib/plannedActions';
 import { getLeadFullName } from '../../lib/utils';
 import DialogShell from './DialogShell';
 
-const RESULTS = ['Joint', 'Messagerie', 'Pas de réponse', 'Rappel demandé'] as const;
-
 /**
- * Note d'appel OBLIGATOIRE (lot 2, décision F) : au moins 2 mots et 10 caractères.
- * Enregistrer -> action « appel » dans l'historique, puis fenêtre Prochaine action.
+ * Appel (lot 2, décision F) : résultat OBLIGATOIRE (aucune puce par défaut) ;
+ * note récapitulative obligatoire pour « Joint » et « Rappel demandé »,
+ * facultative sinon (2 mots, 10 caractères quand elle est exigée).
+ * Enregistrer -> action « appel » réalisée dans l'historique, puis fenêtre Prochaine action.
  * « Appel non passé » -> rien n'est enregistré.
  */
 export default function CallNoteDialog({ lead, onSave, onCancel }: {
   lead: Lead;
-  onSave: (note: string, result: string) => void;
+  onSave: (note: string, result: CallResult) => void;
   onCancel: () => void;
 }) {
   const [note, setNote] = useState('');
-  const [result, setResult] = useState<string>('Joint');
+  const [result, setResult] = useState<CallResult | null>(null);
   const [tried, setTried] = useState(false);
-  const valid = isValidCallNote(note);
+  const errors = validateCallEntry(result, note);
+  const noteRequired = CALL_RESULTS.find(r => r.value === result)?.noteRequired ?? true;
 
   return (
     <DialogShell
@@ -30,29 +31,37 @@ export default function CallNoteDialog({ lead, onSave, onCancel }: {
       footer={(
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onCancel} className="btn-secondary btn-sm w-full sm:w-auto">Appel non passé</button>
-          <button type="button" onClick={() => { setTried(true); if (valid) onSave(note.trim(), result); }} className="btn-primary btn-sm w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => { setTried(true); if (result && errors.length === 0) onSave(note.trim(), result); }}
+            className="btn-primary btn-sm w-full sm:w-auto"
+          >
             Enregistrer l'appel
           </button>
         </div>
       )}
     >
       <div className="space-y-3">
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Résultat de l'appel">
-          {RESULTS.map(r => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={result === r}
-              onClick={() => setResult(r)}
-              className={result === r ? 'px-3 py-1 rounded-full text-xs font-medium bg-primary-600 text-white' : 'px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600'}
-            >
-              {r}
-            </button>
-          ))}
+        <div>
+          <p className="label" id="call-result-label">Résultat *</p>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="call-result-label">
+            {CALL_RESULTS.map(r => (
+              <button
+                key={r.value}
+                type="button"
+                role="radio"
+                aria-checked={result === r.value}
+                onClick={() => setResult(r.value)}
+                className={result === r.value ? 'px-3 py-1.5 rounded-full text-xs font-medium bg-primary-600 text-white' : 'px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600'}
+              >
+                {r.value}
+              </button>
+            ))}
+          </div>
+          {tried && !result && <p className="text-xs text-danger-600 mt-1">Choisissez le résultat de l'appel.</p>}
         </div>
         <div>
-          <label className="label" htmlFor="call-note">Note récapitulative *</label>
+          <label className="label" htmlFor="call-note">Note récapitulative{noteRequired ? ' *' : ' (facultative)'}</label>
           <textarea
             id="call-note"
             className="input min-h-[90px]"
@@ -61,9 +70,11 @@ export default function CallNoteDialog({ lead, onSave, onCancel }: {
             onChange={e => setNote(e.target.value)}
             placeholder="Ex. intéressé par le Flyer 6, veut un devis avec remorque"
           />
-          <p className={tried && !valid ? 'text-xs text-danger-600 mt-1' : 'text-xs text-gray-500 mt-1'}>
-            Quelques mots au minimum (2 mots, 10 caractères).
-          </p>
+          {noteRequired && (
+            <p className={tried && result && errors.length > 0 ? 'text-xs text-danger-600 mt-1' : 'text-xs text-gray-500 mt-1'}>
+              Quelques mots au minimum (2 mots, 10 caractères).
+            </p>
+          )}
         </div>
       </div>
     </DialogShell>

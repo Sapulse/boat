@@ -3,7 +3,7 @@ import { useApp } from './useApp';
 import { useToast } from './useToast';
 import { NextActionFlowContext, type NextActionFlowApi } from './useNextActionFlow';
 import type { Lead, LeadAction } from '../data/types';
-import { nextActionDecision, type NextActionEntry, type NextActionPrompt } from '../lib/plannedActions';
+import { callResultLabel, nextActionDecision, type NextActionEntry, type NextActionPrompt } from '../lib/plannedActions';
 import { buildCommunicationAction } from '../lib/communication';
 import { toISODate } from '../lib/utils';
 import NextActionDialog from '../components/nextAction/NextActionDialog';
@@ -94,7 +94,7 @@ export function NextActionFlowProvider({ children }: { children: ReactNode }) {
           onCancel={() => { shift(); toast.info('Appel non enregistré'); }}
           onSave={(note, result) => {
             shift();
-            addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: `Appel — ${result}`, notes: note }));
+            addAction(buildCommunicationAction(lead, 'appel', toISODate(new Date()), { result: callResultLabel(result), notes: note }));
             toast.success('Appel ajouté à l\'historique');
             decide(lead.id, { kind: 'appel_enregistre', currentStatus: lead.status });
           }}

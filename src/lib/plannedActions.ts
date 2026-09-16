@@ -380,6 +380,32 @@ export function isValidCallNote(note: string): boolean {
   return t.length >= 10 && t.split(/\s+/).filter(Boolean).length >= 2;
 }
 
+/**
+ * Résultats d'un appel (puces). TOUS donnent une action RÉALISÉE : un appel sans
+ * réponse est un appel passé — il compte dans les objectifs et met à jour la
+ * dernière action. `noteRequired` : note récapitulative obligatoire (2 mots,
+ * 10 caractères) seulement quand on a parlé au client.
+ */
+export const CALL_RESULTS = [
+  { value: 'Joint', noteRequired: true },
+  { value: 'Message laissé', noteRequired: false },
+  { value: 'Pas de réponse', noteRequired: false },
+  { value: 'Rappel demandé', noteRequired: true },
+  { value: 'Mauvais numéro', noteRequired: false },
+] as const;
+export type CallResult = typeof CALL_RESULTS[number]['value'];
+
+/** Validation de la fenêtre d'appel : puce obligatoire (aucune par défaut), note selon la puce. [] = valide. */
+export function validateCallEntry(result: string | null, note: string): string[] {
+  const def = CALL_RESULTS.find(r => r.value === result);
+  if (!def) return ['Choisissez le résultat de l\'appel.'];
+  if (def.noteRequired && !isValidCallNote(note)) return ['Note obligatoire : quelques mots au minimum (2 mots, 10 caractères).'];
+  return [];
+}
+
+/** Libellé de l'historique : « Appel — Pas de réponse ». */
+export const callResultLabel = (result: CallResult) => `Appel — ${result}`;
+
 // ---------------------------------------------------------------------------
 // Arrêt 2 — QUEL point d'entrée ouvre QUOI (source unique, prouvée au harnais)
 // ---------------------------------------------------------------------------

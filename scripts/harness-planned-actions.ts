@@ -22,7 +22,9 @@ import {
   reschedulePlannedAction, completePlannedAction, cancelPendingAction, migrateLegacyNextActions, legacyPlannedId,
   windowAfterAction, windowAfterStatusChange, validateNextActionChoice, isValidCallNote,
   resolveNoNextActionReason, plannedActionLabel, nextActionDecision, type PlanInput, type NextActionChoice,
+  CALL_RESULTS, validateCallEntry, callResultLabel,
 } from '../src/lib/plannedActions';
+import { buildCommunicationAction } from '../src/lib/communication';
 import { getAlertLevel, getLeadRisks, toISODate } from '../src/lib/utils';
 import { countActions } from '../src/lib/goals';
 import { reducer } from '../src/context/appReducer';
@@ -258,6 +260,25 @@ section('Traces : ni dernière action, ni objectifs');
     { id: '4', leadId: 'l1', type: 'appel', date: '2026-09-13', result: '', notes: '', authorId: 'tom', kind: 'realisee' },
   ];
   check('objectifs : seules les 2 réalisées comptent', countActions(actions, 'tom', 2026, 9, ['appel']) === 2);
+}
+
+section('Appel : puces de résultat (toutes = action réalisée)');
+{
+  check('5 puces, dans l\'ordre', CALL_RESULTS.map(r => r.value).join(' · ') === 'Joint · Message laissé · Pas de réponse · Rappel demandé · Mauvais numéro');
+  check('aucune puce choisie -> refus', validateCallEntry(null, 'Client très intéressé').some(e => e.includes('résultat')));
+  check('puce inconnue -> refus', validateCallEntry('Messagerie', 'Client très intéressé').length > 0);
+  check('Joint : note obligatoire', validateCallEntry('Joint', '').length > 0 && validateCallEntry('Joint', 'OK').length > 0 && validateCallEntry('Joint', 'Client intéressé').length === 0);
+  check('Rappel demandé : note obligatoire', validateCallEntry('Rappel demandé', '  ').length > 0 && validateCallEntry('Rappel demandé', 'Rappeler jeudi matin').length === 0);
+  check('Message laissé / Pas de réponse / Mauvais numéro : note facultative',
+    ['Message laissé', 'Pas de réponse', 'Mauvais numéro'].every(r => validateCallEntry(r, '').length === 0 && validateCallEntry(r, 'OK').length === 0));
+  check('libellé d\'historique', callResultLabel('Pas de réponse') === 'Appel — Pas de réponse');
+
+  for (const r of ['Pas de réponse', 'Message laissé', 'Mauvais numéro'] as const) {
+    const act = { id: `call-${r}`, ...buildCommunicationAction(lead(), 'appel', '2026-09-15', { result: callResultLabel(r), notes: '' }) };
+    const s = reducer(state(), { type: 'ADD_ACTION', payload: act });
+    check(`« ${r} » : réalisée, dernière action mise à jour, compte dans les objectifs`,
+      isRealizedAction(s.actions[0]) && s.leads[0].lastActionDate === '2026-09-15' && countActions(s.actions, 'tom', 2026, 9, ['appel']) === 1);
+  }
 }
 
 section('Reducer : programmer, reporter, réaliser, « Aucune »');
