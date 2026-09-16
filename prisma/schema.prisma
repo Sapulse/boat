@@ -51,6 +51,7 @@ model Commercial {
   actions        LeadAction[]
   goals          CommercialGoal[]
   calendarEvents CalendarEvent[]
+  plannedActionPeople PlannedActionPerson[]
 
   @@map("commercials")
 }
@@ -102,7 +103,12 @@ model Lead {
   lostAt         String @default("")
   reportedAt     String @default("")
 
-  actions LeadAction[]
+  // Lot 2 (ajouts) : « Aucune prochaine action » motivée ; '' = aucune.
+  noNextActionReason String @default("")
+  noNextActionAt     String @default("")
+
+  actions        LeadAction[]
+  plannedActions PlannedAction[]
 
   @@index([commercialId])
   @@index([status])
@@ -135,9 +141,69 @@ model LeadAction {
   nextActionType String? // ActionType | absent
   nextActionDate String?
 
+  // Lot 2 (ajouts). kind : 'realisee' (défaut, toutes les lignes existantes) |
+  // 'report' | 'sans_suite' — seules les réalisées comptent comme activité et
+  // dans les objectifs. plannedActionId : action programmée liée (réalisée ou
+  // reportée) — sans FK (trace historique, jamais bloquante).
+  kind            String  @default("realisee")
+  plannedActionId String?
+
   @@index([leadId])
   @@index([authorId])
   @@map("lead_actions")
+}
+
+// ============================================================
+// PlannedAction — action programmée (lot 2). Remplace la « prochaine action »
+// dénormalisée comme SOURCE ; les champs nextAction* du lead en restent le
+// résumé. Une seule « a_faire » par lead (règle applicative). Jamais supprimée
+// par l'app : status 'annulee' quand elle n'est plus à faire.
+// ============================================================
+model PlannedAction {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  type         String // ActionType
+  customLabel  String  @default("") // texte libre quand type = 'autre'
+  date         String // "YYYY-MM-DD"
+  time         String? // "HH:mm"
+  endTime      String? // "HH:mm"
+  originalDate String // date de la 1re programmation, jamais modifiée
+  note         String  @default("")
+  status       String  @default("a_faire") // a_faire | faite | annulee
+  doneAt       String? // ISO
+  doneActionId String? // ligne d'historique de la réalisation
+
+  people PlannedActionPerson[]
+
+  @@index([leadId])
+  @@index([status, date])
+  @@map("planned_actions")
+}
+
+// Personnes concernées : responsables et participants. Id = "<action>:<commercial>".
+// Retirer une personne = active false (aucun DELETE).
+model PlannedActionPerson {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plannedActionId String
+  plannedAction   PlannedAction @relation(fields: [plannedActionId], references: [id], onDelete: Cascade)
+
+  commercialId String
+  commercial   Commercial @relation(fields: [commercialId], references: [id])
+
+  role   String // responsable | participant
+  active Boolean @default(true)
+
+  @@unique([plannedActionId, commercialId])
+  @@index([commercialId])
+  @@map("planned_action_people")
 }
 
 // ============================================================

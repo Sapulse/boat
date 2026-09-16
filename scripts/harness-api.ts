@@ -45,9 +45,12 @@ function section(title: string) { console.log(`\n— ${title}`); }
 
 function migrationSql(): string {
   const dir = path.resolve('prisma/migrations');
-  const sub = readdirSync(dir).find(d => d.endsWith('_init_crm_schema'));
-  if (!sub) throw new Error('migration init_crm_schema introuvable');
-  return readFileSync(path.join(dir, sub, 'migration.sql'), 'utf-8');
+  // Schéma métier = init + lot 2 (actions programmées, colonnes ajoutées).
+  return ['_init_crm_schema', '_lot2_planned_actions'].map(suffix => {
+    const sub = readdirSync(dir).find(d => d.endsWith(suffix));
+    if (!sub) throw new Error(`migration ${suffix} introuvable`);
+    return readFileSync(path.join(dir, sub, 'migration.sql'), 'utf-8');
+  }).join('\n');
 }
 
 // --- fabriques minimales ---
@@ -59,7 +62,9 @@ function makeLead(over: Partial<Lead> = {}): Lead {
     budget: 50000, status: 'contacte', contactDate: '2026-06-02', quoteAmount: null,
     probability: null, currentBoat: '', comments: '', deliveryDate: '', temperature: 'tiede',
     priority: 'normale', nextActionType: '', nextActionDate: '', lastActionDate: '2026-06-05',
-    lossReason: '', signedAt: '', lostAt: '', reportedAt: '', ...over,
+    lossReason: '', signedAt: '', lostAt: '', reportedAt: '',
+    noNextActionReason: '', noNextActionAt: '', // lot 2 : la lecture serveur renvoie '' (défaut de colonne)
+    ...over,
   };
 }
 function makeAction(over: Partial<LeadAction> = {}): LeadAction {
@@ -465,6 +470,7 @@ async function main() {
       goals: [makeGoal({ id: 'gl-1', commercialId: 'com-a' })],
       monthlyStats: [{ id: 'ms-1', year: 2026, month: 3, source: 'LBC', budget: 100, leads: 5 }],
       defaultGoal: { prospectsCreated: 7, coldCalls: null, followups: null, meetings: null, revenue: null, conversionRate: null },
+      plannedActions: [],
     };
 
     // 1) Restauration : la base (peuplée par les sections précédentes) est REMPLACÉE.

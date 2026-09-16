@@ -116,6 +116,7 @@ function makeState(over: Partial<AppState> = {}): AppState {
     // mais manquaient a cette fabrique : invisible jusqu'au typecheck des scripts.
     goals: [],
     defaultGoal: EMPTY_DEFAULT_GOAL,
+    plannedActions: [],
     ...over,
   };
 }

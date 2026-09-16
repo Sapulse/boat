@@ -181,6 +181,52 @@ async function main() {
     check('file vide', outboxSize(storage) === 0);
   }
 
+  section('Lot 2 — actions programmées : intentions -> PUT idempotents + lead + traces');
+  {
+    const srv = makeServer(getEmptyState());
+    const storage = makeStorage();
+    const { repo, cache, persist } = makeRepo(srv, storage);
+    repo.addCommercial({ name: 'Fred', active: true });
+    repo.addLead(makeLead({ commercialId: 'x' }));
+    persist(); await wait(20);
+    const fredId = cache().commercials[0].id;
+    const leadId = cache().leads[0].id;
+    repo.updateLead(leadId, { commercialId: fredId });
+    persist(); await wait(20);
+
+    srv.received.length = 0;
+    const input = { type: 'appel' as const, customLabel: '', date: '2026-09-20', time: '10:00', note: 'Rappeler', people: [{ commercialId: fredId, role: 'responsable' as const }] };
+    const plannedId = repo.planNextAction(leadId, input, fredId);
+    persist(); await wait(20);
+    const put1 = srv.received.find(r => r.method === 'PUT' && r.path === `/api/planned-actions/${plannedId}`);
+    check('programmer -> PUT /api/planned-actions/:id', !!put1);
+    check('le PUT porte l\'action complète, personnes incluses', (put1?.body as { people?: unknown[]; status?: string })?.people?.length === 1 && (put1?.body as { status?: string })?.status === 'a_faire');
+    const leadPatch = srv.received.find(r => r.method === 'PATCH' && r.path === `/api/leads/${leadId}`);
+    check('et PATCH du lead (résumé nextAction* recalculé)', (leadPatch?.body as Lead)?.nextActionDate === '2026-09-20' && (leadPatch?.body as Lead)?.nextActionTime === '10:00');
+    check('lead PATCHé AVANT le PUT (clé étrangère)', srv.received.indexOf(leadPatch!) < srv.received.indexOf(put1!));
+    check('aucune trace de report créée (première programmation)', !srv.received.some(r => r.method === 'POST' && r.path === '/api/actions'));
+
+    srv.received.length = 0;
+    repo.reschedulePlannedAction(plannedId, { date: '2026-09-25', time: '14:00' }, fredId);
+    persist(); await wait(20);
+    const report = srv.received.find(r => r.method === 'POST' && r.path === '/api/actions');
+    check('reporter -> POST de la trace « report »', (report?.body as { kind?: string })?.kind === 'report');
+    check('reporter -> PUT de la même action, nouvelle date', srv.received.some(r => r.method === 'PUT' && r.path === `/api/planned-actions/${plannedId}` && (r.body as { date?: string }).date === '2026-09-25'));
+
+    srv.received.length = 0;
+    const doneId = repo.completePlannedAction(plannedId, { leadId, type: 'appel', date: '2026-09-25', result: 'Client rappelé', notes: 'Intéressé', authorId: fredId });
+    persist(); await wait(20);
+    check('« Fait » -> POST de l\'action réalisée liée', srv.received.some(r => r.method === 'POST' && r.path === '/api/actions' && (r.body as { id?: string; plannedActionId?: string }).id === doneId && (r.body as { plannedActionId?: string }).plannedActionId === plannedId));
+    check('« Fait » -> PUT status faite', srv.received.some(r => r.method === 'PUT' && (r.body as { status?: string }).status === 'faite'));
+
+    srv.received.length = 0;
+    repo.setNoNextAction(leadId, 'A acheté ailleurs', fredId);
+    persist(); await wait(20);
+    check('« Aucune » -> POST trace sans_suite + PATCH lead motif', srv.received.some(r => r.method === 'POST' && (r.body as { kind?: string }).kind === 'sans_suite')
+      && srv.received.some(r => r.method === 'PATCH' && (r.body as Lead).noNextActionReason === 'A acheté ailleurs'));
+    check('file vide', outboxSize(storage) === 0);
+  }
+
   section('Échec transitoire : op PRÉSERVÉE, cache INTACT, retry auto -> LIVRÉE');
   {
     const srv = makeServer(getEmptyState());

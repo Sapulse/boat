@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial } from '../data/types';
 import type { SyncInfo } from '../lib/repository';
+import type { PlanInput } from '../lib/plannedActions';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
 import type { BackupEnvelope, RestoreReport } from '../lib/backup';
 
@@ -32,6 +33,11 @@ export interface AppContextType {
   updateAction: (id: string, data: Partial<LeadAction>) => void;
   deleteAction: (id: string) => void;
   setNextAction: (id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string, nextActionEndTime?: string) => void;
+  // Lot 2 — actions programmées (voir CrmRepository). Branchées sur les écrans aux arrêts 2 et 3.
+  planNextAction: (leadId: string, input: PlanInput, authorId: string) => string;
+  reschedulePlannedAction: (plannedId: string, when: { date: string; time?: string; endTime?: string }, authorId: string) => void;
+  completePlannedAction: (plannedId: string, action: Omit<LeadAction, 'id'>) => string;
+  setNoNextAction: (leadId: string, reason: string, authorId: string) => void;
   addCommercial: (commercial: Omit<Commercial, 'id'>) => string;
   updateCommercial: (id: string, data: Partial<Commercial>) => void;
   toggleCommercial: (id: string) => void;

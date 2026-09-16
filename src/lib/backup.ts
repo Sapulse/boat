@@ -27,6 +27,8 @@ export interface RestoreReport {
   calendarEvents: number;
   goals: number;
   monthlyStats: number;
+  /** Lot 2 (facultatif : absent des réponses d'un serveur d'avant le lot 2). */
+  plannedActions?: number;
 }
 
 /** Construit l'enveloppe de sauvegarde à partir de l'état courant. */

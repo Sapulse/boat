@@ -117,7 +117,10 @@ export function getAlertLevel(lead: Lead): AlertLevel {
   const lastAction = lead.lastActionDate || lead.createdAt;
   const days = daysSince(lastAction);
 
-  if (lead.temperature === 'chaud' && !hasPlannedNextAction(lead)) return 'red';
+  // Lot 2, proposition A : « Aucune prochaine action » motivée retire la règle
+  // chaud-sans-action (le choix est explicite). Les alertes d'inactivité
+  // ci-dessous restent. Le motif expire dès qu'une action est programmée.
+  if (lead.temperature === 'chaud' && !hasPlannedNextAction(lead) && !lead.noNextActionReason) return 'red';
   // Action future planifiee -> pas d'alerte d'inactivite (seuils 7/14j),
   // SAUF lead chaud : les seuils restent actifs (exception metier).
   if (hasFutureNextAction(lead) && lead.temperature !== 'chaud') return 'none';
@@ -210,7 +213,9 @@ export function getLeadRisks(lead: Lead): RiskItem[] {
   // - echue (date passee) : planifiee mais depassee — warning jusqu'a 3 jours
   //   de retard, danger au-dela (meme seuil que "chaud inactif > 3j").
   if (!hasPlannedNextAction(lead)) {
-    risks.push({
+    // Lot 2, proposition A : « Aucune prochaine action » motivée -> pas de
+    // risque « aucune prochaine action » (choix explicite, pas un oubli).
+    if (!lead.noNextActionReason) risks.push({
       label: lead.nextActionType ? 'Prochaine action sans date' : 'Aucune prochaine action planifiée',
       severity: lead.temperature === 'chaud' ? 'danger' : 'warning',
     });

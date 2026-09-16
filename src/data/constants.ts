@@ -347,3 +347,22 @@ export const LOSS_REASONS = [
   'Ne répond plus',
   'Autre',
 ] as const;
+
+// Motifs « Aucune prochaine action » (lot 2, liste validée). Liste FERMÉE +
+// « Autre » (texte libre obligatoire) : agrégeable, comme LOSS_REASONS.
+export const NO_NEXT_ACTION_REASONS = [
+  'Client injoignable (plusieurs tentatives)',
+  'Projet abandonné / plus de projet',
+  'A acheté ailleurs',
+  'Budget insuffisant',
+  'Bateau demandé vendu / plus disponible',
+  'Demande hors cible (location, pièces, démarchage)',
+  "Doublon d'un autre lead",
+  'Le client doit revenir vers nous',
+  'Autre',
+] as const;
+
+export const PLANNED_ACTION_ROLES: { value: 'responsable' | 'participant'; label: string }[] = [
+  { value: 'responsable', label: 'Responsable' },
+  { value: 'participant', label: 'Participant' },
+];

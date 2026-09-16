@@ -39,7 +39,9 @@ export function countActions(
 ): number {
   const wanted = new Set<ActionType>(types);
   return actions.filter(
-    (a) => a.authorId === commercialId && wanted.has(a.type) && isInMonth(a.date, year, month),
+    // Lot 2 : seules les actions RÉALISÉES comptent — ni les traces de report,
+    // ni les « aucune prochaine action » (kind absent = réalisée, historique).
+    (a) => (a.kind ?? 'realisee') === 'realisee' && a.authorId === commercialId && wanted.has(a.type) && isInMonth(a.date, year, month),
   ).length;
 }
 

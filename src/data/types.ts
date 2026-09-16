@@ -68,6 +68,16 @@ export interface MessageTemplate {
   createdAt?: string;
 }
 
+/**
+ * Nature d'une ligne d'historique (lot 2). Absent = 'realisee' (les actions
+ * d'avant le lot 2).
+ *  - realisee : une action vraiment faite (appel, email, RDV…) — met à jour la
+ *    dernière action du lead et compte dans les objectifs ;
+ *  - report : trace « prévue le X, reportée au Y » — ni dernière action, ni objectifs ;
+ *  - sans_suite : « Aucune prochaine action — motif » — ni dernière action, ni objectifs.
+ */
+export type LeadActionKind = 'realisee' | 'report' | 'sans_suite';
+
 export interface LeadAction {
   id: string;
   leadId: string;
@@ -79,6 +89,48 @@ export interface LeadAction {
   newStatus?: LeadStatus;
   nextActionType?: ActionType;
   nextActionDate?: string;
+  kind?: LeadActionKind;
+  /** Action programmée que cette ligne a réalisée (« Fait » depuis l'agenda). */
+  plannedActionId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Actions programmées (lot 2) — la « prochaine action » devient une entité.
+// ---------------------------------------------------------------------------
+
+/**
+ * a_faire : programmée, pas encore faite (en retard si la date est passée) ;
+ * faite    : réalisée (reste visible, grisée, dans l'agenda) ;
+ * annulee  : remplacée par « Aucune prochaine action » ou effacée — jamais
+ *            supprimée (aucun DELETE), simplement plus « à faire ».
+ */
+export type PlannedActionStatus = 'a_faire' | 'faite' | 'annulee';
+export type PlannedActionRole = 'responsable' | 'participant';
+
+export interface PlannedActionPerson {
+  commercialId: string;
+  role: PlannedActionRole;
+}
+
+export interface PlannedAction {
+  id: string;
+  leadId: string;
+  type: ActionType;
+  /** Libellé libre quand type === 'autre' ; '' sinon. */
+  customLabel: string;
+  date: string;          // "YYYY-MM-DD"
+  time?: string;         // "HH:mm" — absent = toute la journée
+  endTime?: string;      // "HH:mm" — fin optionnelle
+  /** Date de la PREMIÈRE programmation, jamais modifiée (les reports vont à l'historique). */
+  originalDate: string;
+  note: string;
+  status: PlannedActionStatus;
+  /** Instant ISO de la réalisation (status 'faite'). */
+  doneAt?: string;
+  /** Ligne d'historique créée par la réalisation. */
+  doneActionId?: string;
+  /** Au moins un responsable ; participants facultatifs. Chaque personne voit l'action dans son agenda. */
+  people: PlannedActionPerson[];
 }
 
 export interface Lead {
@@ -116,6 +168,16 @@ export interface Lead {
   // Absente = action ponctuelle (occupe juste son creneau de debut). Champ
   // separe : on ne touche ni nextActionDate ni nextActionTime.
   nextActionEndTime?: string;
+  // LOT 2 : les quatre champs nextAction* ci-dessus sont désormais un RÉSUMÉ,
+  // recalculé depuis l'action programmée « à faire » du lead
+  // (lib/plannedActions.summarizeNextAction). Ils restent lus par les alertes,
+  // la colonne Prochaine action, le tableau de bord et les relances.
+  //
+  // « Aucune prochaine action » choisie explicitement (motif + instant ISO).
+  // Vidés dès qu'une action est programmée (le motif « expire »). Optionnels :
+  // absents des leads d'avant le lot 2 (= '').
+  noNextActionReason?: string;
+  noNextActionAt?: string;
   lastActionDate: string;
   lossReason: string;
   signedAt: string;
@@ -277,4 +339,8 @@ export interface AppState {
   // Objectifs par défaut de l'équipe (cibles communes). Absent des anciens states
   // -> hydrate en EMPTY_DEFAULT_GOAL (migration nulle, voir getInitialState).
   defaultGoal: DefaultGoal;
+  // Actions programmées (lot 2). Absent des anciens states et des sauvegardes
+  // d'avant le lot 2 -> hydraté en [] puis repris depuis les champs nextAction*
+  // des leads (lib/plannedActions.migrateLegacyNextActions, idempotent).
+  plannedActions: PlannedAction[];
 }

@@ -106,6 +106,7 @@ async function main() {
   const raw = createClient({ url: DB_URL });
   for (const stmt of migrationSql('_init_crm_schema').split(';').map(s => s.trim()).filter(Boolean)) await raw.execute(stmt);
   for (const ddl of INBOUND_EMAILS_DDL) await raw.execute(ddl);
+  await raw.executeMultiple(migrationSql('_lot2_planned_actions')); // lot 2 : colonnes + tables ajoutées
   await raw.execute("INSERT INTO commercials (id, name, active, createdAt, updatedAt) VALUES ('fred', 'Fred', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
   await raw.close();
 

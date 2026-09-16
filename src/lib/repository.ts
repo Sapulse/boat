@@ -6,7 +6,11 @@ import type {
 import type { Action } from '../context/appReducer';
 import { getInitialState as loadInitialState } from '../context/appReducer';
 import { saveState } from './storage';
-import { generateId } from './utils';
+import { generateId, toISODate } from './utils';
+import type { PlanInput } from './plannedActions';
+
+/** Ids d'une programmation (action programmée + éventuelle trace de report), générés côté client. */
+const newPlanIds = () => ({ plannedId: generateId(), reportEntryId: generateId() });
 import { LoginError } from './loginErrors';
 import { EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { createOutbox, OutboxFullError, type OutboxOp, type StorageLike } from './outbox';
@@ -78,6 +82,16 @@ export interface CrmRepository {
   deleteAction(id: string): void;
   setNextAction(id: string, nextActionType: ActionType | '', nextActionDate: string, nextActionTime?: string, nextActionEndTime?: string): void;
 
+  // — Actions programmées (lot 2) —
+  /** Programme LA prochaine action du lead (met à jour celle à faire s'il y en a une). Renvoie son id. */
+  planNextAction(leadId: string, input: PlanInput, authorId: string): string;
+  /** Change la date / l'heure d'une action à faire (glisser-déposer, « Reporter ») : trace report si la date change. */
+  reschedulePlannedAction(plannedId: string, when: { date: string; time?: string; endTime?: string }, authorId: string): void;
+  /** « Fait » : ajoute l'action réalisée à l'historique et marque l'action programmée faite. Renvoie l'id de la ligne d'historique. */
+  completePlannedAction(plannedId: string, action: Omit<LeadAction, 'id'>): string;
+  /** « Aucune prochaine action » : motif (déjà résolu pour « Autre »), trace sans suite, action à faire annulée. */
+  setNoNextAction(leadId: string, reason: string, authorId: string): void;
+
   // — Commerciaux (entrent dans la surface ; étaient en dispatch brut) —
   addCommercial(commercial: Omit<Commercial, 'id'>): string;
   updateCommercial(id: string, data: Partial<Commercial>): void;
@@ -119,11 +133,26 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     deleteLead: (id) => dispatch({ type: 'DELETE_LEAD', payload: id }),
     updateLeadStatus: (id, status, extras) => dispatch({ type: 'UPDATE_LEAD_STATUS', payload: { id, status, ...extras } }),
 
-    addAction: (action) => dispatch({ type: 'ADD_ACTION', payload: { ...action, id: generateId() } }),
+    addAction: (action) => dispatch({ type: 'ADD_ACTION', payload: { ...action, id: generateId() }, plan: newPlanIds() }),
     updateAction: (id, data) => dispatch({ type: 'UPDATE_ACTION', payload: { id, data } }),
     deleteAction: (id) => dispatch({ type: 'DELETE_ACTION', payload: id }),
     setNextAction: (id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime) =>
-      dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime } }),
+      dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime }, plan: newPlanIds() }),
+
+    planNextAction: (leadId, input, authorId) => {
+      const ids = newPlanIds();
+      dispatch({ type: 'PLAN_NEXT_ACTION', payload: { leadId, input, authorId, today: toISODate(new Date()), ids } });
+      return ids.plannedId; // si une action était à faire, c'est elle qui est mise à jour (même id côté state)
+    },
+    reschedulePlannedAction: (plannedId, when, authorId) =>
+      dispatch({ type: 'RESCHEDULE_PLANNED_ACTION', payload: { plannedId, ...when, authorId, today: toISODate(new Date()), reportEntryId: generateId() } }),
+    completePlannedAction: (plannedId, action) => {
+      const id = generateId();
+      dispatch({ type: 'COMPLETE_PLANNED_ACTION', payload: { plannedId, action: { ...action, id }, doneAt: new Date().toISOString() } });
+      return id;
+    },
+    setNoNextAction: (leadId, reason, authorId) =>
+      dispatch({ type: 'SET_NO_NEXT_ACTION', payload: { leadId, reason, authorId, today: toISODate(new Date()), at: new Date().toISOString(), entryId: generateId() } }),
 
     addCommercial: (commercial) => {
       const id = generateId();
@@ -182,6 +211,7 @@ export function getEmptyState(): AppState {
   return {
     leads: [], actions: [], commercials: [], monthlyStats: [],
     templates: [], calendarEvents: [], goals: [], defaultGoal: EMPTY_DEFAULT_GOAL,
+    plannedActions: [],
   };
 }
 
@@ -214,7 +244,12 @@ export interface RepositorySync {
 type EntityName = 'leads' | 'actions' | 'commercials' | 'templates' | 'calendar-events';
 type Intent =
   | { kind: 'create' | 'update' | 'delete'; entity: EntityName; id: string }
-  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' };
+  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' }
+  // Lot 2 : les actions programmées d'UN lead, envoyées en PUT (upsert
+  // idempotent). Le repository ne sait pas si la programmation a créé ou mis à
+  // jour l'action à faire (c'est le reducer qui tranche) : on renvoie l'état
+  // post-reducer de toutes celles du lead (quelques lignes au plus).
+  | { kind: 'lead-planned'; entity: 'planned-actions'; leadId: string };
 
 const COLLECTION: Record<EntityName, (s: AppState) => ReadonlyArray<{ id: string }>> = {
   leads: s => s.leads,
@@ -238,9 +273,17 @@ function entityLabel(entity: EntityName, snapshot: Record<string, unknown> | und
 // -> delete ; create+delete -> annulées ; batchs dédupliqués), ordre d'origine préservé.
 function mergeIntents(intents: Intent[]): Intent[] {
   const merged: Intent[] = [];
+  const idOf = (i: Intent) => ('id' in i ? i.id : undefined);
   const idxOf = (i: Intent) => merged.findIndex(m =>
-    m.entity === i.entity && (m.kind === 'batch' || i.kind === 'batch' ? i.kind === 'batch' && m.kind === 'batch' : m.id === i.id));
+    m.entity === i.entity && (m.kind === 'batch' || i.kind === 'batch' ? i.kind === 'batch' && m.kind === 'batch' : idOf(m) === idOf(i)));
   for (const intent of intents) {
+    if (intent.kind === 'lead-planned') {
+      // Dédoublonné par lead ; placé APRÈS les intentions du lead (FK : lead avant action programmée).
+      const dup = merged.findIndex(m => m.kind === 'lead-planned' && m.leadId === intent.leadId);
+      if (dup !== -1) merged.splice(dup, 1);
+      merged.push(intent);
+      continue;
+    }
     const at = idxOf(intent);
     if (at === -1) { merged.push(intent); continue; }
     const prev = merged[at];
@@ -314,9 +357,20 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   // --- Intentions (captées par les mutations, figées au prochain persist) ---
   let intents: Intent[] = [];
   const remember = (i: Intent) => { intents.push(i); };
+  // Lot 2 : une programmation peut produire une trace de report (ligne
+  // d'historique) et touche les actions programmées du lead. L'intention sur la
+  // trace se résout à null si le reducer ne l'a pas créée (date inchangée).
+  const rememberPlanning = (leadId: string, plan: { reportEntryId: string }) => {
+    remember({ kind: 'create', entity: 'actions', id: plan.reportEntryId });
+    remember({ kind: 'lead-planned', entity: 'planned-actions', leadId });
+  };
+  // Dernier état connu (post-reducer) — sert à retrouver le lead d'une action programmée.
+  let lastState: AppState | null = null;
+  const leadOfPlanned = (plannedId: string) => lastState?.plannedActions?.find(p => p.id === plannedId)?.leadId;
 
   // Fige une intention en opération concrète depuis l'état POST-REDUCER.
   function resolveIntent(intent: Intent, state: AppState): { op: Parameters<typeof box.enqueue>[0] } | null {
+    if (intent.kind === 'lead-planned') return null; // traité dans persist (plusieurs ops)
     if (intent.kind === 'batch') {
       const body = intent.entity === 'goals' ? state.goals
         : intent.entity === 'monthly-stats' ? state.monthlyStats
@@ -336,11 +390,21 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   }
 
   const persist = (state: AppState): void => {
+    lastState = state;
     if (intents.length === 0) return; // SET_STATE (hydratation/réalignement) : aucune intention -> aucune op
     const merged = mergeIntents(intents);
     intents = [];
     try {
       for (const intent of merged) {
+        if (intent.kind === 'lead-planned') {
+          for (const pa of (state.plannedActions ?? []).filter(p => p.leadId === intent.leadId)) {
+            box.enqueue({
+              method: 'PUT', path: `/planned-actions/${pa.id}`, body: pa, entity: 'planned-actions', entityId: pa.id,
+              label: `Action programmée ${pa.type} du ${pa.date} — enregistrement`,
+            });
+          }
+          continue;
+        }
         const resolved = resolveIntent(intent, state);
         if (resolved) box.enqueue(resolved.op);
       }
@@ -590,10 +654,22 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     logout,
 
     addLead: (lead) => { const id = base.addLead(lead); remember({ kind: 'create', entity: 'leads', id }); return id; },
-    updateLead: (id, data) => { base.updateLead(id, data); remember({ kind: 'update', entity: 'leads', id }); },
+    updateLead: (id, data) => {
+      // Lot 2 : un patch portant nextAction* passe par la programmation (reducer)
+      // -> actions programmées du lead + éventuelle trace de report à envoyer.
+      const plan = newPlanIds();
+      dispatch({ type: 'UPDATE_LEAD', payload: { id, data } });
+      remember({ kind: 'update', entity: 'leads', id });
+      if (data.nextActionType !== undefined || data.nextActionDate !== undefined) rememberPlanning(id, plan);
+    },
     deleteLead: (id) => { base.deleteLead(id); remember({ kind: 'delete', entity: 'leads', id }); },
     updateLeadStatus: (id, status, extras) => { base.updateLeadStatus(id, status, extras); remember({ kind: 'update', entity: 'leads', id }); },
-    setNextAction: (id, t, d, time, end) => { base.setNextAction(id, t, d, time, end); remember({ kind: 'update', entity: 'leads', id }); },
+    setNextAction: (id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime) => {
+      const plan = newPlanIds();
+      dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime }, plan });
+      remember({ kind: 'update', entity: 'leads', id });
+      rememberPlanning(id, plan);
+    },
 
     // ADD_ACTION a un SIDE-EFFECT sur le lead (lastActionDate, statut, prochaine
     // action) : on capte les DEUX intentions — les payloads seront figés
@@ -601,9 +677,41 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     // renvoie pas) : même dispatch, même payload qu'en base.
     addAction: (action) => {
       const id = generateId();
-      dispatch({ type: 'ADD_ACTION', payload: { ...action, id } });
+      const plan = newPlanIds();
+      dispatch({ type: 'ADD_ACTION', payload: { ...action, id }, plan });
       remember({ kind: 'create', entity: 'actions', id });
       remember({ kind: 'update', entity: 'leads', id: action.leadId });
+      if (action.nextActionDate) rememberPlanning(action.leadId, plan);
+    },
+
+    // --- Lot 2 : actions programmées (dispatch optimiste + intentions) ---
+    planNextAction: (leadId, input, authorId) => {
+      const ids = newPlanIds();
+      dispatch({ type: 'PLAN_NEXT_ACTION', payload: { leadId, input, authorId, today: toISODate(new Date()), ids } });
+      remember({ kind: 'update', entity: 'leads', id: leadId });
+      rememberPlanning(leadId, ids);
+      return ids.plannedId;
+    },
+    reschedulePlannedAction: (plannedId, when, authorId) => {
+      const reportEntryId = generateId();
+      const leadId = leadOfPlanned(plannedId);
+      dispatch({ type: 'RESCHEDULE_PLANNED_ACTION', payload: { plannedId, ...when, authorId, today: toISODate(new Date()), reportEntryId } });
+      if (leadId) { remember({ kind: 'update', entity: 'leads', id: leadId }); rememberPlanning(leadId, { reportEntryId }); }
+    },
+    completePlannedAction: (plannedId, action) => {
+      const id = generateId();
+      dispatch({ type: 'COMPLETE_PLANNED_ACTION', payload: { plannedId, action: { ...action, id }, doneAt: new Date().toISOString() } });
+      remember({ kind: 'create', entity: 'actions', id });
+      remember({ kind: 'update', entity: 'leads', id: action.leadId });
+      remember({ kind: 'lead-planned', entity: 'planned-actions', leadId: action.leadId });
+      return id;
+    },
+    setNoNextAction: (leadId, reason, authorId) => {
+      const entryId = generateId();
+      dispatch({ type: 'SET_NO_NEXT_ACTION', payload: { leadId, reason, authorId, today: toISODate(new Date()), at: new Date().toISOString(), entryId } });
+      remember({ kind: 'create', entity: 'actions', id: entryId });
+      remember({ kind: 'update', entity: 'leads', id: leadId });
+      remember({ kind: 'lead-planned', entity: 'planned-actions', leadId });
     },
     updateAction: (id, data) => { base.updateAction(id, data); remember({ kind: 'update', entity: 'actions', id }); },
     deleteAction: (id) => { base.deleteAction(id); remember({ kind: 'delete', entity: 'actions', id }); },

@@ -33,7 +33,7 @@ const lead = (id: string): Lead => ({
 
 const state = (ids: string[]): AppState => ({
   leads: ids.map(lead), actions: [], commercials: [], monthlyStats: [],
-  templates: [], calendarEvents: [], goals: [],
+  templates: [], calendarEvents: [], goals: [], plannedActions: [],
   defaultGoal: {
     prospectsCreated: null, coldCalls: null, followups: null,
     meetings: null, revenue: null, conversionRate: null,

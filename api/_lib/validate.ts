@@ -29,6 +29,9 @@ const BOAT_TYPES = ['Moteur', 'Voile', 'Semi-rigide'] as const;
 const BOAT_CONDITIONS = ['Neuf', 'BO', 'DV'] as const;
 const CALENDAR_CATEGORIES = ['reunion', 'conge', 'deplacement', 'perso', 'autre'] as const;
 const TEMPLATE_TYPES = ['email', 'sms', 'whatsapp'] as const;
+const ACTION_KINDS = ['realisee', 'report', 'sans_suite'] as const;
+const PLANNED_STATUSES = ['a_faire', 'faite', 'annulee'] as const;
+const PLANNED_ROLES = ['responsable', 'participant'] as const;
 
 // --- briques communes (bornes larges mais finies) ---
 const SHORT_MAX = 2_000;    // champs "courts" : noms, emails, sources, titres…
@@ -83,6 +86,9 @@ const leadShape = {
   signedAt: dateOrEmpty,
   lostAt: dateOrEmpty,
   reportedAt: dateOrEmpty,
+  // Lot 2 : facultatifs (absents des leads et sauvegardes d'avant le lot 2).
+  noNextActionReason: shortStr.optional(),
+  noNextActionAt: shortStr.optional(),
 };
 const LeadCreate = z.object(leadShape);
 const LeadPatch = z.object(leadShape).omit({ id: true }).partial();
@@ -109,6 +115,9 @@ const actionShape = {
   newStatus: z.enum(LEAD_STATUSES).nullish(),
   nextActionType: z.enum(ACTION_TYPES).nullish(),
   nextActionDate: dateOrEmpty.nullish(),
+  // Lot 2 : facultatifs (absent = 'realisee', valeur par défaut de la colonne).
+  kind: z.enum(ACTION_KINDS).optional(),
+  plannedActionId: id.nullish(),
 };
 const ActionCreate = z.object(actionShape);
 const ActionPatch = z.object(actionShape).omit({ id: true }).partial();
@@ -121,6 +130,26 @@ const commercialShape = {
   signature: longStr.nullish(),
 };
 const CommercialCreate = z.object(commercialShape);
+
+// Lot 2 — action programmée, envoyée COMPLÈTE (PUT = upsert idempotent) avec
+// ses personnes. Au moins un responsable ; chaque personne une seule fois.
+const plannedPersonShape = z.object({ commercialId: id, role: z.enum(PLANNED_ROLES) });
+const PlannedActionSchema = z.object({
+  id,
+  leadId: id,
+  type: z.enum(ACTION_TYPES),
+  customLabel: shortStr,
+  date: dateStr,
+  time: hhmm.nullish(),
+  endTime: hhmm.nullish(),
+  originalDate: dateStr,
+  note: longStr,
+  status: z.enum(PLANNED_STATUSES),
+  doneAt: shortStr.nullish(),
+  doneActionId: id.nullish(),
+  people: z.array(plannedPersonShape).min(1, 'au moins une personne').max(50),
+}).refine(p => p.people.some(x => x.role === 'responsable'), { message: 'au moins un responsable', path: ['people'] })
+  .refine(p => new Set(p.people.map(x => x.commercialId)).size === p.people.length, { message: 'personne en double', path: ['people'] });
 const CommercialPatch = z.object(commercialShape).omit({ id: true }).partial();
 
 const templateShape = {
@@ -218,6 +247,7 @@ export const parseGoalsBatch = (d: unknown) => parse(GoalsBatch, d, 'objectifs')
 export const parseMonthlyStatsBatch = (d: unknown) => parse(MonthlyStatsBatch, d, 'stats mensuelles');
 export const parseDefaultGoal = (d: unknown) => parse(DefaultGoalSchema, d, 'objectifs par défaut');
 export const parseImportPayload = (d: unknown) => parse(ImportPayloadSchema, d, 'import');
+export const parsePlannedActionUpsert = (d: unknown) => parse(PlannedActionSchema, d, 'action programmée');
 
 // Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
 // Enveloppe versionnée { format, version, data: AppState } : format/version stricts
@@ -237,6 +267,8 @@ const RestoreEnvelopeSchema = z.object({
     goals: z.array(Goal).max(RESTORE_MAX),
     monthlyStats: z.array(MonthlyStat).max(RESTORE_MAX),
     defaultGoal: DefaultGoalSchema,
+    // Lot 2 : absent des sauvegardes d'avant le lot 2 -> [] (restaurables telles quelles).
+    plannedActions: z.array(PlannedActionSchema).max(RESTORE_MAX).optional().default([]),
   }),
 });
 export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');

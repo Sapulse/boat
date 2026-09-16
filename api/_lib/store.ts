@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
-  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric,
+  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,11 @@ import {
   parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
   parseCalendarCreate, parseCalendarPatch,
   parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
+  parsePlannedActionUpsert,
 } from './validate.js';
+// Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
+// des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
+import { migrateLegacyNextActions } from '../../src/lib/plannedActions.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -73,6 +77,40 @@ function toLead(r: LeadRow): Lead {
     signedAt: r.signedAt as string,
     lostAt: r.lostAt as string,
     reportedAt: r.reportedAt as string,
+    noNextActionReason: (r.noNextActionReason as string | undefined) ?? '',
+    noNextActionAt: (r.noNextActionAt as string | undefined) ?? '',
+  };
+}
+
+// --- PlannedAction (lot 2) --- personnes ACTIVES seulement (retrait = active false).
+type PlannedRow = Record<string, unknown> & { people?: Record<string, unknown>[] };
+function toPlannedAction(r: PlannedRow): PlannedAction {
+  return {
+    id: r.id as string,
+    leadId: r.leadId as string,
+    type: r.type as PlannedAction['type'],
+    customLabel: r.customLabel as string,
+    date: r.date as string,
+    time: undef(r.time as string | null),
+    endTime: undef(r.endTime as string | null),
+    originalDate: r.originalDate as string,
+    note: r.note as string,
+    status: r.status as PlannedAction['status'],
+    doneAt: undef(r.doneAt as string | null),
+    doneActionId: undef(r.doneActionId as string | null),
+    people: (r.people ?? [])
+      .filter(p => p.active !== false)
+      .map(p => ({ commercialId: p.commercialId as string, role: p.role as 'responsable' | 'participant' }))
+      .sort((a, b) => (a.role === b.role ? a.commercialId.localeCompare(b.commercialId) : a.role === 'responsable' ? -1 : 1)),
+  };
+}
+
+/** Colonnes d'une action programmée (sans id ni personnes). */
+function plannedColumns(p: PlannedAction) {
+  return {
+    leadId: p.leadId, type: p.type, customLabel: p.customLabel, date: p.date,
+    time: p.time ?? null, endTime: p.endTime ?? null, originalDate: p.originalDate, note: p.note,
+    status: p.status, doneAt: p.doneAt ?? null, doneActionId: p.doneActionId ?? null,
   };
 }
 
@@ -89,6 +127,8 @@ function toAction(r: Record<string, unknown>): LeadAction {
     newStatus: undef(r.newStatus as LeadAction['newStatus'] | null) as LeadAction['newStatus'],
     nextActionType: undef(r.nextActionType as LeadAction['nextActionType'] | null) as LeadAction['nextActionType'],
     nextActionDate: undef(r.nextActionDate as string | null),
+    kind: ((r.kind as LeadAction['kind'] | undefined) ?? 'realisee'),
+    plannedActionId: undef(r.plannedActionId as string | null),
   };
 }
 
@@ -196,7 +236,7 @@ function toDefaultGoal(r: Record<string, unknown>): DefaultGoal {
 // Hydratation : AppState complet en une lecture (couvre getInitialState du repo).
 // ---------------------------------------------------------------------------
 export async function getState(prisma: PrismaClient): Promise<AppState> {
-  const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg] = await Promise.all([
+  const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
     prisma.lead.findMany(),
     prisma.leadAction.findMany(),
     prisma.commercial.findMany(),
@@ -208,6 +248,7 @@ export async function getState(prisma: PrismaClient): Promise<AppState> {
     prisma.calendarEvent.findMany(),
     prisma.commercialGoal.findMany(),
     prisma.defaultGoal.findUnique({ where: { id: 1 } }),
+    prisma.plannedAction.findMany({ include: { people: true } }),
   ]);
   return {
     leads: leads.map(toLead),
@@ -218,7 +259,38 @@ export async function getState(prisma: PrismaClient): Promise<AppState> {
     calendarEvents: calendarEvents.map(toCalendarEvent),
     goals: goals.map(toGoal),
     defaultGoal: dg ? toDefaultGoal(dg as Record<string, unknown>) : EMPTY_DEFAULT_GOAL,
+    plannedActions: planned.map(p => toPlannedAction(p as unknown as PlannedRow)),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Actions programmées (lot 2) — PUT /api/planned-actions/:id = UPSERT complet,
+// idempotent (le client renvoie l'état post-reducer). Personnes : upsert par
+// (action, commercial) ; une personne absente du corps passe active=false
+// (aucun DELETE). Une seule transaction.
+// ---------------------------------------------------------------------------
+export async function upsertPlannedAction(prisma: PrismaClient, id: string, body: unknown): Promise<PlannedAction> {
+  const p = parsePlannedActionUpsert(body) as unknown as PlannedAction;
+  if (p.id !== id) throw new HttpError(400, 'action programmée invalide — id du corps différent de celui du chemin');
+  const cols = plannedColumns(p);
+  const row = await prisma.$transaction(async (tx) => {
+    const existing = await tx.plannedAction.findUnique({ where: { id } });
+    if (existing && existing.leadId !== p.leadId) throw new HttpError(400, 'action programmée invalide — le lead ne peut pas changer');
+    await tx.plannedAction.upsert({ where: { id }, create: { id, ...cols }, update: cols });
+    for (const person of p.people) {
+      await tx.plannedActionPerson.upsert({
+        where: { plannedActionId_commercialId: { plannedActionId: id, commercialId: person.commercialId } },
+        create: { id: `${id}:${person.commercialId}`, plannedActionId: id, commercialId: person.commercialId, role: person.role, active: true },
+        update: { role: person.role, active: true },
+      });
+    }
+    await tx.plannedActionPerson.updateMany({
+      where: { plannedActionId: id, commercialId: { notIn: p.people.map(x => x.commercialId) }, active: true },
+      data: { active: false },
+    });
+    return tx.plannedAction.findUniqueOrThrow({ where: { id }, include: { people: true } });
+  });
+  return toPlannedAction(row as unknown as PlannedRow);
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +496,7 @@ export interface RestorePayload {
 export interface RestoreReport {
   commercials: number; leads: number; actions: number;
   templates: number; calendarEvents: number; goals: number; monthlyStats: number;
+  plannedActions: number;
 }
 
 export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
@@ -431,8 +504,19 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
   // Les objets renvoyés sont nettoyés (clés inconnues + colonnes d'audit strippées).
   const { data: d } = parseRestorePayload(payload) as unknown as { data: AppState };
 
+  // Lot 2 : une sauvegarde d'AVANT le lot 2 n'a pas de `plannedActions`. Ses
+  // prochaines actions (champs du lead) sont alors reprises exactement comme par
+  // le script de migration — sinon elles disparaîtraient de l'agenda.
+  const rawPlanned = (payload as { data?: { plannedActions?: unknown } } | null)?.data?.plannedActions;
+  const planned: PlannedAction[] = rawPlanned === undefined ? migrateLegacyNextActions(d.leads, []) : d.plannedActions;
+  const people = planned.flatMap(p => p.people.map(x => ({
+    id: `${p.id}:${x.commercialId}`, plannedActionId: p.id, commercialId: x.commercialId, role: x.role, active: true,
+  })));
+
   await prisma.$transaction([
     // (2) Purge FK-safe : enfants d'abord.
+    prisma.plannedActionPerson.deleteMany(),
+    prisma.plannedAction.deleteMany(),
     prisma.leadAction.deleteMany(),
     prisma.commercialGoal.deleteMany(),
     prisma.calendarEvent.deleteMany(),
@@ -445,6 +529,8 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     ...(d.commercials.length ? [prisma.commercial.createMany({ data: d.commercials })] : []),
     ...(d.leads.length ? [prisma.lead.createMany({ data: d.leads })] : []),
     ...(d.actions.length ? [prisma.leadAction.createMany({ data: d.actions })] : []),
+    ...(planned.length ? [prisma.plannedAction.createMany({ data: planned.map(p => ({ id: p.id, ...plannedColumns(p) })) })] : []),
+    ...(people.length ? [prisma.plannedActionPerson.createMany({ data: people })] : []),
     ...(d.templates.length ? [prisma.messageTemplate.createMany({ data: d.templates })] : []),
     ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
     ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
@@ -456,6 +542,7 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     commercials: d.commercials.length, leads: d.leads.length, actions: d.actions.length,
     templates: d.templates.length, calendarEvents: d.calendarEvents.length,
     goals: d.goals.length, monthlyStats: d.monthlyStats.length,
+    plannedActions: planned.length,
   };
 }
 
