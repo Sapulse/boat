@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, FlaskConical, Inbox, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, Check, FlaskConical, Inbox, Info, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
 import { useInboundDemo } from '../context/useInboundDemo';
@@ -8,7 +8,7 @@ import { findDuplicateLeads } from '../lib/duplicateLeads';
 import {
   sortInboundByScore, scoreLevel, SCORE_LEVELS,
   inboundDisplayName, formatReceivedShort, formatReceivedAge, scoreReasonSign,
-  shouldOfferReopen, REOPEN_TARGET_STATUS,
+  shouldOfferReopen, shouldSuggestNewLead, REOPEN_TARGET_STATUS,
 } from '../lib/inbound';
 import { cn, formatDate } from '../lib/utils';
 import { getStatusLabel } from '../data/constants';
@@ -418,6 +418,7 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
   // peut devenir obsolète — on ne rattache jamais à un lead qui n'est plus proposé.
   const [attachPick, setAttachPick] = useState('');
   const attachId = duplicates.some(l => l.id === attachPick) ? attachPick : (duplicates[0]?.id ?? '');
+  const attachTarget = duplicates.find(l => l.id === attachId);
   const setAttachId = setAttachPick;
 
   const wants = [x.boatInterest, x.brand].filter(Boolean).join(' · ');
@@ -494,6 +495,17 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
                 Ajoute cette demande à l'historique du lead. Aucun nouveau lead n'est créé.
               </span>
             </div>
+            {/* Lead choisi SIGNÉ : aide AVANT le geste, jamais de blocage. Un
+                client signé qui revient = presque toujours un nouveau projet. */}
+            {attachTarget && shouldSuggestNewLead(attachTarget.status) && (
+              <p role="note" className="flex items-start gap-1.5 rounded-md bg-white/70 border border-amber-200 px-2.5 py-2 text-xs text-amber-900">
+                <Info className="w-4 h-4 shrink-0 mt-px" />
+                <span>
+                  Ce client a déjà signé. S'il s'agit d'un nouveau projet, acceptez plutôt la demande
+                  comme nouveau lead.
+                </span>
+              </p>
+            )}
           </div>
         </div>
       )}

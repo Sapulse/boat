@@ -203,8 +203,14 @@ export function scoreReasonSign(reason: string): 'positif' | 'negatif' | 'inconn
  *
  * Décision d'équipe (retour terrain 2026-09) : le système ne modifie RIEN
  * automatiquement. Il PROPOSE de rouvrir ; seul le clic du commercial agit.
+ *
+ * SIGNÉ volontairement ABSENT : un client signé qui revient porte presque
+ * toujours un NOUVEAU projet, pas une vente annulée. Le rouvrir effacerait
+ * `signedAt` (statusMilestoneDates) et fausserait les chiffres de ventes. On
+ * l'oriente plutôt, AVANT le rattachement, vers un nouveau lead
+ * (cf. shouldSuggestNewLead).
  */
-export const REOPENABLE_LEAD_STATUSES: readonly LeadStatus[] = ['perdu', 'reporte', 'signe'];
+export const REOPENABLE_LEAD_STATUSES: readonly LeadStatus[] = ['perdu', 'reporte'];
 
 /** Statut posé par « Rouvrir le lead » — un changement de statut ordinaire. */
 export const REOPEN_TARGET_STATUS: LeadStatus = 'a_contacter';
@@ -212,4 +218,13 @@ export const REOPEN_TARGET_STATUS: LeadStatus = 'a_contacter';
 /** Faut-il proposer de rouvrir ce lead après un rattachement ? */
 export function shouldOfferReopen(status: LeadStatus): boolean {
   return REOPENABLE_LEAD_STATUSES.includes(status);
+}
+
+/**
+ * Faut-il conseiller, AVANT de rattacher, d'accepter plutôt la demande comme
+ * nouveau lead ? Oui pour un client déjà SIGNÉ (nouveau projet probable). Simple
+ * aide : Rattacher et Accepter restent tous deux disponibles.
+ */
+export function shouldSuggestNewLead(status: LeadStatus): boolean {
+  return status === 'signe';
 }

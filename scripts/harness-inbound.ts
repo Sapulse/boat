@@ -10,7 +10,7 @@
 import {
   scoreLevel, sortInboundByScore, buildLeadFromInbound,
   inboundDisplayName, parseReceivedAt, formatReceivedAge, formatReceivedShort, scoreReasonSign,
-  shouldOfferReopen, REOPEN_TARGET_STATUS, REOPENABLE_LEAD_STATUSES,
+  shouldOfferReopen, shouldSuggestNewLead, REOPEN_TARGET_STATUS, REOPENABLE_LEAD_STATUSES,
 } from '../src/lib/inbound';
 import { LEAD_STATUSES } from '../src/data/constants';
 import { isLeadActive } from '../src/lib/utils';
@@ -314,13 +314,21 @@ function main() {
 
   section('Rattachement à un lead clos : PROPOSER de rouvrir, jamais le faire');
   {
-    check('perdu / reporté / signé -> proposition',
-      shouldOfferReopen('perdu') && shouldOfferReopen('reporte') && shouldOfferReopen('signe'));
-    // Balayage de TOUS les statuts connus : seuls les trois clos proposent. Un
+    check('perdu / reporté -> proposition',
+      shouldOfferReopen('perdu') && shouldOfferReopen('reporte'));
+    // SIGNÉ : jamais de « Rouvrir » — effacerait signedAt et fausserait les
+    // chiffres de ventes. Un client signé qui revient = nouveau projet.
+    check('signé -> AUCUNE proposition de rouvrir', !shouldOfferReopen('signe'));
+    // Balayage de TOUS les statuts connus : seuls perdu et reporté proposent. Un
     // statut ajouté plus tard ne déclenche rien tant qu'on ne l'a pas décidé.
     const offering = LEAD_STATUSES.map(s => s.value).filter(shouldOfferReopen).sort();
     check('aucun autre statut ne propose de rouvrir',
-      JSON.stringify(offering) === JSON.stringify(['perdu', 'reporte', 'signe']), offering.join(','));
+      JSON.stringify(offering) === JSON.stringify(['perdu', 'reporte']), offering.join(','));
+    const suggesting = LEAD_STATUSES.map(s => s.value).filter(shouldSuggestNewLead);
+    check('aide « nouveau projet » : signé et SEULEMENT signé',
+      JSON.stringify(suggesting) === JSON.stringify(['signe']), suggesting.join(','));
+    check('aucun statut ne cumule proposition de réouverture ET aide nouveau lead',
+      LEAD_STATUSES.every(s => !(shouldOfferReopen(s.value) && shouldSuggestNewLead(s.value))));
     check('chaque statut « rouvrable » est bien HORS des statuts actifs',
       REOPENABLE_LEAD_STATUSES.every(s => !isLeadActive(s)));
     check('rouvrir -> « À contacter »', REOPEN_TARGET_STATUS === 'a_contacter');
