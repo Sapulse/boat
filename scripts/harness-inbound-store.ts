@@ -11,7 +11,10 @@
  *  - reject ; validations (corps invalide 400, id inconnu 404, commercial
  *    inconnu 400) ; computeSinceFloor (env valide/invalide/absente) ;
  *  - ATTACH (retour terrain) : aucun lead créé, une action 'note' datée du jour
- *    de réception, lead remis en chaud MAIS `lastActionDate` intacte ;
+ *    de réception, lead cible NON modifié (`lastActionDate` intacte) ;
+ *  - « TRAITÉS » PAGINÉS (étape B) : tout l'historique atteignable au-delà des
+ *    50, sans doublon entre pages, filtre + recherche + comptes, rejet ancien
+ *    remis en file ;
  *  - REOPEN : réversibilité du seul rejet — accepté et rattaché sont refusés
  *    parce qu'ils ont créé des données que ce module ne défait jamais ;
  *  - purge de rétention RGPD (le seul DELETE du module).
@@ -22,7 +25,7 @@ import { createClient } from '@libsql/client';
 import { readFileSync, rmSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
-  collectInbound, listInbound, patchInbound, computeSinceFloor,
+  collectInbound, listInbound, listProcessedInbound, patchInbound, computeSinceFloor,
   listPurgeableInbound, purgeRejectedInbound, inboundRetentionCutoff, INBOUND_RETENTION_DAYS,
 } from '../api/_lib/inboundStore';
 import { createLead, createCommercial } from '../api/_lib/store';
@@ -382,6 +385,72 @@ async function main() {
     const cutoff = inboundRetentionCutoff(new Date('2026-07-30T12:00:00Z'));
     check(`inboundRetentionCutoff = J-${INBOUND_RETENTION_DAYS}`,
       cutoff.toISOString().slice(0, 10) === '2026-05-01', cutoff.toISOString());
+  }
+
+  section('« Traités » paginés : TOUT l\'historique est atteignable (étape B)');
+  {
+    // 70 rejets de plus : au-delà des 50 que listInbound renvoie. Deux formats de
+    // `updatedAt`, comme en prod : CURRENT_TIMESTAMP (« AAAA-MM-JJ HH:MM:SS »,
+    // rejets automatiques de la collecte) et l'ISO écrit par Prisma.
+    for (let i = 0; i < 70; i++) {
+      const id = `old-${String(i).padStart(2, '0')}`;
+      const updatedAt = i % 5 === 0 ? `2026-06-${String(1 + (i % 28)).padStart(2, '0')} 08:00:00` : `2026-06-${String(1 + (i % 28)).padStart(2, '0')}T09:00:00.000+00:00`;
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO inbound_emails (id, graphId, internetMessageId, receivedAt, fromAddress, subject, excerpt, source, sourceLabel, leadSource, extracted, score, scoreReasons, status, updatedAt)
+         VALUES (?, ?, ?, '2026-06-01T08:00:00Z', 'noreply@leboncoin.fr', ?, 'x', 'leboncoin', 'Leboncoin', 'LBC', ?, 70, '[]', 'rejete', ?)`,
+        id, `g-${id}`, `<${id}@hist>`, `Nouveau message pour "Bateau ${i}"`,
+        JSON.stringify({ firstName: i === 42 ? 'Hélène' : 'Prospect', lastName: `N${i}`, email: `p${i}@x.fr`, phone: i === 42 ? '06 99 88 77 66' : '', boatInterest: `Bateau ${i}`, brand: '' }),
+        updatedAt,
+      );
+    }
+    const totalTraites = await prisma.inboundEmail.count({ where: { status: { in: ['accepte', 'rejete', 'rattache'] } } });
+    check('plus de 50 traités en base (sinon le test ne prouve rien)', totalTraites > 50, String(totalTraites));
+    check('listInbound plafonne toujours à 50 traités (inchangé)',
+      (await listInbound(prisma)).filter(m => m.status !== 'a_traiter').length === 50);
+
+    // Parcours complet par « Charger plus » : chaque ligne une fois, aucune perdue.
+    const seen: string[] = [];
+    let offset: number | undefined = 0;
+    let pages = 0;
+    let first: Awaited<ReturnType<typeof listProcessedInbound>> | null = null;
+    while (offset !== undefined && pages < 20) {
+      const p = await listProcessedInbound(prisma, { status: 'tous', q: '', offset, limit: 25 });
+      first ??= p;
+      seen.push(...p.items.map(m => m.id));
+      offset = p.nextOffset;
+      pages++;
+    }
+    check('toutes les pages parcourues atteignent TOUT l\'historique', seen.length === totalTraites, `${seen.length}/${totalTraites}`);
+    check('aucun doublon entre pages', new Set(seen).size === seen.length);
+    check(`${Math.ceil(totalTraites / 25)} pages, la dernière sans nextOffset`, pages === Math.ceil(totalTraites / 25), String(pages));
+    check('total et compte « tous » = nombre réel', first!.total === totalTraites && first!.counts.tous === totalTraites);
+    check('aucun « à traiter » dans les traités', seen.every(id => !id.startsWith('ib-pending')) &&
+      (await prisma.inboundEmail.findMany({ where: { id: { in: seen }, status: 'a_traiter' } })).length === 0);
+    check('page complète : extrait et date de traitement présents', first!.items.every(m => typeof m.excerpt === 'string' && !!m.processedAt));
+    check('le plus ancien (hors des 50) est bien atteint', seen.includes('old-00'));
+
+    const rej = await listProcessedInbound(prisma, { status: 'rejete', q: '', offset: 0, limit: 100 });
+    check('filtre « rejetés » : que des rejetés', rej.items.length > 0 && rej.items.every(m => m.status === 'rejete'));
+    check('comptes cohérents : tous = acceptés + rattachés + rejetés',
+      rej.counts.tous === rej.counts.accepte + rej.counts.rattache + rej.counts.rejete, JSON.stringify(rej.counts));
+
+    const helene = await listProcessedInbound(prisma, { status: 'tous', q: 'helene n42', offset: 0, limit: 25 });
+    check('recherche sans accent retrouve « Hélène N42 » au fond de l\'historique',
+      helene.total === 1 && helene.items[0]?.id === 'old-42', JSON.stringify(helene.items.map(m => m.id)));
+    const tel = await listProcessedInbound(prisma, { status: 'rejete', q: '0699887766', offset: 0, limit: 25 });
+    check('recherche par téléphone (sans espaces)', tel.total === 1 && tel.items[0]?.id === 'old-42');
+    const none = await listProcessedInbound(prisma, { status: 'tous', q: 'introuvable-xyz', offset: 0, limit: 25 });
+    check('recherche sans résultat -> page vide, sans nextOffset', none.items.length === 0 && none.total === 0 && none.nextOffset === undefined);
+    const beyond = await listProcessedInbound(prisma, { status: 'tous', q: '', offset: 10_000, limit: 25 });
+    check('décalage au-delà de la fin -> page vide, pas d\'erreur', beyond.items.length === 0 && beyond.nextOffset === undefined);
+
+    // Le but de l'étape : un rejet ANCIEN se remet en file depuis « Traités ».
+    const remis = await patchInbound(prisma, 'old-42', { action: 'reopen' });
+    check('rejet ancien -> remis en file', remis.inbound.status === 'a_traiter');
+    const apres = await listProcessedInbound(prisma, { status: 'rejete', q: 'helene', offset: 0, limit: 25 });
+    check('il sort des « Traités »', apres.total === 0);
+    check('et rien n\'a été écrit par la lecture paginée (compte inchangé)',
+      (await prisma.inboundEmail.count({ where: { status: { in: ['accepte', 'rejete', 'rattache'] } } })) === totalTraites - 1);
   }
 
   await prisma.$disconnect();

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, FlaskConical, Inbox, Info, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, Check, FlaskConical, Inbox, Info, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, Search, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
 import { useInboundDemo } from '../context/useInboundDemo';
@@ -9,6 +9,8 @@ import {
   sortInboundByScore, scoreLevel, SCORE_LEVELS,
   inboundDisplayName, formatReceivedShort, formatReceivedAge, scoreReasonSign,
   shouldOfferReopen, shouldSuggestNewLead, REOPEN_TARGET_STATUS,
+  PROCESSED_STATUS_FILTERS, PROCESSED_PAGE_SIZE,
+  type ProcessedPage, type ProcessedStatusFilter,
 } from '../lib/inbound';
 import { cn, formatDate } from '../lib/utils';
 import { getStatusLabel } from '../data/constants';
@@ -65,7 +67,6 @@ export default function InboxProspectsPage() {
   const allPending = sortInboundByScore(emails.filter(m => m.status === 'a_traiter'));
   const pending = allPending.filter(m => m.score >= FOLD_THRESHOLD);
   const folded = allPending.filter(m => m.score < FOLD_THRESHOLD);
-  const processed = emails.filter(m => m.status !== 'a_traiter');
 
   const handleAccept = async (mail: InboundEmail) => {
     if (processedRef.current.has(mail.id)) return;
@@ -201,9 +202,9 @@ export default function InboxProspectsPage() {
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Boîte de réception prospects</h1>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            {pendingCount} à traiter · {processed.length} traité{processed.length > 1 ? 's' : ''}
-          </span>
+          {/* Le nombre de traités vit dans l'en-tête de « Traités » : ici il ne
+              comptait que les 50 derniers chargés, donc il sous-estimait. */}
+          <span className="text-sm text-gray-500">{pendingCount} à traiter</span>
           {apiMode && collectNow && (
             <button type="button" className="btn-primary btn-sm" onClick={handleCollect} disabled={collecting}>
               <RefreshCw className={cn('w-4 h-4', collecting && 'animate-spin')} />
@@ -320,61 +321,189 @@ export default function InboxProspectsPage() {
         </div>
       )}
 
-      {processed.length > 0 && (
-        <div className="card p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Traités</h2>
-          <ul className="divide-y divide-gray-100">
-            {processed.map(mail => (
-              <li key={mail.id} className="py-2 flex items-center gap-3 text-sm">
-                <Mail className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="flex-1 min-w-0">
-                  <span className="block truncate text-gray-700">
-                    {inboundDisplayName(mail)}
-                    <span className="text-gray-400"> — {mail.subject}</span>
-                  </span>
-                  {/* QUAND la décision a été prise (retour terrain : la section ne
-                      montrait que le statut). `processedAt` vient de
-                      inbound_emails.updatedAt, exposé pour ça. */}
-                  {mail.processedAt && (
-                    <span className="block text-xs text-gray-400">
-                      {formatReceivedShort(mail.processedAt)} · {formatReceivedAge(mail.processedAt, new Date())}
-                    </span>
-                  )}
-                </span>
-                {mail.status === 'accepte' && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Accepté</span>
+      <ProcessedSection onReopen={handleReopen} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// « Traités » — étape B : tout l'historique (plus seulement les 50 derniers),
+// filtrable par statut, cherchable, paginé par « Charger plus ».
+// ---------------------------------------------------------------------------
+
+const PROCESSED_BADGE: Record<Exclude<InboundEmail['status'], 'a_traiter'>, { label: string; cls: string }> = {
+  accepte: { label: 'Accepté', cls: 'bg-green-100 text-green-800' },
+  // Rattaché : distinct de « Accepté » — aucun lead n'a été créé, la demande a
+  // rejoint l'historique d'un lead existant.
+  rattache: { label: 'Rattaché', cls: 'bg-sky-100 text-sky-800' },
+  rejete: { label: 'Rejeté', cls: 'bg-gray-100 text-gray-600' },
+};
+
+function ProcessedSection({ onReopen }: { onReopen: (mail: InboundEmail) => Promise<void> }) {
+  const { listProcessed, processedVersion } = useInboundDemo();
+  const [status, setStatus] = useState<ProcessedStatusFilter>('tous');
+  const [query, setQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [page, setPage] = useState<ProcessedPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [reopening, setReopening] = useState<string | null>(null);
+
+  // Recherche différée : on n'interroge pas le serveur à chaque frappe.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Première page : au montage, à chaque changement de filtre/recherche, et à
+  // chaque changement de la file (processedVersion). Un jeton ignore les
+  // réponses périmées si l'utilisateur change de filtre pendant le chargement.
+  const requestRef = useRef(0);
+  useEffect(() => {
+    const req = ++requestRef.current;
+    setLoading(true);
+    setError('');
+    listProcessed({ status, q: debounced, offset: 0, limit: PROCESSED_PAGE_SIZE })
+      .then(p => { if (req === requestRef.current) setPage(p); })
+      .catch(e => { if (req === requestRef.current) setError((e as Error).message); })
+      .finally(() => { if (req === requestRef.current) setLoading(false); });
+    // listProcessed change d'identité à chaque rendu du provider (démo : il lit
+    // `emails`) ; processedVersion porte déjà le signal « la file a bougé ».
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, debounced, processedVersion]);
+
+  const loadMore = () => {
+    if (!page || page.nextOffset === undefined || loading) return;
+    const req = ++requestRef.current;
+    setLoading(true);
+    listProcessed({ status, q: debounced, offset: page.nextOffset, limit: PROCESSED_PAGE_SIZE })
+      .then(p => {
+        if (req !== requestRef.current) return;
+        setPage(prev => prev ? { ...p, items: [...prev.items, ...p.items] } : p);
+      })
+      .catch(e => { if (req === requestRef.current) setError((e as Error).message); })
+      .finally(() => { if (req === requestRef.current) setLoading(false); });
+  };
+
+  const handleReopenRow = async (mail: InboundEmail) => {
+    if (reopening) return;
+    setReopening(mail.id);
+    try { await onReopen(mail); } finally { setReopening(null); }
+  };
+
+  // Rien n'a jamais été traité (et aucune recherche en cours) : pas de section.
+  if (page && page.counts.tous === 0 && !debounced && status === 'tous') return null;
+
+  const counts = page?.counts;
+  const items = page?.items ?? [];
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">
+          Traités{counts ? ` (${counts.tous})` : ''}
+        </h2>
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="search"
+            className="input pl-8"
+            placeholder="Nom, bateau, email, téléphone…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            aria-label="Rechercher dans les emails traités"
+          />
+        </div>
+      </div>
+
+      {/* Filtre par statut, avec compteurs de la recherche en cours. */}
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filtrer par statut">
+        {PROCESSED_STATUS_FILTERS.map(f => (
+          <button
+            key={f.value}
+            type="button"
+            role="tab"
+            aria-selected={status === f.value}
+            onClick={() => setStatus(f.value)}
+            className={cn(
+              'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+              status === f.value
+                ? 'bg-primary-600 border-primary-600 text-white'
+                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50',
+            )}
+          >
+            {f.label}{counts ? ` · ${counts[f.value]}` : ''}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="text-sm text-danger-600">Chargement impossible : {error}</p>}
+
+      {page && items.length === 0 && !loading && (
+        <p className="text-sm text-gray-500 py-2">
+          {debounced ? `Aucun email traité ne correspond à « ${debounced} ».` : 'Aucun email dans cette catégorie.'}
+        </p>
+      )}
+
+      <ul className="divide-y divide-gray-100">
+        {items.map(mail => {
+          const badge = PROCESSED_BADGE[mail.status as keyof typeof PROCESSED_BADGE];
+          const about = mail.extracted.boatInterest || mail.subject;
+          return (
+            // Mobile : identité puis actions EN DESSOUS (sur une seule ligne, les
+            // actions écrasaient le nom en « Jeanne … » et la date sur 3 lignes).
+            <li key={mail.id} className="py-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 text-sm">
+              <Mail className="hidden sm:block w-4 h-4 text-gray-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-medium text-gray-800 break-words">{inboundDisplayName(mail)}</span>
+                  {badge && <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', badge.cls)}>{badge.label}</span>}
+                </div>
+                <p className="text-xs text-gray-500 truncate" title={mail.subject}>{about}</p>
+                {/* QUAND la décision a été prise. `processedAt` vient de
+                    inbound_emails.updatedAt. Insécable : jamais sur 3 lignes. */}
+                {mail.processedAt && (
+                  <p className="text-xs text-gray-400 whitespace-nowrap">
+                    {/* L'âge est vide si l'horloge du poste retarde sur le
+                        serveur : jamais de « · » orphelin. */}
+                    {[formatReceivedShort(mail.processedAt), formatReceivedAge(mail.processedAt, new Date())].filter(Boolean).join(' · ')}
+                  </p>
                 )}
-                {/* Rattaché : distinct de « Accepté » — aucun lead n'a été créé,
-                    la demande a rejoint l'historique d'un lead existant. */}
-                {mail.status === 'rattache' && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">Rattaché</span>
-                )}
+              </div>
+              <div className="flex items-center gap-3 sm:shrink-0">
                 {mail.status === 'rejete' && (
-                  <>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Rejeté</span>
-                    {/* Le filet réclamé : un rejet par erreur se répare. Seul le
-                        rejet est réversible — accepté et rattaché ont créé des
-                        données, le serveur refuse de les défaire. */}
-                    <button
-                      type="button"
-                      onClick={() => handleReopen(mail)}
-                      className="btn-ghost btn-sm text-primary-600 hover:text-primary-700 whitespace-nowrap"
-                      title="Remettre cet email dans la file à traiter"
-                    >
-                      <RotateCcw className="w-4 h-4" /> Remettre en file
-                    </button>
-                  </>
+                  // Le filet réclamé : un rejet par erreur se répare. Seul le rejet
+                  // est réversible — accepté et rattaché ont créé des données.
+                  <button
+                    type="button"
+                    onClick={() => handleReopenRow(mail)}
+                    disabled={reopening === mail.id}
+                    className="btn-ghost btn-sm -ml-3 sm:ml-0 text-primary-600 hover:text-primary-700 whitespace-nowrap"
+                    title="Remettre cet email dans la file à traiter"
+                  >
+                    <RotateCcw className="w-4 h-4" /> Remettre en file
+                  </button>
                 )}
                 {(mail.status === 'accepte' || mail.status === 'rattache') && mail.leadId && (
                   <Link to={`/leads/${mail.leadId}`} className="text-primary-600 hover:underline whitespace-nowrap">
                     Voir le lead
                   </Link>
                 )}
-              </li>
-            ))}
-          </ul>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {page && page.nextOffset !== undefined && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <span className="text-xs text-gray-500">{items.length} sur {page.total}</span>
+          <button type="button" className="btn-secondary btn-sm" onClick={loadMore} disabled={loading}>
+            {loading ? 'Chargement…' : `Charger plus (${Math.min(PROCESSED_PAGE_SIZE, page.total - items.length)})`}
+          </button>
         </div>
       )}
+      {!page && loading && <p className="text-sm text-gray-400">Chargement…</p>}
     </div>
   );
 }
@@ -482,6 +611,18 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
                     </option>
                   ))}
                 </select>
+                {/* Détail du candidat CHOISI, sur plusieurs lignes si besoin : la
+                    liste fermée coupe la date de création sur mobile, et les
+                    doublons homonymes ne se distinguent que par là. */}
+                {attachTarget && (
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-amber-900">
+                    <StatusBadge status={attachTarget.status} />
+                    <span className="whitespace-nowrap">créé le {formatDate(attachTarget.createdAt)}</span>
+                    {(attachTarget.email || attachTarget.phone) && (
+                      <span className="break-all">{attachTarget.email || attachTarget.phone}</span>
+                    )}
+                  </p>
+                )}
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2">

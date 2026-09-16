@@ -11,6 +11,7 @@ import {
   scoreLevel, sortInboundByScore, buildLeadFromInbound,
   inboundDisplayName, parseReceivedAt, formatReceivedAge, formatReceivedShort, scoreReasonSign,
   shouldOfferReopen, shouldSuggestNewLead, REOPEN_TARGET_STATUS, REOPENABLE_LEAD_STATUSES,
+  foldSearch, inboundMatchesSearch, filterProcessedInbound, parseProcessedQuery, PROCESSED_PAGE_SIZE,
 } from '../src/lib/inbound';
 import { LEAD_STATUSES } from '../src/data/constants';
 import { isLeadActive } from '../src/lib/utils';
@@ -335,6 +336,52 @@ function main() {
     check('le statut cible est ACTIF (le lead revient dans les vues de travail)',
       isLeadActive(REOPEN_TARGET_STATUS));
     check('le statut cible ne re-propose pas (pas de boucle)', !shouldOfferReopen(REOPEN_TARGET_STATUS));
+  }
+
+  section('« Traités » : recherche, filtre, comptes (étape B)');
+  {
+    const ex = (o: Partial<InboundEmail['extracted']>) => ({ firstName: '', lastName: '', email: '', phone: '', boatInterest: '', brand: '', ...o });
+    const t = (id: string, status: InboundEmail['status'], o: Partial<InboundEmail['extracted']>, subject = 'Objet') =>
+      ({ id, status, subject, fromAddress: 'noreply@leboncoin.fr', extracted: ex(o) });
+    const set = [
+      t('a1', 'accepte', { firstName: 'Hélène', lastName: 'Le Goff', email: 'helene@x.fr', boatInterest: 'Bénéteau First 210' }),
+      t('r1', 'rejete', { firstName: 'Paul', lastName: 'Martin', phone: '06 12 34 56 78', boatInterest: 'Zodiac Pro 6.5' }),
+      t('r2', 'rejete', { firstName: 'Jeanne', lastName: 'Durand', email: 'jeanne@y.fr' }, 'Nouveau message pour "Flyer 6"'),
+      t('t1', 'rattache', { firstName: 'Marc', lastName: 'Dupont', brand: 'Jeanneau' }),
+      t('p1', 'a_traiter', { firstName: 'Paul', lastName: 'Attente' }),
+    ];
+
+    check('foldSearch : casse et accents neutralisés', foldSearch('  BÉNÉTEAU ') === 'beneteau');
+    check('recherche vide -> tout correspond', inboundMatchesSearch(set[0], '   '));
+    check('« beneteau » trouve « Bénéteau First 210 » (accents)', inboundMatchesSearch(set[0], 'beneteau'));
+    check('« helene le goff » trouve le nom complet', inboundMatchesSearch(set[0], 'helene le goff'));
+    check('nom inversé « martin paul » trouvé', inboundMatchesSearch(set[1], 'Martin Paul'));
+    check('email trouvé', inboundMatchesSearch(set[2], 'JEANNE@y'));
+    check('téléphone saisi SANS espaces trouve un numéro stocké avec', inboundMatchesSearch(set[1], '0612345678'));
+    check('téléphone partiel avec espaces', inboundMatchesSearch(set[1], '06 12 34'));
+    check('objet de l\'email trouvé (« flyer »)', inboundMatchesSearch(set[2], 'flyer'));
+    check('marque trouvée', inboundMatchesSearch(set[3], 'jeanneau'));
+    check('pas de faux positif', !inboundMatchesSearch(set[0], 'zodiac'));
+    check('3 chiffres ne déclenchent pas la recherche par téléphone', !inboundMatchesSearch(set[0], '061'));
+
+    const all = filterProcessedInbound(set, 'tous', '');
+    check('« tous » exclut les « à traiter »', all.matches.length === 4 && !all.matches.some(m => m.status === 'a_traiter'));
+    check('comptes par statut', JSON.stringify(all.counts) === JSON.stringify({ tous: 4, accepte: 1, rattache: 1, rejete: 2 }), JSON.stringify(all.counts));
+    check('filtre « rejetés »', filterProcessedInbound(set, 'rejete', '').matches.map(m => m.id).join() === 'r1,r2');
+    check('ordre d\'entrée conservé', all.matches.map(m => m.id).join() === 'a1,r1,r2,t1');
+    const paul = filterProcessedInbound(set, 'accepte', 'paul');
+    check('recherche + filtre : 0 accepté « paul », mais les comptes reflètent la recherche',
+      paul.matches.length === 0 && paul.counts.tous === 1 && paul.counts.rejete === 1, JSON.stringify(paul.counts));
+
+    const def = parseProcessedQuery({});
+    check('paramètres absents -> tous, offset 0, page par défaut',
+      def.status === 'tous' && def.offset === 0 && def.limit === PROCESSED_PAGE_SIZE && def.q === '');
+    const bad = parseProcessedQuery({ status: 'a_traiter', offset: '-5', limit: '9999', q: 'x'.repeat(500) });
+    check('statut hors filtre (a_traiter) -> tous', bad.status === 'tous');
+    check('offset négatif -> 0 ; limite bornée à 100 ; recherche tronquée',
+      bad.offset === 0 && bad.limit === 100 && bad.q.length === 100);
+    check('valeurs non numériques -> défauts', parseProcessedQuery({ offset: 'abc', limit: 'zz' }).limit === PROCESSED_PAGE_SIZE);
+    check('statut valide conservé', parseProcessedQuery({ status: 'rattache', offset: '25' }).status === 'rattache');
   }
 
   console.log(`\n${passed} OK, ${failed} KO`);

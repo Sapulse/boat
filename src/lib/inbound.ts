@@ -220,6 +220,93 @@ export function shouldOfferReopen(status: LeadStatus): boolean {
   return REOPENABLE_LEAD_STATUSES.includes(status);
 }
 
+// ---------------------------------------------------------------------------
+// « Traités » : filtre par statut, recherche, pagination (étape B).
+// ---------------------------------------------------------------------------
+
+/** Filtre de statut de la section « Traités » ('tous' = les trois statuts traités). */
+export type ProcessedStatusFilter = 'tous' | 'accepte' | 'rattache' | 'rejete';
+
+export const PROCESSED_STATUS_FILTERS: readonly { value: ProcessedStatusFilter; label: string }[] = [
+  { value: 'tous', label: 'Tous' },
+  { value: 'accepte', label: 'Acceptés' },
+  { value: 'rattache', label: 'Rattachés' },
+  { value: 'rejete', label: 'Rejetés' },
+];
+
+/** Taille d'une page de « Traités » (« Charger plus » ajoute la suivante). */
+export const PROCESSED_PAGE_SIZE = 25;
+
+/** Réponse paginée de GET /api/inbound/processed (et de son miroir démo). */
+export interface ProcessedPage {
+  items: InboundEmail[];
+  /** Nombre TOTAL d'emails correspondant (statut + recherche) — tous pages confondues. */
+  total: number;
+  /** Décalage à redemander pour la page suivante ; absent = dernière page. */
+  nextOffset?: number;
+  /** Comptes par statut pour la recherche courante (alimentent les onglets). */
+  counts: Record<ProcessedStatusFilter, number>;
+}
+
+/** Minuscules sans accents : « Bénéteau » se trouve en tapant « beneteau ». */
+export function foldSearch(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+type ProcessedMatchable = Pick<InboundEmail, 'status' | 'subject' | 'fromAddress' | 'extracted'>;
+
+/**
+ * Un email traité correspond-il à la recherche ? Nom complet, email, téléphone,
+ * bateau, marque, objet, expéditeur ; insensible à la casse ET aux accents.
+ * Le téléphone se compare aussi chiffres seuls (« 06 12 » trouve « 0612… »).
+ * Requête vide -> tout correspond.
+ */
+export function inboundMatchesSearch(mail: ProcessedMatchable, query: string): boolean {
+  const q = foldSearch(query);
+  if (!q) return true;
+  const x = mail.extracted;
+  const haystack = foldSearch([
+    `${x.firstName} ${x.lastName}`, `${x.lastName} ${x.firstName}`,
+    x.email, x.phone, x.boatInterest, x.brand, mail.subject, mail.fromAddress,
+  ].join('  '));
+  if (haystack.includes(q)) return true;
+  const qDigits = q.replace(/\D/g, '');
+  return qDigits.length >= 4 && q.replace(/[\d\s.+-]/g, '') === '' && x.phone.replace(/\D/g, '').includes(qDigits);
+}
+
+/**
+ * Filtre + comptes de « Traités », PUR — partagé par le serveur (sur une
+ * projection légère des lignes) et par le mode démo, pour une sémantique
+ * identique. L'ordre d'entrée est conservé (l'appelant trie).
+ */
+export function filterProcessedInbound<T extends ProcessedMatchable>(
+  mails: T[], status: ProcessedStatusFilter, query: string,
+): { matches: T[]; counts: Record<ProcessedStatusFilter, number> } {
+  const searched = mails.filter(m => m.status !== 'a_traiter' && inboundMatchesSearch(m, query));
+  const counts: Record<ProcessedStatusFilter, number> = {
+    tous: searched.length,
+    accepte: searched.filter(m => m.status === 'accepte').length,
+    rattache: searched.filter(m => m.status === 'rattache').length,
+    rejete: searched.filter(m => m.status === 'rejete').length,
+  };
+  return { matches: status === 'tous' ? searched : searched.filter(m => m.status === status), counts };
+}
+
+/**
+ * Paramètres de la requête « Traités », VALIDÉS (entrée non fiable : query
+ * string). Statut inconnu -> 'tous' ; décalage négatif/invalide -> 0 ; taille
+ * bornée à [1, 100] ; recherche tronquée à 100 caractères.
+ */
+export function parseProcessedQuery(params: { status?: string | null; q?: string | null; offset?: string | null; limit?: string | null }): {
+  status: ProcessedStatusFilter; q: string; offset: number; limit: number;
+} {
+  const status = PROCESSED_STATUS_FILTERS.some(f => f.value === params.status) ? params.status as ProcessedStatusFilter : 'tous';
+  const offset = Math.max(0, Math.floor(Number(params.offset) || 0));
+  const rawLimit = Math.floor(Number(params.limit) || PROCESSED_PAGE_SIZE);
+  const limit = Math.min(100, Math.max(1, rawLimit));
+  return { status, q: (params.q ?? '').slice(0, 100), offset, limit };
+}
+
 /**
  * Faut-il conseiller, AVANT de rattacher, d'accepter plutôt la demande comme
  * nouveau lead ? Oui pour un client déjà SIGNÉ (nouveau projet probable). Simple

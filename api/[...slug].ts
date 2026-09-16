@@ -19,7 +19,8 @@ import {
   RATE_LIMIT_WINDOW_SEC,
 } from './_lib/loginRateLimit.js';
 import { readGraphEnv, checkGraphConnection } from './_lib/graph.js';
-import { collectInbound, listInbound, patchInbound, computeSinceFloor } from './_lib/inboundStore.js';
+import { collectInbound, listInbound, listProcessedInbound, patchInbound, computeSinceFloor } from './_lib/inboundStore.js';
+import { parseProcessedQuery } from '../src/lib/inbound.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
   CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal,
@@ -110,6 +111,14 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
       // File d'import email (Étape B). Liste pour l'écran ; PATCH = accept/reject
       // (action dans le corps — le routeur ne connaît que /ressource/:id).
       if (!id && m === 'GET') return sendJson(res, 200, await listInbound(prisma));
+      // « Traités » paginés + filtrés (étape B). `processed` n'est jamais un id
+      // d'email (UUID), et seul GET y répond : aucun conflit avec le PATCH.
+      if (id === 'processed' && m === 'GET') {
+        const sp = new URL(req.url ?? '', 'http://localhost').searchParams;
+        return sendJson(res, 200, await listProcessedInbound(prisma, parseProcessedQuery({
+          status: sp.get('status'), q: sp.get('q'), offset: sp.get('offset'), limit: sp.get('limit'),
+        })));
+      }
       if (id && m === 'PATCH') return sendJson(res, 200, await patchInbound(prisma, id, body(req)));
       break;
 

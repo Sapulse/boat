@@ -4,7 +4,7 @@ import type { InboundEmail, InboundExtracted } from '../data/types';
 import { MOCK_INBOUND_EMAILS } from '../data/mockInboundEmails';
 import { USE_API } from '../lib/flags';
 import { useApp } from './useApp';
-import { buildLeadFromInbound } from '../lib/inbound';
+import { buildLeadFromInbound, filterProcessedInbound, type ProcessedPage, type ProcessedStatusFilter } from '../lib/inbound';
 import { toISODate } from '../lib/utils';
 
 // Provider de la Boîte de réception prospects — DEUX modes derrière un contrat
@@ -50,6 +50,8 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
   const leads = state.leads;
   const [emails, setEmails] = useState<InboundEmail[]>(USE_API ? [] : DEMO_INITIAL);
   const [collecting, setCollecting] = useState(false);
+  const [processedVersion, setProcessedVersion] = useState(0);
+  const bump = () => setProcessedVersion(v => v + 1);
 
   const refresh = useCallback(async () => {
     if (!USE_API) return;
@@ -73,12 +75,14 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ action: 'accept', commercialId, extracted: mail.extracted }),
       });
       setEmails(prev => prev.map(m => (m.id === mail.id ? out.inbound : m)));
+      bump();
       return out.lead.id;
     }
     // Démo : transitions à sens unique depuis 'a_traiter' (protège du double-clic).
     if (mail.status !== 'a_traiter') return mail.leadId ?? '';
     const leadId = addLead(buildLeadFromInbound(mail, commercialId, toISODate(new Date())));
     setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'accepte', leadId, processedAt: new Date().toISOString() } : m)));
+    bump();
     return leadId;
   };
 
@@ -89,9 +93,11 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ action: 'reject' }),
       });
       setEmails(prev => prev.map(m => (m.id === id ? out.inbound : m)));
+      bump();
       return;
     }
     setEmails(prev => prev.map(m => (m.id === id && m.status === 'a_traiter' ? { ...m, status: 'rejete', processedAt: new Date().toISOString() } : m)));
+    bump();
   };
 
   /**
@@ -109,6 +115,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ action: 'attach', leadId }),
       });
       setEmails(prev => prev.map(m => (m.id === mail.id ? out.inbound : m)));
+      bump();
       return;
     }
     if (mail.status !== 'a_traiter') return;
@@ -127,6 +134,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
       notes: `Objet : ${mail.subject}\n\n${mail.excerpt}`,
     });
     setEmails(prev => prev.map(m => (m.id === mail.id && m.status === 'a_traiter' ? { ...m, status: 'rattache', leadId, processedAt: new Date().toISOString() } : m)));
+    bump();
   };
 
   /** Remet en file un email REJETÉ. Les autres statuts ont créé des données : le
@@ -137,12 +145,36 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         method: 'PATCH',
         body: JSON.stringify({ action: 'reopen' }),
       });
-      setEmails(prev => prev.map(m => (m.id === id ? out.inbound : m)));
+      setEmails(prev => {
+        // Un email rejeté ANCIEN (hors des 50 de la liste initiale) n'est pas
+        // dans `emails` : on l'ajoute, sinon il ne réapparaîtrait pas dans la file.
+        const known = prev.some(m => m.id === id);
+        return known ? prev.map(m => (m.id === id ? out.inbound : m)) : [...prev, out.inbound];
+      });
+      bump();
       return;
     }
     setEmails(prev => prev.map(m => (
       m.id === id && m.status === 'rejete' ? { ...m, status: 'a_traiter', leadId: undefined, processedAt: undefined } : m
     )));
+    bump();
+  };
+
+  /**
+   * Page de « Traités ». API : filtrage et pagination serveur (tout
+   * l'historique, pas seulement les 50 derniers). Démo : même calcul sur la
+   * mémoire, trié par date de traitement décroissante.
+   */
+  const listProcessed = async (params: { status: ProcessedStatusFilter; q: string; offset: number; limit: number }): Promise<ProcessedPage> => {
+    if (USE_API) {
+      const qs = new URLSearchParams({ status: params.status, q: params.q, offset: String(params.offset), limit: String(params.limit) });
+      return apiJson<ProcessedPage>(`/inbound/processed?${qs.toString()}`);
+    }
+    const sorted = [...emails].sort((a, b) => (b.processedAt ?? '').localeCompare(a.processedAt ?? ''));
+    const { matches, counts } = filterProcessedInbound(sorted, params.status, params.q);
+    const items = matches.slice(params.offset, params.offset + params.limit);
+    const end = params.offset + items.length;
+    return { items, total: matches.length, nextOffset: end < matches.length ? end : undefined, counts };
   };
 
   const collectNow = USE_API
@@ -151,6 +183,7 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         try {
           const report = await apiJson<CollectSummary>('/inbound-collect', { method: 'POST' });
           await refresh();
+          bump();
           return report;
         } finally {
           setCollecting(false);
@@ -174,6 +207,8 @@ export function InboundDemoProvider({ children }: { children: ReactNode }) {
         reject,
         attach,
         reopen,
+        listProcessed,
+        processedVersion,
       }}
     >
       {children}

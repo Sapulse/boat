@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { InboundEmail, InboundExtracted } from '../data/types';
+import type { ProcessedPage, ProcessedStatusFilter } from '../lib/inbound';
 
 // Contexte + hook de la Boîte de réception prospects. Module sans composant
 // (règle react-refresh) — le provider vit dans InboundDemoContext.tsx.
@@ -40,12 +41,22 @@ export interface InboundContextType {
   reject(id: string): Promise<void>;
   /**
    * RATTACHE la demande à un lead EXISTANT : aucun lead créé, une action
-   * d'historique ajoutée au lead visé, qui repasse en chaud. La troisième issue
-   * qui manquait quand un doublon est détecté (retour terrain).
+   * d'historique ajoutée au lead visé — et rien d'autre (le lead n'est pas
+   * modifié). La troisième issue qui manquait quand un doublon est détecté.
    */
   attach(mail: InboundEmail, leadId: string): Promise<void>;
   /** Remet en file un email REJETÉ (le seul statut réversible). */
   reopen(id: string): Promise<void>;
+  /**
+   * Page de « Traités » filtrée (statut + recherche). Serveur en mode API, calcul
+   * local en démo — même sémantique (filterProcessedInbound).
+   */
+  listProcessed(params: { status: ProcessedStatusFilter; q: string; offset: number; limit: number }): Promise<ProcessedPage>;
+  /**
+   * Incrémenté à CHAQUE changement de la file (accepter, rejeter, rattacher,
+   * remettre en file, importer) : « Traités » recharge sa première page.
+   */
+  processedVersion: number;
 }
 
 export const InboundDemoContext = createContext<InboundContextType | null>(null);

@@ -6,7 +6,8 @@ import { createLead, createAction } from './store.js';
 import { fetchRecentSourceEmails, toParseInput, DEFAULT_COLLECT_CAP } from './inboundCollect.js';
 import type { GraphEnv } from './graph.js';
 import { parseEmail } from '../../src/lib/email/parseEmail.js';
-import { buildLeadFromInbound } from '../../src/lib/inbound.js';
+import { buildLeadFromInbound, filterProcessedInbound } from '../../src/lib/inbound.js';
+import type { ProcessedPage, ProcessedStatusFilter } from '../../src/lib/inbound.js';
 import type { InboundEmail, InboundExtracted, InboundStatus, Lead, LeadAction } from '../../src/data/types.js';
 
 // Couche d'accès de la file d'import email (Étape B) — même rôle que store.ts
@@ -162,6 +163,52 @@ export async function listInbound(prisma: PrismaClient): Promise<InboundEmail[]>
     where: { status: { in: ['accepte', 'rejete', 'rattache'] } }, orderBy: { updatedAt: 'desc' }, take: 50,
   });
   return [...pending, ...processed].map(r => toInbound(r as unknown as InboundRow));
+}
+
+// ---------------------------------------------------------------------------
+// « Traités » paginés (GET /api/inbound/processed) — étape B : la liste
+// ci-dessus plafonnait à 50 sur 143, les rejets anciens étaient INACCESSIBLES
+// et « Remettre en file » ne pouvait donc pas les atteindre. Lecture seule.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pagination par DÉCALAGE, pas par curseur de date : en prod `updatedAt` a deux
+ * formats de stockage (CURRENT_TIMESTAMP « AAAA-MM-JJ HH:MM:SS » des rejets
+ * automatiques à la collecte, ISO des mises à jour Prisma). Une borne `lt` sur
+ * la date comparerait des chaînes hétérogènes et pourrait sauter des lignes. Le
+ * tri (updatedAt desc, id desc) est, lui, déterministe : les pages ne se
+ * recouvrent pas tant que la file ne bouge pas, et l'écran recharge dès qu'elle
+ * bouge.
+ *
+ * Filtrage en deux temps pour une sémantique IDENTIQUE au mode démo
+ * (filterProcessedInbound, insensible aux accents — ce que LIKE ne sait pas) :
+ * une projection LÉGÈRE (sans l'extrait, jusqu'à 4 000 caractères) sert au
+ * filtre et aux comptes, puis seules les lignes de la page sont lues en entier.
+ */
+export async function listProcessedInbound(
+  prisma: PrismaClient,
+  params: { status: ProcessedStatusFilter; q: string; offset: number; limit: number },
+): Promise<ProcessedPage> {
+  const light = await prisma.inboundEmail.findMany({
+    where: { status: { in: ['accepte', 'rejete', 'rattache'] } },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, status: true, subject: true, fromAddress: true, extracted: true },
+  });
+  const projected = light.map(r => {
+    let extracted: InboundExtracted;
+    try { extracted = { ...EMPTY_EXTRACTED, ...JSON.parse(r.extracted) as Partial<InboundExtracted> }; } catch { extracted = { ...EMPTY_EXTRACTED }; }
+    return { id: r.id, status: r.status as InboundStatus, subject: r.subject, fromAddress: r.fromAddress, extracted };
+  });
+  const { matches, counts } = filterProcessedInbound(projected, params.status, params.q);
+  const pageIds = matches.slice(params.offset, params.offset + params.limit).map(m => m.id);
+  const rows = pageIds.length ? await prisma.inboundEmail.findMany({ where: { id: { in: pageIds } } }) : [];
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const items = pageIds.flatMap(id => {
+    const r = byId.get(id);
+    return r ? [toInbound(r as unknown as InboundRow)] : [];
+  });
+  const end = params.offset + pageIds.length;
+  return { items, total: matches.length, nextOffset: end < matches.length ? end : undefined, counts };
 }
 
 // ---------------------------------------------------------------------------
