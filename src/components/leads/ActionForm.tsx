@@ -84,13 +84,26 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
         </div>
       </div>
 
-      <div>
-        <label className="label">Auteur</label>
-        <select className="select" value={form.authorId} onChange={e => setForm(f => ({ ...f, authorId: e.target.value }))}>
-          {state.commercials.filter(c => c.active).map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+      {/* Auteur + Changer statut sur une ligne (lot 2 : les champs prochaine
+          action ont quitté ce formulaire, « Changer statut » restait seul). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label">Auteur</label>
+          <select className="select" value={form.authorId} onChange={e => setForm(f => ({ ...f, authorId: e.target.value }))}>
+            {state.commercials.filter(c => c.active).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        {!isEdit && (
+          <div>
+            <label className="label">Changer statut</label>
+            <select className="select" value={form.newStatus} onChange={e => setForm(f => ({ ...f, newStatus: e.target.value as LeadStatus }))}>
+              <option value="">Ne pas changer</option>
+              {LEAD_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       <div>
@@ -103,15 +116,8 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
         <textarea className="input min-h-[60px]" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
       </div>
 
-      {!isEdit && (
+      {!isEdit && (signing || losing) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-gray-50 rounded-lg">
-          <div>
-            <label className="label">Changer statut</label>
-            <select className="select" value={form.newStatus} onChange={e => setForm(f => ({ ...f, newStatus: e.target.value as LeadStatus }))}>
-              <option value="">Ne pas changer</option>
-              {LEAD_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </div>
           {signing && (
             <div className="md:col-span-3">
               <label htmlFor="action-sale-amount" className="label">Montant de la vente (€) *</label>

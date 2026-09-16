@@ -19,6 +19,7 @@ export default function SendConfirmDialog({ lead, channel, detail, onAnswer }: {
   return (
     <DialogShell
       size="sm"
+      mobileSheet
       title="Avez-vous bien envoyé le message ?"
       subtitle={<>{CHANNEL_LABEL[channel][0].toUpperCase() + CHANNEL_LABEL[channel].slice(1)} à <strong>{getLeadFullName(lead)}</strong></>}
       closable

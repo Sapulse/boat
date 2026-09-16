@@ -14,7 +14,7 @@ import { cn } from '../../lib/utils';
  * Focus : premier champ à l'ouverture, Tab reste dans la fenêtre.
  */
 export default function DialogShell({
-  title, subtitle, closable, onClose, children, footer, size = 'md',
+  title, subtitle, closable, onClose, children, footer, size = 'md', mobileSheet = false,
 }: {
   title: string;
   subtitle?: ReactNode;
@@ -23,6 +23,8 @@ export default function DialogShell({
   children: ReactNode;
   footer: ReactNode;
   size?: 'sm' | 'md';
+  /** Sous 640 px : panneau en bas d'écran (questions courtes) au lieu du plein écran. */
+  mobileSheet?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -63,7 +65,7 @@ export default function DialogShell({
   }, [closable, onClose]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex sm:items-start sm:justify-center sm:pt-10 sm:px-4">
+    <div className={cn('fixed inset-0 z-[60] flex sm:items-start sm:justify-center sm:pt-10 sm:px-4', mobileSheet && 'items-end')}>
       <div
         className="fixed inset-0 bg-black/50"
         onClick={() => { if (closable) onClose?.(); }}
@@ -75,7 +77,8 @@ export default function DialogShell({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'relative bg-white w-full h-full flex flex-col sm:h-auto sm:max-h-[88vh] sm:rounded-xl shadow-xl',
+          'relative bg-white w-full flex flex-col sm:h-auto sm:max-h-[88vh] sm:rounded-xl shadow-xl',
+          mobileSheet ? 'max-h-[85vh] rounded-t-2xl' : 'h-full',
           size === 'sm' ? 'sm:max-w-md' : 'sm:max-w-xl',
         )}
       >
