@@ -29,9 +29,27 @@ export const GENERIC_SERVER_ERROR = 'Erreur interne du serveur';
  * Les HttpError DÉLIBÉRÉES passent inchangées (early return ci-dessous) : leur
  * message est rédigé POUR le client (validation validate.ts, 503 de config…).
  */
+/**
+ * Marqueur STABLE (lu par le client) d'une base dont le schéma est en retard sur
+ * le code : typiquement le code du lot 2 déployé AVANT la migration Turso. L'app
+ * affiche alors un écran explicite au lieu d'un échec de chargement anonyme.
+ */
+export const SCHEMA_NOT_MIGRATED = 'SCHEMA_NON_MIGRE';
+
+/** Table ou colonne absente (Prisma P2021 / P2022, ou erreur SQLite remontée par l'adaptateur libSQL). */
+export function isMissingSchemaError(e: unknown): boolean {
+  const err = e as { code?: unknown; message?: unknown; cause?: unknown } | null;
+  if (err?.code === 'P2021' || err?.code === 'P2022') return true;
+  const text = `${String(err?.message ?? '')} ${String((err?.cause as { message?: unknown } | undefined)?.message ?? '')} ${String((err as { name?: unknown } | null)?.name ?? '')}`;
+  return /no such (table|column)|ColumnNotFound|TableDoesNotExist/i.test(text);
+}
+
 export function toHttpError(e: unknown): HttpError {
   if (e instanceof HttpError) return e;
   if (e instanceof SyntaxError) return new HttpError(400, 'JSON malformé');
+  if (isMissingSchemaError(e)) {
+    return new HttpError(503, `${SCHEMA_NOT_MIGRATED} : la base n'est pas encore migrée pour cette version de l'application (mise à jour en cours).`);
+  }
   const code = (e as { code?: unknown } | null)?.code;
   if (code === 'P2025') return new HttpError(404, 'Ressource introuvable');
   if (code === 'P2002') return new HttpError(409, "Conflit d'unicité (enregistrement déjà existant)");

@@ -28,7 +28,7 @@ import {
 } from './apply-planned-actions-turso';
 import { getState, upsertPlannedAction, restoreBackup, hasLot2Schema } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
-import { HttpError } from '../api/_lib/http';
+import { HttpError, toHttpError, SCHEMA_NOT_MIGRATED } from '../api/_lib/http';
 import type { AppState, PlannedAction } from '../src/data/types';
 
 const DB_FILE = path.resolve('.harness-planned-actions-db.db');
@@ -106,9 +106,12 @@ async function main() {
   {
     const legacyPrisma = new PrismaClient({ adapter: new PrismaLibSql({ url: `file:${DB_FILE}` }) });
     check('schéma détecté : pas encore migré', !(await hasLot2Schema(legacyPrisma)));
-    let full = false;
-    try { await getState(legacyPrisma); } catch { full = true; }
-    check('la lecture COMPLÈTE échoue bien sur l\'ancien schéma (d\'où le mode dédié)', full);
+    let full: unknown = null;
+    try { await getState(legacyPrisma); } catch (e) { full = e; }
+    check('la lecture COMPLÈTE échoue bien sur l\'ancien schéma (d\'où le mode dédié)', full !== null);
+    const mapped = toHttpError(full);
+    check('garde-fou déploiement prématuré : erreur réelle -> 503 « SCHEMA_NON_MIGRE » (pas un 500 anonyme)',
+      mapped.status === 503 && mapped.message.startsWith(SCHEMA_NOT_MIGRATED), `${mapped.status} ${mapped.message}`);
     const old = await getState(legacyPrisma, { schema: 'avant-lot2' });
     check('lecture « avant-lot2 » : 437 leads, 98 lignes, sans plannedActions', old.leads.length === 437 && old.actions.length === 98 && !('plannedActions' in old));
     check('lecture « avant-lot2 » : aucune colonne du lot 2 inventée', old.leads.every(l => !('noNextActionReason' in l)) && old.actions.every(a => !('kind' in a)));

@@ -1,5 +1,8 @@
 # CRM Brest Ocean Boat - Outil de Pilotage Commercial
 
+> **Deploiement : lire [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) avant toute mise en prod.**
+> Tant que la migration Turso du lot 2 n'est pas faite, **ne jamais deployer `main`** : correctif urgent = branche `hotfix/...` depuis le dernier tag `prod-*`.
+
 Application web de suivi commercial pour le secteur nautique.
 
 ## Fonctionnalites

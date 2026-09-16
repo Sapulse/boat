@@ -206,6 +206,14 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
 // silencieux), panneau utilisateur (Réessayer / Abandonner). Rien ne se perd :
 // la file survit au rechargement (drainée avant l'hydratation).
 
+/** La base n'est pas migrée pour cette version (code déployé avant la migration Turso). */
+export class SchemaNotMigratedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchemaNotMigratedError';
+  }
+}
+
 /** AppState « vide » : état de départ (mode API) avant l'hydratation serveur. */
 export function getEmptyState(): AppState {
   return {
@@ -493,7 +501,15 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetchImpl(`${baseUrl}/state`, { credentials: CREDS, signal: controller.signal });
-      if (!res.ok) { on401(res.status); throw new SendError(res.status, `GET /state -> ${res.status}`); }
+      if (!res.ok) {
+        on401(res.status);
+        // Schéma de base en retard sur le code (déploiement avant migration) :
+        // erreur DÉDIÉE, affichée comme telle par l'écran de chargement.
+        let detail = '';
+        try { detail = String(((await res.json()) as { error?: unknown }).error ?? ''); } catch { /* corps non JSON */ }
+        if (res.status === 503 && detail.startsWith('SCHEMA_NON_MIGRE')) throw new SchemaNotMigratedError(detail);
+        throw new SendError(res.status, `GET /state -> ${res.status}`);
+      }
       return await res.json() as AppState;
     } finally {
       clearTimeout(timer);

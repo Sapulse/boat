@@ -30,7 +30,7 @@ const store = new Map<string, string>();
   clear: () => { store.clear(); },
 };
 
-import { createApiRepository, getEmptyState, type SyncInfo } from '../src/lib/repository';
+import { createApiRepository, getEmptyState, SchemaNotMigratedError, type SyncInfo } from '../src/lib/repository';
 import { OUTBOX_STORAGE_KEY, type StorageLike } from '../src/lib/outbox';
 import { reducer } from '../src/context/appReducer';
 import type { Action } from '../src/context/appReducer';
@@ -225,6 +225,21 @@ async function main() {
     check('« Aucune » -> POST trace sans_suite + PATCH lead motif', srv.received.some(r => r.method === 'POST' && (r.body as { kind?: string }).kind === 'sans_suite')
       && srv.received.some(r => r.method === 'PATCH' && (r.body as Lead).noNextActionReason === 'A acheté ailleurs'));
     check('file vide', outboxSize(storage) === 0);
+  }
+
+  section('Garde-fou : base non migrée -> erreur DÉDIÉE (écran « mise à jour en cours »)');
+  {
+    const srv = makeServer(getEmptyState());
+    srv.respondWith = (method, path) => (method === 'GET' && path.endsWith('/state')
+      ? { status: 503, json: { error: "SCHEMA_NON_MIGRE : la base n'est pas encore migrée" } } : null);
+    const { repo } = makeRepo(srv, makeStorage());
+    let err: unknown = null;
+    try { await repo.hydrate!(); } catch (e) { err = e; }
+    check('503 SCHEMA_NON_MIGRE -> SchemaNotMigratedError', err instanceof SchemaNotMigratedError);
+    srv.respondWith = (method) => (method === 'GET' ? { status: 503, json: { error: 'Auth non configurée' } } : null);
+    let other: unknown = null;
+    try { await repo.hydrate!(); } catch (e) { other = e; }
+    check('un autre 503 reste une erreur ordinaire (écran « vérifiez la connexion »)', other !== null && !(other instanceof SchemaNotMigratedError));
   }
 
   section('Échec transitoire : op PRÉSERVÉE, cache INTACT, retry auto -> LIVRÉE');

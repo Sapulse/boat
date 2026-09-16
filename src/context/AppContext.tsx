@@ -1,7 +1,7 @@
 import { useReducer, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { reducer } from './appReducer';
 import { AppContext, type AppContextType } from './useApp';
-import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, type SyncInfo } from '../lib/repository';
+import { createLocalStorageRepository, createApiRepository, getInitialCrmState, getEmptyState, SchemaNotMigratedError, type SyncInfo } from '../lib/repository';
 import { USE_API } from '../lib/flags';
 import LoginScreen from '../components/auth/LoginScreen';
 import { retryWithBackoff } from '../lib/retry';
@@ -26,6 +26,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Échec d'hydratation (mode API) : écran bloquant + Réessayer. `hydrateNonce`
   // relance l'hydratation.
   const [hydrateError, setHydrateError] = useState(false);
+  const [schemaNotMigrated, setSchemaNotMigrated] = useState(false);
   const [hydrateNonce, setHydrateNonce] = useState(0);
   // Loading gate : prêt d'emblée en flag off ; en flag on, on attend l'hydratation.
   const [ready, setReady] = useState(!USE_API);
@@ -75,8 +76,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_STATE', payload: serverState });
         setReady(true);
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (cancelled) return;
+        // Base non migrée pour cette version : écran EXPLICITE (pas « vérifiez votre connexion »).
+        setSchemaNotMigrated(e instanceof SchemaNotMigratedError);
         setHydrateError(true); // ne PAS débloquer sur du vide
       });
     return () => { cancelled = true; };
@@ -266,6 +269,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Écran BLOQUANT si l'hydratation a échoué (mode API) : l'app ne démarre jamais
   // sur un état vide trompeur. Tree-shaké en flag off.
+  if (USE_API && hydrateError && schemaNotMigrated) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6">
+        <p className="text-gray-800 font-medium">Mise à jour du CRM en cours.</p>
+        <p className="text-sm text-gray-500 max-w-md">
+          La base de données n'est pas encore à jour pour cette version de l'application. Aucune donnée n'est
+          perdue. Réessayez dans quelques minutes ; si le message persiste, prévenez l'administrateur
+          (code : SCHEMA_NON_MIGRE).
+        </p>
+        <button onClick={retryHydrate} className="btn-primary btn-sm">Réessayer</button>
+      </div>
+    );
+  }
   if (USE_API && hydrateError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6">
