@@ -48,6 +48,43 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
     envoyé le message ? » pour ces envois ;
   - à étudier : boîte expéditrice avec le compte partagé, pièces jointes, copie dans
     « Éléments envoyés », gestion des erreurs, RGPD.
+- [ ] **Option de secours — ouvrir les mails dans Outlook web** (au lieu du lien `mailto:`), si
+  l'application de messagerie par défaut pose problème sur un poste. Diagnostic du 17/09, pas de code.
+  - **Où** : un seul constructeur, `buildMailto` (`src/lib/email.ts`), appelé par `sendEmail`
+    (`src/pages/LeadDetailPage.tsx`) pour les modèles, les relances (ce sont des modèles) et
+    « Email sans modèle » ; plus le lien simple sur l'adresse de la fiche (`href="mailto:…"`, même
+    fichier). La vue « À relancer » et le bouton « Relancer » n'ouvrent aucun mail.
+  - **Lien** : `https://outlook.office.com/mail/deeplink/compose?to=…&subject=…&body=…`, chaque
+    valeur passée par `encodeURIComponent` (accents en UTF-8, retour à la ligne `%0A`). Ouverture
+    dans un nouvel onglet (`window.open` dans le clic, comme WhatsApp : pas de blocage de fenêtre).
+    À vérifier sur un vrai poste : retours à la ligne bien rendus, accents, `+` et `&` dans le corps,
+    comportement si la session Outlook web n'est pas ouverte (passage par la connexion Microsoft).
+  - **Longueur** : aucune limite documentée par Microsoft. Seuil prudent retenu : 2 000 caractères
+    (au-delà, risque d'erreur ou de corps perdu, surtout via la page de connexion). Mesure sur les
+    **16 modèles réels** (lecture seule de la prod, pire cas des leads : nom 31, modèle 48, email 45 ;
+    signatures actuellement vides) : lien le plus long **863** (« Relance devis J+3 »),
+    **aucun ne dépasse**. Si un modèle dépassait : ouvrir Outlook web avec destinataire + sujet et
+    copier le corps dans le presse-papiers (message « corps copié, collez-le »), sinon repli `mailto:`.
+  - **Réglage par poste** (navigateur, `localStorage`, pas en base) : « Application par défaut /
+    Outlook web », par défaut « Application par défaut » ; lecture protégée (valeur absente ou
+    illisible = application par défaut).
+  - **Confirmation** « Avez-vous bien envoyé le message ? » : inchangée (`flow.confirmMessage`).
+  - **Estimation** : ½ à 1 jour (constructeur + tests au harnais, réglage, test manuel sur un poste).
+  - **Mise en prod** : aucune migration, aucune API, aucune donnée → la répétition du 17/09 reste
+    valable ; seulement un contrôle manuel en plus à la recette. Hors v4.0.0 (main gelée) sauf
+    correctif validé par César.
+- [ ] **Lot « Salons »** — besoin exprimé par Nicolas en réunion : remplacer le fichier Excel des
+  RDV de salon ; toute l'équipe doit voir qui a RDV avec quel client et quel jour. Demandé le 17/09
+  (main gelée) — **diagnostic d'abord**, pas de code.
+  - Déjà couvert par la v4 : RDV dans l'Agenda visibles par tous, plusieurs personnes, responsable
+    modifiable.
+  - À étudier :
+    - événement « Salon » sur plusieurs jours, avec lieu et plusieurs participants ;
+    - type d'action « RDV salon » (ou rattachement d'un RDV à un salon) + filtre / vue « Salon »
+      dans l'Agenda ;
+    - création rapide d'un lead sur mobile pendant le salon (nom, téléphone, bateau, source = le
+      salon) enchaînée sur le RDV ;
+    - stat après salon : nombre de contacts et de RDV par salon (lien avec Acquisition ?).
 - [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
   types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
