@@ -130,6 +130,8 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
               onChange={e => { update('source', e.target.value); if (e.target.value) setSourceError(false); }}
             >
               <option value="">--</option>
+              {/* Source hors liste (ancienne donnée, import) : affichée telle quelle plutôt que « -- ». */}
+              {form.source && !(SOURCES as readonly string[]).includes(form.source) && <option value={form.source}>{form.source}</option>}
               {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}
@@ -232,6 +234,8 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
             onChange={e => { update('source', e.target.value); if (e.target.value) setSourceError(false); }}
           >
             <option value="">--</option>
+            {/* Source hors liste (ancienne donnée, import) : affichée telle quelle plutôt que « -- ». */}
+            {form.source && !(SOURCES as readonly string[]).includes(form.source) && <option value={form.source}>{form.source}</option>}
             {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}

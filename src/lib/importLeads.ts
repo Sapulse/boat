@@ -1,5 +1,6 @@
 import type { Lead, LeadStatus, BoatType, BoatCondition, Commercial, Temperature } from '../data/types';
 import { TEMPERATURES, DEFAULT_TEMPERATURE } from '../data/constants';
+import { normalizeSource } from './sources';
 
 // ===========================================================================
 // Import de leads depuis le fichier de suivi Ocean Boat (chantier import/export,
@@ -377,7 +378,8 @@ function mapRow(row: RawRow, today: string, line: number): { prepared: PreparedL
 
   const lead: Omit<Lead, 'id' | 'commercialId'> = {
     createdAt,
-    source: get(row, COL.source),
+    // Lot 3 : source normalisée dès l'aperçu (« http://topbarcos.com/ » -> « Top barcos »).
+    source: normalizeSource(get(row, COL.source)),
     firstName,
     lastName,
     phone: cleanPhone(phoneRaw),

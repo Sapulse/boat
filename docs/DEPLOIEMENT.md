@@ -110,6 +110,7 @@ migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
 |---|---|---|---|
 | 1 | 2 | `scripts/apply-planned-actions-turso.ts` | 4 colonnes + 2 tables + reprise des prochaines actions |
 | 2 | 3 | `scripts/apply-template-layout-turso.ts` | table `template_categories` + colonnes `message_templates.categoryId` / `position` ; aucune donnée réécrite |
+| 3 | 3 | `scripts/fusion-sources-turso.ts` | **données** : `leads.source` seulement, table explicite (« http://topbarcos.com/ » → « Top barcos », 1 lead au 17/09) ; sauvegarde intégrée avant écriture ; preuve (même nombre, autres colonnes identiques, répartition attendue) ; rejeu = 0 |
 
 *(Complété au fil des lots 3 à 5.)*
 
@@ -164,3 +165,23 @@ programmée sur le lead. AVANT de redéployer, il faut donc un script de
 Sans ce script : agenda faux pour les leads touchés pendant le retour arrière.
 **Recommandation** : un retour arrière ne se décide que dans l'heure qui suit la
 mise en production ; au-delà, corriger en avant (hotfix sur le lot 2).
+
+---
+
+## Migration vers le VPS SAPulse (OVH) — dépendances Vercel à traiter
+
+Aucune fonctionnalité des lots 3 à 5 ne dépend de Vercel (pas de cron, pas d'API ni
+d'en-tête spécifique, pas de stockage Vercel ; les nouvelles routes sont de simples
+`case` du routeur `api/[...slug].ts`). Trois dépendances EXISTANTES sont à reprendre
+au moment du passage au VPS :
+
+1. **`vercel.json`** : en-têtes de sécurité (CSP stricte `script-src 'self'`,
+   `connect-src 'self'`, HSTS…), réécriture `/api/(.*)` → `/api/[...slug]`, règles de
+   cache (`no-store` sur `/api`). À reproduire dans le serveur web du VPS.
+2. **Types `@vercel/node`** (`VercelRequest` / `VercelResponse`) dans `api/[...slug].ts`,
+   `api/_lib/http.ts`, `api/_lib/auth.ts` et `scripts/harness-api.ts` : le handler
+   n'utilise que `status / json / end / setHeader` + `body / headers / url` — un
+   adaptateur Node `http` minimal suffit (même principe que `scripts/dev-local-test.ts`).
+3. **Base Vite selon `VERCEL`** (`vite.config.ts` : `base: process.env.VERCEL ? '/' : '/boat/'`) :
+   fixer explicitement la base voulue sur le VPS.
+

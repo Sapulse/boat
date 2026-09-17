@@ -16,6 +16,8 @@ import {
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
 import { migrateLegacyNextActions, pendingActionOf, summarizeNextAction } from '../../src/lib/plannedActions.js';
 import { positionsFromBackup } from '../../src/lib/templateLayout.js';
+// Lot 3 : sources normalisées à l'écriture (saisie, import, boîte de réception) — anti-retour.
+import { normalizeSource } from '../../src/lib/sources.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -400,14 +402,16 @@ async function realignLeadSummary(tx: Tx, leadId: string): Promise<void> {
 export async function createLead(prisma: PrismaClient, lead: Lead): Promise<Lead> {
   // Validation zod AVANT toute écriture ; on persiste le résultat PARSÉ
   // (champs inconnus strippés -> jamais transmis à Prisma).
-  const data = parseLeadCreate(lead) as unknown as Lead;
+  const parsed = parseLeadCreate(lead) as unknown as Lead;
+  const data = { ...parsed, source: normalizeSource(parsed.source) };
   const row = await prisma.lead.create({ data });
   return toLead(row as LeadRow);
 }
 export async function updateLead(prisma: PrismaClient, id: string, patch: Partial<Lead>): Promise<Lead> {
   // Le schéma PATCH n'a pas de champ `id` -> strippé : un PATCH ne peut jamais
   // renommer une clé primaire (l'id du chemin fait foi).
-  const data = parseLeadPatch(patch) as Partial<Lead>;
+  const parsed = parseLeadPatch(patch) as Partial<Lead>;
+  const data = parsed.source === undefined ? parsed : { ...parsed, source: normalizeSource(parsed.source) };
   const row = await prisma.$transaction(async (tx) => {
     await tx.lead.update({ where: { id }, data });
     await realignLeadSummary(tx, id);
@@ -601,7 +605,8 @@ export async function bulkImport(prisma: PrismaClient, payload: ImportPayload): 
     const cid = byName.get(normName(l.commercialName));
     if (!cid) throw new HttpError(400, `ligne d'import ${i + 1} : commercial « ${l.commercialName} » introuvable`);
     // parseLeadCreate strippe la clé inconnue `commercialName`.
-    return parseLeadCreate({ ...l, id: randomUUID(), commercialId: cid }) as unknown as Lead;
+    const parsed = parseLeadCreate({ ...l, id: randomUUID(), commercialId: cid }) as unknown as Lead;
+    return { ...parsed, source: normalizeSource(parsed.source) };
   });
 
   // 4) Écriture ATOMIQUE : commerciaux (FK) puis leads. createMany -> 2 statements.

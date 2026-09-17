@@ -203,6 +203,21 @@ async function main() {
     await deleteLead(prisma, 'lt-neutre');
   }
 
+  section('Lot 3 — sources normalisées côté serveur (anti-retour)');
+  {
+    const a = await createLead(prisma, makeLead({ id: 'ls-1', source: 'http://topbarcos.com/' }));
+    check('création : « http://topbarcos.com/ » -> « Top barcos »', a.source === 'Top barcos', a.source);
+    const b = await updateLead(prisma, 'ls-1', { source: '  LEBONCOIN ' });
+    check('modification : « LEBONCOIN » -> « LBC »', b.source === 'LBC', b.source);
+    const c = await updateLead(prisma, 'ls-1', { source: 'BoatsGroup' });
+    check('BoatsGroup reste BoatsGroup', c.source === 'BoatsGroup', c.source);
+    const d = await updateLead(prisma, 'ls-1', { source: 'Salon  de Paris ' });
+    check('source inconnue : gardée, espaces nettoyés (pas de refus)', d.source === 'Salon de Paris', d.source);
+    const e = await updateLead(prisma, 'ls-1', { temperature: 'chaud' });
+    check('patch sans source : source inchangée', e.source === 'Salon de Paris');
+    await deleteLead(prisma, 'ls-1');
+  }
+
   section('Validation zod — payloads INVALIDES refusés (400 clair) SANS écriture');
   {
     // Attend une HttpError au statut donné (400/404/409) ; échec si aucune erreur.
@@ -402,6 +417,8 @@ async function main() {
     const tomId = v.commercials.find(c => c.name === 'Tom')?.id;
     check('résolution PAR NOM : ImpC -> id de Fred existant', v.leads.some(l => l.lastName === 'ImpC' && l.commercialId === fredId));
     check('ImpA -> commercial Tom nouvellement créé', v.leads.some(l => l.lastName === 'ImpA' && l.commercialId === tomId));
+    const impSrc = await bulkImport(prisma, { commercials: [], leads: [{ ...importLead({ lastName: 'ImpSrc', source: 'www.yachtworld.com' }), commercialName: 'Tom' }] });
+    check('import en masse : source normalisée (« www.yachtworld.com » -> « Yachtworld »)', impSrc.leadsCreated === 1 && (await getState(prisma)).leads.some(l => l.lastName === 'ImpSrc' && l.source === 'Yachtworld'));
 
     // 2) Idempotence : réimport ne recrée pas Tom.
     const rep2 = await bulkImport(prisma, {

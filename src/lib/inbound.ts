@@ -1,5 +1,6 @@
 ﻿import type { InboundEmail, Lead, LeadStatus } from '../data/types.js';
 import { DEFAULT_TEMPERATURE } from '../data/constants.js';
+import { normalizeSource } from './sources.js';
 
 // Cœur PUR de la boîte de réception prospects (Étape A, maquette) — aucune
 // dépendance React, testé par scripts/harness-inbound.ts (même découpage que
@@ -41,7 +42,7 @@ export function buildLeadFromInbound(mail: InboundEmail, commercialId: string, t
   const via = mail.sourceDetail ? `${mail.sourceLabel} — ${mail.sourceDetail}` : mail.sourceLabel;
   return {
     createdAt: todayISO,
-    source: mail.leadSource,
+    source: normalizeSource(mail.leadSource),
     commercialId,
     firstName: mail.extracted.firstName,
     lastName: mail.extracted.lastName,
