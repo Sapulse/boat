@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2, Check,
   Users, Palmtree, Plane, User, Tag, type LucideIcon,
@@ -27,9 +28,11 @@ import { activateOnKey } from '../lib/a11y';
 import {
   groupEventsByDay, getCommercialColor, buildPlannedAgendaItems, plannedItemsFor, splitByPersonColumns, getPlannableLeads, defaultDoneAuthor,
   buildTimeSlots, layoutDayGrid, isEndAfterStart, startSlotIndex, shiftEventBySlots, resizeEventBySlots,
+  parseAgendaParams, type AgendaUrlParams,
   type PlannedAgendaItem, type DayGridLayout, type PositionedEvent,
 } from '../lib/agenda';
-import { defaultPeople, eligibleCommercials, validateNextActionChoice, type NextActionChoice } from '../lib/plannedActions';
+import Repliable from '../components/ui/Repliable';
+import { defaultPeople, eligibleCommercials, overdueActions, validateNextActionChoice, type NextActionChoice } from '../lib/plannedActions';
 import type { Commercial, ActionType, CalendarEvent, CalendarEventCategory, PlannedActionPerson } from '../data/types';
 
 // Creneaux horaires FIGES au niveau module (audit perf) : buildTimeSlots() ne
@@ -104,7 +107,20 @@ type OnItemResize = (item: GridItem, slotDelta: number) => void;
 // Ouvre le createur pour une date + heure (heure absente = "toute la journee").
 type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
+/**
+ * Lot 4 : l'Agenda lit ?vue= ?date= ?commercial= ?retards=1 (cibles des
+ * indicateurs du tableau de bord et de la pastille du menu). Les paramètres
+ * INITIALISENT l'écran ; un nouveau lien (autres paramètres) le remonte avec
+ * ces valeurs, l'utilisateur garde ensuite la main sur les contrôles.
+ */
 export default function AgendaPage() {
+  const [searchParams] = useSearchParams();
+  const key = searchParams.toString();
+  const initial = useMemo(() => parseAgendaParams(new URLSearchParams(key)), [key]);
+  return <AgendaScreen key={key} initial={initial} />;
+}
+
+function AgendaScreen({ initial }: { initial: AgendaUrlParams }) {
   const { state, reschedulePlannedAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
   const toast = useToast();
 
@@ -113,9 +129,13 @@ export default function AgendaPage() {
   // l'utilisateur garde la main (les onglets basculent librement, seul le
   // défaut au montage change — pas de bascule forcée en cours de route).
   const compactAtMount = useIsCompact();
-  const [view, setView] = useState<AgendaView>(compactAtMount ? 'jour' : 'semaine');
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
-  const [filterCommercial, setFilterCommercial] = useState('');
+  const [view, setView] = useState<AgendaView>(initial.vue ?? (compactAtMount ? 'jour' : 'semaine'));
+  const [anchor, setAnchor] = useState<Date>(() => (initial.date ? new Date(`${initial.date}T12:00:00`) : new Date()));
+  // Commercial de l'URL retenu seulement s'il existe (lien ancien, commercial supprimé : tous).
+  const [filterCommercial, setFilterCommercial] = useState(() =>
+    initial.commercial && state.commercials.some(c => c.id === initial.commercial) ? initial.commercial : '');
+  // Bandeau des retards : ouvert si ?retards=1 (pastille du menu, indicateur b).
+  const [overdueOpen, setOverdueOpen] = useState(initial.retards);
   // Createur : clic-creneau -> choix (action de lead / evenement) puis la bonne modale.
   const [creator, setCreator] = useState<{ date: string; time?: string; mode: 'choose' | 'lead' | 'event' } | null>(null);
   // Edition d'un evenement libre existant (clic sur le bloc).
@@ -140,7 +160,13 @@ export default function AgendaPage() {
     () => groupEventsByDay<GridItem>([...plannedItems.map(it => plannedToItem(it)), ...calendarEvents.map(calToItem)]),
     [plannedItems, calendarEvents],
   );
-  const overdueCount = plannedItems.filter(it => it.overdue).length;
+  // Retards : MÊME calcul que la pastille du menu et l'indicateur du tableau de
+  // bord (overdueActions / countOverdue), filtré par commercial.
+  const overdueItems = useMemo(() => {
+    const list = overdueActions(state.plannedActions, state.leads, todayISO, filterCommercial || undefined);
+    return buildPlannedAgendaItems(list, state.leads, todayISO);
+  }, [state.plannedActions, state.leads, filterCommercial, todayISO]);
+  const overdueCount = overdueItems.length;
 
   const activeCommercials = state.commercials.filter(c => c.active);
   const onOpen = (item: PlannedAgendaItem) => setOpenPlannedId(item.plannedId);
@@ -204,11 +230,6 @@ export default function AgendaPage() {
           <p className="text-sm text-gray-500 mt-0.5">
             Cliquez une action pour la marquer faite ou la reporter, un créneau vide pour planifier ; glissez pour reporter.
           </p>
-          {overdueCount > 0 && (
-            <p className="text-sm text-danger-700 font-medium mt-1 flex items-center gap-1">
-              <AlertTriangle className="w-4 h-4" /> {overdueCount} action{overdueCount > 1 ? 's' : ''} en retard
-            </p>
-          )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
@@ -231,6 +252,10 @@ export default function AgendaPage() {
           </select>
         </div>
       </div>
+
+      {overdueCount > 0 && (
+        <OverdueBanner items={overdueItems} open={overdueOpen} onToggle={() => setOverdueOpen(o => !o)} onOpen={onOpen} />
+      )}
 
       {/* Legende : couleurs commerciaux + categories d'evenement */}
       <CommercialLegend />
@@ -289,6 +314,48 @@ export default function AgendaPage() {
         />
       )}
     </div>
+  );
+}
+
+// --- Bandeau repliable des actions en retard (lot 4) ---
+// Chaque ligne ouvre la même fiche que la grille (Fait / Pas fait / Reporter).
+function OverdueBanner({ items, open, onToggle, onOpen }: {
+  items: PlannedAgendaItem[];
+  open: boolean;
+  onToggle: () => void;
+  onOpen: (item: PlannedAgendaItem) => void;
+}) {
+  const { getCommercialName } = useApp();
+  const n = items.length;
+  return (
+    <Repliable
+      open={open}
+      onToggle={onToggle}
+      label={`la liste des ${n} action${n > 1 ? 's' : ''} en retard`}
+      className="rounded-lg border border-danger-100 bg-danger-50 px-3 py-2"
+      title={
+        <span className="text-sm font-medium text-danger-700 flex items-center gap-1.5">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {n} action{n > 1 ? 's' : ''} en retard
+        </span>
+      }
+    >
+      <ul className="mt-2 divide-y divide-danger-100" data-testid="overdue-list">
+        {items.map(it => (
+          <li key={it.plannedId}>
+            <button
+              type="button"
+              onClick={() => onOpen(it)}
+              className="w-full min-h-[44px] flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-3 py-2 text-left text-sm hover:bg-danger-100/60 rounded px-1"
+            >
+              <span className="text-danger-700 font-medium sm:w-28 shrink-0">{formatDate(it.date)}{it.time ? ` ${it.time}` : ''}</span>
+              <span className="font-medium text-gray-900 truncate">{it.leadName}</span>
+              <span className="text-gray-600 truncate">{it.label}</span>
+              <span className="text-xs text-gray-500 sm:ml-auto truncate">{it.people.map(p => getCommercialName(p.commercialId)).join(', ')}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Repliable>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -24,6 +24,7 @@ import {
 import { cn, toISODate } from '../../lib/utils';
 import { useApp } from '../../context/useApp';
 import { countOverdue } from '../../lib/plannedActions';
+import { agendaLink } from '../../lib/agenda';
 import { useInboundDemo } from '../../context/useInboundDemo';
 import logo from '../../assets/logo.png';
 
@@ -108,17 +109,31 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     >
       <item.icon className="w-5 h-5 shrink-0" />
       {item.name}
-      {item.href === '/agenda' && overdueCount > 0 && (
-        <span className="ml-auto rounded-full bg-danger-600 px-2 py-0.5 text-xs font-semibold text-white" title={`${overdueCount} action(s) en retard`}>
-          {overdueCount}
-        </span>
-      )}
       {item.href === '/boite-reception' && pendingCount > 0 && (
         <span className="ml-auto rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white">
           {pendingCount}
         </span>
       )}
     </NavLink>
+  );
+
+  // Agenda : la pastille est un LIEN À PART (pas imbriqué dans l'entrée) vers
+  // l'Agenda bandeau des retards ouvert (lot 4, ?retards=1).
+  const renderAgenda = () => (
+    <div className="relative">
+      {renderItem(agendaItem)}
+      {overdueCount > 0 && (
+        <Link
+          to={agendaLink({ retards: true })}
+          onClick={onClose}
+          aria-label={`${overdueCount} action${overdueCount > 1 ? 's' : ''} en retard — ouvrir la liste`}
+          title={`${overdueCount} action(s) en retard`}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-danger-600 hover:bg-danger-700 px-2 py-0.5 text-xs font-semibold text-white"
+        >
+          {overdueCount}
+        </Link>
+      )}
+    </div>
   );
 
   return (
@@ -146,7 +161,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
-          {renderItem(agendaItem)}
+          {renderAgenda()}
           {sections.map((section) => {
             const isOpen = openSections[section.id];
             return (

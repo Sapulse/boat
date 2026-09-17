@@ -149,6 +149,70 @@ export function needsPlanning(lead: Lead): boolean {
   return !isPlanningClosed(lead.status) && !lead.nextActionDate && !lead.noNextActionReason;
 }
 
+// ---------------------------------------------------------------------------
+// Indicateurs du tableau de bord (lot 4) — SOURCE UNIQUE partagée avec la
+// pastille du menu Agenda (countOverdue), le bandeau des retards de l'Agenda et
+// la vue « À planifier » des Leads (needsPlanning).
+// ---------------------------------------------------------------------------
+
+/**
+ * a) Actions à faire AUJOURD'HUI. Décision du 17/09 : les actions des leads
+ * Signés / Perdus sont INCLUSES (une livraison, un rendez-vous de signature
+ * restent à faire). Une action à plusieurs compte UNE fois dans le total, et
+ * une fois chez chaque personne concernée (filtre commercial).
+ */
+export function isDueToday(pa: PlannedAction, lead: Lead | undefined, todayISO: string): boolean {
+  return pa.status === 'a_faire' && pa.date === todayISO && !!lead;
+}
+
+export function countDueToday(planned: PlannedAction[], leads: Lead[], todayISO: string, commercialId?: string): number {
+  const leadById = new Map(leads.map(l => [l.id, l]));
+  return planned.filter(pa =>
+    isDueToday(pa, leadById.get(pa.leadId), todayISO) && (!commercialId || concernsCommercial(pa, commercialId)),
+  ).length;
+}
+
+/** Actions en retard (liste), mêmes règles que countOverdue — bandeau de l'Agenda. Plus anciennes d'abord. */
+export function overdueActions(planned: PlannedAction[], leads: Lead[], todayISO: string, commercialId?: string): PlannedAction[] {
+  const leadById = new Map(leads.map(l => [l.id, l]));
+  return planned
+    .filter(pa => isPlannedActionOverdue(pa, leadById.get(pa.leadId), todayISO) && (!commercialId || concernsCommercial(pa, commercialId)))
+    .sort(byWhen);
+}
+
+/**
+ * Lead sans commercial RÉEL : « Non attribué » ou commercial inconnu (supprimé).
+ * Sert à la part « non attribués » de l'indicateur « À planifier ».
+ */
+export function isUnassignedLead(lead: Pick<Lead, 'commercialId'>, commercials: Commercial[]): boolean {
+  const c = commercials.find(x => x.id === lead.commercialId);
+  return !c || isUnassignedCommercial(c);
+}
+
+export interface PlanningIndicators {
+  /** a) à faire aujourd'hui */
+  today: number;
+  /** b) en retard (= pastille du menu) */
+  overdue: number;
+  /** c) leads à planifier (= vue « À planifier ») */
+  toPlan: number;
+  /** dont leads non attribués (total seulement : 0 quand un commercial est choisi) */
+  toPlanUnassigned: number;
+}
+
+/** Les 3 indicateurs du haut du tableau de bord, pour tous ou pour UN commercial. */
+export function planningIndicators(
+  planned: PlannedAction[], leads: Lead[], commercials: Commercial[], todayISO: string, commercialId?: string,
+): PlanningIndicators {
+  const toPlanLeads = leads.filter(l => needsPlanning(l) && (!commercialId || l.commercialId === commercialId));
+  return {
+    today: countDueToday(planned, leads, todayISO, commercialId),
+    overdue: countOverdue(planned, leads, todayISO, commercialId),
+    toPlan: toPlanLeads.length,
+    toPlanUnassigned: commercialId ? 0 : toPlanLeads.filter(l => isUnassignedLead(l, commercials)).length,
+  };
+}
+
 /** « Aucune prochaine action » choisie et toujours valable (aucune action programmée depuis). */
 export function hasExplicitNoNextAction(lead: Pick<Lead, 'noNextActionReason' | 'nextActionDate'>): boolean {
   return !!lead.noNextActionReason && !lead.nextActionDate;

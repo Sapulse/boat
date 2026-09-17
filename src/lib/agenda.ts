@@ -2,7 +2,7 @@ import {
   COMMERCIAL_COLORS, NEUTRAL_COMMERCIAL_COLOR,
   AGENDA_HOUR_START, AGENDA_HOUR_END, AGENDA_SLOT_MIN,
 } from '../data/constants';
-import { isLeadActive } from './utils';
+import { isLeadActive, toISODate } from './utils';
 import type { Lead, Commercial, ActionType, LeadAction, PlannedAction, PlannedActionPerson } from '../data/types';
 import { concernsCommercial, isPlannedActionOverdue, isPlanningClosed, plannedActionLabel } from './plannedActions';
 
@@ -472,3 +472,51 @@ export function buildDoneAction(pa: PlannedAction, lead: Pick<Lead, 'id' | 'comm
 
 /** Libellé d'historique d'une action faite sans puce : « Rendez-vous — fait », « Essai en mer — fait ». */
 export const doneResultLabel = (pa: Pick<PlannedAction, 'type' | 'customLabel'>) => `${plannedActionLabel(pa)} — fait`;
+
+// ---------------------------------------------------------------------------
+// Paramètres d'URL de l'Agenda (lot 4) : ?vue= ?date= ?commercial= ?retards=1.
+// Cibles des indicateurs du tableau de bord et de la pastille du menu.
+// ---------------------------------------------------------------------------
+
+export type AgendaUrlView = 'semaine' | 'mois' | 'jour';
+
+export interface AgendaUrlParams {
+  vue?: AgendaUrlView;
+  /** "YYYY-MM-DD" valide uniquement */
+  date?: string;
+  commercial?: string;
+  /** Bandeau « N actions en retard » ouvert */
+  retards: boolean;
+}
+
+const URL_VIEWS: readonly AgendaUrlView[] = ['semaine', 'mois', 'jour'];
+
+function isRealISODate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T12:00:00`);
+  return !Number.isNaN(d.getTime()) && toISODate(d) === s;
+}
+
+/** Lecture tolérante : une valeur invalide est IGNORÉE (l'écran garde son défaut). */
+export function parseAgendaParams(params: URLSearchParams): AgendaUrlParams {
+  const vue = params.get('vue') ?? '';
+  const date = params.get('date') ?? '';
+  const commercial = (params.get('commercial') ?? '').trim();
+  return {
+    vue: (URL_VIEWS as readonly string[]).includes(vue) ? vue as AgendaUrlView : undefined,
+    date: isRealISODate(date) ? date : undefined,
+    commercial: commercial || undefined,
+    retards: params.get('retards') === '1',
+  };
+}
+
+/** Lien vers l'Agenda (chemin du routeur, sans le #). Paramètres vides omis. */
+export function agendaLink(p: Partial<AgendaUrlParams>): string {
+  const q = new URLSearchParams();
+  if (p.vue) q.set('vue', p.vue);
+  if (p.date) q.set('date', p.date);
+  if (p.commercial) q.set('commercial', p.commercial);
+  if (p.retards) q.set('retards', '1');
+  const s = q.toString();
+  return s ? `/agenda?${s}` : '/agenda';
+}
