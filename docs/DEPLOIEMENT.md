@@ -146,15 +146,34 @@ migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
 > 🛑 **Uniquement dans l'heure qui suit la mise en production.**
 > 🛑 **Jamais le bouton « Restaurer » de `prod-2026-09-16`.**
 
-**Principe : on ne revient PAS en arrière sur la base.** La migration est
-purement additive (colonnes avec valeur par défaut, 2 tables) : prouvé le
+**Principe : on ne revient PAS en arrière sur la base.** Les migrations sont
+purement additives (colonnes avec valeur par défaut, tables neuves) : prouvé le
 2026-09-16 en faisant tourner le code du tag `prod-2026-09-16` sur une copie migrée
 des données réelles — lecture ✅, modification de lead ✅, nouvelle action
 (kind `realisee` par défaut) ✅, nouveau lead ✅, suppression d'un lead avec action
 programmée (cascade, aucun orphelin) ✅. Seul le **code** revient en arrière.
-Lots 3 à 5 : uniquement des tables neuves et deux colonnes avec valeur par défaut
-(`message_templates`), ignorées par l'ancien code, plus la fusion d'UNE source (donnée
-valide pour l'ancien code) — non re-prouvé avec le code du tag le 17/09.
+**Re-prouvé le 2026-09-17 avec les 5 migrations** (lots 2 à 5) : copie de
+`bob-crm-sauvegarde-2026-09-17-14h00` (438 leads), les 5 scripts en `--apply`, puis le
+code du tag `prod-2026-09-16` (copie propre du tag, banc local) sur cette base :
+chargement sans erreur console ✅ (v3.13.0), Leads ✅, fiche ✅, modification d'un lead
+(commentaire) ✅, prochaine action modifiée sur la fiche ✅, ajout d'une action avec
+prochaine action ✅ (kind `realisee` par défaut), Modèles : les 16 affichés ✅ et
+création d'un 17e ✅ (sans catégorie, position 0), Acquisition : saisie de septembre ✅
+(`monthly_stats` 21 → 22, les 21 lignes d'origine identiques), boîte de réception ✅ ;
+aucune écriture refusée. Retour ENSUITE au code `main` (v4.0.0) sur la MÊME base :
+Agenda, Dashboard, Modèles (le 17e modèle dans « Non classés »), Objectifs de la
+semaine, Acquisition › Réseaux sociaux (3 réseaux) chargés sans erreur ✅ ; le simple
+chargement de la v4 n'écrit rien (empreinte de la base identique).
+**Désynchronisé par le passage sur l'ancien code — exactement les prochaines actions
+modifiées, rien d'autre** (vérifié lead par lead) :
+- prochaine action **reportée** sur la fiche (lead au 22/09) : l'action programmée reste
+  au 14/08 → la v4 affiche le 14/08 dans la fiche et l'Agenda, et la compte **en retard** ;
+- action **ajoutée avec une prochaine action** (relance au 20/09 sur le lead) : aucune
+  action programmée créée → la v4 affiche « Aucune action planifiée » dans la fiche et
+  rien dans l'Agenda, mais ne compte pas le lead dans « À planifier » (252 → 251 : le
+  filtre lit le résumé du lead).
+Limite du test : la prod n'a encore aucune catégorie de modèles (0 avant, 0 après) ;
+les réseaux sociaux et objectifs de la semaine sont ignorés par l'ancien code.
 
 **Procédure (≈ 5 min)**
 1. `vercel rollback dpl_6fCTheuCDSUkmaAhFzPtzKQq59pa --yes` (redéploiement instantané
@@ -168,8 +187,13 @@ valide pour l'ancien code) — non re-prouvé avec le code du tag le 17/09.
 
 **Limites pendant le retour arrière (mesurées sur la copie)**
 - **Désynchronisation** : l'ancien code écrit la prochaine action sur le lead
-  seulement ; les actions programmées ne suivent pas (test : 12 leads divergents
-  après quelques modifications et une restauration).
+  seulement ; les actions programmées ne suivent pas (test du 16/09 : 12 leads divergents
+  après quelques modifications et une restauration ; test du 17/09 : 2 leads touchés,
+  2 leads divergents — voir ci-dessus).
+- Pendant le retour arrière, les onglets et écrans des lots 3 à 5 disparaissent
+  (catégories de modèles, Objectifs de la semaine, Réseaux sociaux). L'ancien code ne lit
+  ni n'écrit leurs tables (hors « Restaurer », interdit) : elles sont conservées et
+  réapparaissent au retour de la v4 (tables vides le 17/09 : non vérifié avec des données).
 - **« Restaurer » dans l'ancien code vide TOUTES les actions programmées**
   (cascade à la suppression des leads) : interdit pendant le retour arrière.
 - Les traces « report » / « sans suite » écrites pendant le lot 2 apparaissent dans

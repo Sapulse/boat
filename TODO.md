@@ -28,6 +28,9 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
 
 ## ⏭️ APRÈS LA MISE EN PRODUCTION
 
+- [ ] **Date pré-remplie dans la fenêtre « Prochaine action »** selon le type (ex. relance
+  J+3, après un devis J+7), toujours modifiable. Demandé le 17/09 — pas avant la mise en prod.
+
 - [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
   types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
