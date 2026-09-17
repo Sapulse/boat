@@ -17,6 +17,7 @@ import { applyTemplateLayoutSchema } from './apply-template-layout-turso';
 import {
   applyWeeklyObjectivesSchema, weeklyObjectivesTodo, weeklyObjectivesBefore, proveWeeklyObjectives,
 } from './apply-weekly-objectives-turso';
+import { applySocialSchema } from './apply-social-turso';
 import { getState, detectSchema, upsertWeeklyObjective, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError } from '../api/_lib/http';
@@ -116,6 +117,8 @@ async function main() {
     check('schéma identique : weekly_objectives (colonnes, index, clé étrangère)', (await schemaOf(db, 'weekly_objectives')) === (await schemaOf(pdb, 'weekly_objectives')));
     pdb.close();
   }
+  // Le lot 5 passe juste après (script 5) ; le code courant lit ses tables.
+  await applySocialSchema(db);
   db.close();
 
   section('API (store) : upsert, règles, trace serveur');

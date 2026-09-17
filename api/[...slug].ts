@@ -9,7 +9,7 @@ import {
   createCommercial, updateCommercial,
   createTemplate, updateTemplate, deleteTemplate, saveTemplateLayout,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
-  upsertPlannedAction, upsertWeeklyObjective,
+  upsertPlannedAction, upsertWeeklyObjective, saveSocialNetworks, saveSocialStats,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
   bulkImport, type ImportPayload,
   restoreBackup, type RestorePayload,
@@ -94,6 +94,16 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
     case 'weekly-objectives':
       // Lot 4 : upsert COMPLET et idempotent. Pas de DELETE : retirer = active false.
       if (id && m === 'PUT') return sendJson(res, 200, await upsertWeeklyObjective(prisma, id, body(req)));
+      break;
+
+    case 'social-networks':
+      // Lot 5 : liste des réseaux (ajout, renommage, archivage). Upsert, pas de DELETE.
+      if (!id && m === 'PUT') return sendJson(res, 200, await saveSocialNetworks(prisma, body(req)));
+      break;
+
+    case 'social-stats':
+      // Lot 5 : lignes modifiées, upsert par (réseau, année, mois). Pas de DELETE.
+      if (!id && m === 'PUT') return sendJson(res, 200, await saveSocialStats(prisma, body(req)));
       break;
 
     case 'goals':

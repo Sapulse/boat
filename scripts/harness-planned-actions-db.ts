@@ -25,6 +25,7 @@ import path from 'node:path';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import { applyTemplateLayoutSchema } from './apply-template-layout-turso';
 import { applyWeeklyObjectivesSchema } from './apply-weekly-objectives-turso';
+import { applySocialSchema } from './apply-social-turso';
 import {
   applyPlannedActionsSchema, planReprise, applyReprise, proveMigration, leadsFingerprint, actionsFingerprint,
 } from './apply-planned-actions-turso';
@@ -165,6 +166,7 @@ async function main() {
   // lot 2 ; le code courant lit ses colonnes. Idem lot 4 (objectifs de la semaine).
   await applyTemplateLayoutSchema(db);
   await applyWeeklyObjectivesSchema(db);
+  await applySocialSchema(db);
   db.close();
   const prisma = new PrismaClient({ adapter: new PrismaLibSql({ url: `file:${DB_FILE}` }) });
   const st = await getState(prisma);

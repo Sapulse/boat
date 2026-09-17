@@ -61,7 +61,7 @@ async function main() {
   // Fenêtre de maintenance : la base peut n'avoir qu'une partie des migrations.
   const features = await detectSchema(prisma);
   const migrated = features.lot2;
-  const present = [features.lot2 && 'lot 2 (actions programmées)', features.templateLayout && 'lot 3 (rangement des modèles)', features.weeklyObjectives && 'lot 4 (objectifs de la semaine)'].filter(Boolean);
+  const present = [features.lot2 && 'lot 2 (actions programmées)', features.templateLayout && 'lot 3 (rangement des modèles)', features.weeklyObjectives && 'lot 4 (objectifs de la semaine)', features.social && 'lot 5 (réseaux sociaux)'].filter(Boolean);
   console.log(`Schéma : ${present.length ? present.join(' · ') : "d'avant le lot 2 (pas encore migré)"}`);
   const state = await getState(prisma, { features });
   const inbound = await readInbound(prisma);
@@ -82,6 +82,7 @@ async function main() {
     ...(migrated ? [['plannedActions', state.plannedActions.length] as [string, number]] : []),
     ...(features.templateLayout ? [['templateCategories', state.templateCategories?.length ?? 0] as [string, number]] : []),
     ...(features.weeklyObjectives ? [['weeklyObjectives', state.weeklyObjectives?.length ?? 0] as [string, number]] : []),
+    ...(features.social ? [['socialNetworks', state.socialNetworks?.length ?? 0] as [string, number], ['socialStats', state.socialStats?.length ?? 0] as [string, number]] : []),
     ['inbound_emails *', inbound.length],
   ];
   for (const [label, n] of counts) console.log(`${label.padEnd(24)} ${String(n).padStart(6)}`);

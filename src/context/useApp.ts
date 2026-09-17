@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory, SocialStat } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
 import type { ObjectivePatch } from '../lib/weeklyObjectives';
 import type { SyncInfo } from '../lib/repository';
@@ -55,6 +55,10 @@ export interface AppContextType {
   addWeeklyObjective: (weekStart: string, text: string, ownerId: string | null) => string;
   updateWeeklyObjective: (id: string, patch: ObjectivePatch) => void;
   carryOverWeeklyObjective: (id: string) => string;
+  addSocialNetwork: (name: string) => string;
+  renameSocialNetwork: (id: string, name: string) => void;
+  setSocialNetworkArchived: (id: string, archived: boolean) => void;
+  saveSocialStats: (rows: SocialStat[]) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;

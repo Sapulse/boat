@@ -191,6 +191,35 @@ const WeeklyObjectiveSchema = z.object({
   copiedFromId: id.nullish(),
   modifiedAfterWeekAt: shortStr.nullish(),
 });
+// Lot 5 — réseaux sociaux. PUT = upsert sans suppression (règles : src/lib/social.ts).
+const SocialNetworkSchema = z.object({
+  id,
+  name: z.string().trim().min(1, 'nom requis').max(60, 'nom trop long (max 60)'),
+  position,
+  archived: z.boolean(),
+});
+const SocialNetworksBatch = z.array(SocialNetworkSchema).max(200).superRefine((list, ctx) => {
+  if (new Set(list.map(n => n.id)).size !== list.length) ctx.addIssue({ code: 'custom', message: 'réseau en double' });
+});
+const socialCount = z.number().int().min(0).max(1_000_000_000);
+const SocialStatSchema = z.object({
+  id,
+  networkId: id,
+  year: z.number().int().min(2000).max(2200),
+  month,
+  followers: socialCount,
+  posts: socialCount.nullable(),
+  reach: socialCount.nullable(),
+  comment: z.string().max(1000, 'commentaire trop long (max 1000)'),
+});
+const SocialStatsBatch = z.array(SocialStatSchema).max(BATCH_MAX).superRefine((stats, ctx) => {
+  const seen = new Set<string>();
+  for (const s of stats) {
+    const key = `${s.networkId}|${s.year}|${s.month}`;
+    if (seen.has(key)) ctx.addIssue({ code: 'custom', message: `doublon (réseau, année, mois) : ${key}` });
+    seen.add(key);
+  }
+});
 const TemplateCreate = z.object(templateShape);
 const TemplatePatch = z.object(templateShape).omit({ id: true }).partial();
 
@@ -282,6 +311,8 @@ export const parseDefaultGoal = (d: unknown) => parse(DefaultGoalSchema, d, 'obj
 export const parseImportPayload = (d: unknown) => parse(ImportPayloadSchema, d, 'import');
 export const parsePlannedActionUpsert = (d: unknown) => parse(PlannedActionSchema, d, 'action programmée');
 export const parseWeeklyObjectiveUpsert = (d: unknown) => parse(WeeklyObjectiveSchema, d, 'objectif de la semaine');
+export const parseSocialNetworksBatch = (d: unknown) => parse(SocialNetworksBatch, d, 'réseaux sociaux');
+export const parseSocialStatsBatch = (d: unknown) => parse(SocialStatsBatch, d, 'stats des réseaux sociaux');
 
 // Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
 // Enveloppe versionnée { format, version, data: AppState } : format/version stricts
@@ -307,6 +338,9 @@ const RestoreEnvelopeSchema = z.object({
     templateCategories: z.array(TemplateCategorySchema).max(RESTORE_MAX).optional().default([]),
     // Lot 4 : absent des sauvegardes d'avant le lot 4 -> aucun objectif de la semaine.
     weeklyObjectives: z.array(WeeklyObjectiveSchema).max(RESTORE_MAX).optional().default([]),
+    // Lot 5 : absents des sauvegardes d'avant le lot 5 -> réseaux par défaut (restauration), aucune stat.
+    socialNetworks: SocialNetworksBatch.optional(),
+    socialStats: z.array(SocialStatSchema).max(RESTORE_MAX).optional().default([]),
   }),
 });
 export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');

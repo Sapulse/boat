@@ -1,11 +1,12 @@
 import type { Dispatch } from 'react';
 import type {
   AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate,
-  ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory,
+  ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory, SocialStat,
 } from '../data/types';
 import type { Action } from '../context/appReducer';
 import type { TemplatePlacement } from './templateLayout';
 import type { ObjectivePatch } from './weeklyObjectives';
+import { statKey } from './social';
 import { getInitialState as loadInitialState } from '../context/appReducer';
 import { saveState } from './storage';
 import { generateId, toISODate } from './utils';
@@ -114,6 +115,15 @@ export interface CrmRepository {
   /** « Reprendre la semaine suivante ». Renvoie l'id de la copie. */
   carryOverWeeklyObjective(id: string): string;
 
+  // — Réseaux sociaux (lot 5) : jamais de suppression —
+  /** Ajoute un réseau (refusé par le reducer si le nom est vide ou déjà pris). Renvoie l'id. */
+  addSocialNetwork(name: string): string;
+  renameSocialNetwork(id: string, name: string): void;
+  /** Archivé : absent de la saisie, visible dans l'historique. */
+  setSocialNetworkArchived(id: string, archived: boolean): void;
+  /** Lignes nouvelles ou modifiées (lib/social.buildSave), upsert par (réseau, année, mois). */
+  saveSocialStats(rows: SocialStat[]): void;
+
   // — Événements d'agenda libres —
   addCalendarEvent(event: Omit<CalendarEvent, 'id'>): string;
   updateCalendarEvent(id: string, data: Partial<CalendarEvent>): void;
@@ -200,6 +210,15 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
       return newId;
     },
 
+    addSocialNetwork: (name) => {
+      const id = generateId();
+      dispatch({ type: 'ADD_SOCIAL_NETWORK', payload: { id, name } });
+      return id;
+    },
+    renameSocialNetwork: (id, name) => dispatch({ type: 'RENAME_SOCIAL_NETWORK', payload: { id, name } }),
+    setSocialNetworkArchived: (id, archived) => dispatch({ type: 'SET_SOCIAL_NETWORK_ARCHIVED', payload: { id, archived } }),
+    saveSocialStats: (rows) => dispatch({ type: 'SAVE_SOCIAL_STATS', payload: rows }),
+
     addCalendarEvent: (event) => {
       const id = generateId();
       dispatch({ type: 'ADD_CALENDAR_EVENT', payload: { ...event, id } });
@@ -246,6 +265,7 @@ export function getEmptyState(): AppState {
     leads: [], actions: [], commercials: [], monthlyStats: [],
     templates: [], calendarEvents: [], goals: [], defaultGoal: EMPTY_DEFAULT_GOAL,
     plannedActions: [],
+    socialNetworks: [], socialStats: [],
   };
 }
 
@@ -278,7 +298,7 @@ export interface RepositorySync {
 type EntityName = 'leads' | 'actions' | 'commercials' | 'templates' | 'calendar-events';
 type Intent =
   | { kind: 'create' | 'update' | 'delete'; entity: EntityName; id: string }
-  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' | 'template-layout' }
+  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' | 'template-layout' | 'social-networks' }
   // Lot 2 : les actions programmées d'UN lead, envoyées en PUT (upsert
   // idempotent). Le repository ne sait pas si la programmation a créé ou mis à
   // jour l'action à faire (c'est le reducer qui tranche) : on renvoie l'état
@@ -286,7 +306,11 @@ type Intent =
   | { kind: 'lead-planned'; entity: 'planned-actions'; leadId: string }
   // Lot 4 : un objectif de la semaine, envoyé COMPLET en PUT (upsert idempotent).
   // Résolu à null si le reducer a refusé l'écriture (6e objectif, porteur invalide).
-  | { kind: 'weekly-objective'; entity: 'weekly-objectives'; id: string };
+  | { kind: 'weekly-objective'; entity: 'weekly-objectives'; id: string }
+  // Lot 5 : stats des réseaux sociaux — SEULES les lignes enregistrées (clés
+  // réseau|année|mois), relues post-reducer : un poste en retard ne réécrit
+  // jamais les autres mois. Résolu à null si le reducer a refusé.
+  | { kind: 'social-stats'; entity: 'social-stats'; keys: string[] };
 
 const COLLECTION: Record<EntityName, (s: AppState) => ReadonlyArray<{ id: string }>> = {
   leads: s => s.leads,
@@ -314,6 +338,7 @@ function mergeIntents(intents: Intent[]): Intent[] {
   const idxOf = (i: Intent) => merged.findIndex(m =>
     m.entity === i.entity && (m.kind === 'batch' || i.kind === 'batch' ? i.kind === 'batch' && m.kind === 'batch' : idOf(m) === idOf(i)));
   for (const intent of intents) {
+    if (intent.kind === 'social-stats') { merged.push(intent); continue; }
     if (intent.kind === 'lead-planned') {
       // Dédoublonné par lead ; placé APRÈS les intentions du lead (FK : lead avant action programmée).
       const dup = merged.findIndex(m => m.kind === 'lead-planned' && m.leadId === intent.leadId);
@@ -413,14 +438,21 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       if (!o) return null;
       return { op: { method: 'PUT', path: `/weekly-objectives/${o.id}`, body: o, entity: 'weekly-objectives', entityId: o.id, label: `Objectif de la semaine « ${o.text.slice(0, 40)} » — enregistrement` } };
     }
+    if (intent.kind === 'social-stats') {
+      const keys = new Set(intent.keys);
+      const rows = (state.socialStats ?? []).filter(s => keys.has(statKey(s)));
+      if (rows.length === 0) return null;
+      return { op: { method: 'PUT', path: '/social-stats', body: rows, entity: 'social-stats', label: `Réseaux sociaux — ${rows.length} mois enregistré${rows.length > 1 ? 's' : ''}` } };
+    }
     if (intent.kind === 'batch') {
       const body = intent.entity === 'goals' ? state.goals
+        : intent.entity === 'social-networks' ? state.socialNetworks ?? []
         : intent.entity === 'monthly-stats' ? state.monthlyStats
         : intent.entity === 'template-layout'
           // Lot 3 : TOUT le rangement (idempotent) — catégories + place de chaque modèle.
           ? { categories: state.templateCategories ?? [], placements: state.templates.map(t => ({ id: t.id, categoryId: t.categoryId ?? '', position: t.position ?? 0 })) }
           : state.defaultGoal;
-      const label = { goals: 'Objectifs', 'monthly-stats': 'Stats acquisition', 'default-goal': 'Objectifs par défaut', 'template-layout': 'Rangement des modèles' }[intent.entity];
+      const label = { goals: 'Objectifs', 'monthly-stats': 'Stats acquisition', 'default-goal': 'Objectifs par défaut', 'template-layout': 'Rangement des modèles', 'social-networks': 'Réseaux sociaux' }[intent.entity];
       return { op: { method: 'PUT', path: `/${intent.entity}`, body, entity: intent.entity, label: `${label} — enregistrement` } };
     }
     if (intent.kind === 'delete') {
@@ -788,6 +820,11 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       remember({ kind: 'weekly-objective', entity: 'weekly-objectives', id: newId });
       return newId;
     },
+
+    addSocialNetwork: (name) => { const id = base.addSocialNetwork(name); remember({ kind: 'batch', entity: 'social-networks' }); return id; },
+    renameSocialNetwork: (id, name) => { base.renameSocialNetwork(id, name); remember({ kind: 'batch', entity: 'social-networks' }); },
+    setSocialNetworkArchived: (id, archived) => { base.setSocialNetworkArchived(id, archived); remember({ kind: 'batch', entity: 'social-networks' }); },
+    saveSocialStats: (rows) => { base.saveSocialStats(rows); remember({ kind: 'social-stats', entity: 'social-stats', keys: rows.map(statKey) }); },
 
     addCalendarEvent: (e) => { const id = base.addCalendarEvent(e); remember({ kind: 'create', entity: 'calendar-events', id }); return id; },
     updateCalendarEvent: (id, data) => { base.updateCalendarEvent(id, data); remember({ kind: 'update', entity: 'calendar-events', id }); },

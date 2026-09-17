@@ -15,6 +15,7 @@ import { PLANNED_ACTIONS_COLUMNS, PLANNED_ACTIONS_TABLES_DDL } from './apply-pla
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import { TEMPLATE_LAYOUT_COLUMNS, TEMPLATE_LAYOUT_TABLES_DDL, TEMPLATE_LAYOUT_INDEX_DDL } from './apply-template-layout-turso';
 import { WEEKLY_OBJECTIVES_TABLES_DDL, WEEKLY_OBJECTIVES_INDEX_DDL } from './apply-weekly-objectives-turso';
+import { SOCIAL_TABLES_DDL, SOCIAL_INDEX_DDL, SOCIAL_DEFAULTS_SQL } from './apply-social-turso';
 
 let passed = 0;
 let failed = 0;
@@ -95,16 +96,33 @@ section('Migrations du dépôt : ajouts uniquement');
       check(`lot 4 : même DDL dans la migration et dans le script Turso (${d.match(/"(\w+)"/)?.[1]})`, norm4.includes(noIfNotExists(d)));
     }
   }
+  const lot5Dir = subs.find(s => s.endsWith('_lot5_social'));
+  check('lot 5 : migration « social » présente', !!lot5Dir);
+  if (lot5Dir) {
+    const lot5 = readFileSync(path.join(dir, lot5Dir, 'migration.sql'), 'utf-8');
+    const clean5 = stripSqlComments(lot5).replace(/\s+/g, ' ');
+    check('lot 5 : la migration porte la note « écrite à la main »', /écrite à la main/i.test(lot5));
+    check('lot 5 : aucune table existante modifiée (pas d\'ALTER TABLE)', !/ALTER\s+TABLE/i.test(clean5));
+    check('lot 5 : deux tables créées, social_networks et social_stats', (clean5.match(/CREATE\s+TABLE/gi) ?? []).length === 2 && /CREATE TABLE "social_networks"/.test(clean5) && /CREATE TABLE "social_stats"/.test(clean5));
+    check('lot 5 : monthly_stats jamais citée (MonthlyStat non réutilisé)', !/monthly_stats/i.test(clean5));
+    check('lot 5 : seules écritures de données = 3 INSERT OR IGNORE dans social_networks', (clean5.match(/\bINSERT\b/gi) ?? []).length === 3 && (clean5.match(/INSERT OR IGNORE INTO "social_networks"/g) ?? []).length === 3);
+    const noIfNotExists = (d: string) => d.replace(/\s+IF NOT EXISTS/i, '').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')');
+    const norm5 = clean5.replace(/\( /g, '(').replace(/ \)/g, ')');
+    for (const d of [...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL, ...SOCIAL_DEFAULTS_SQL]) {
+      check(`lot 5 : même SQL dans la migration et dans le script Turso (${d.match(/'(reseau-\w+)'/)?.[1] ?? d.match(/"(\w+)"/)?.[1]})`, norm5.includes(noIfNotExists(d)));
+    }
+  }
 }
 
 section('DDL des scripts Turso : ajouts uniquement');
 {
   const all = [...PLANNED_ACTIONS_COLUMNS.map(c => c.ddl), ...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL,
     ...TEMPLATE_LAYOUT_COLUMNS.map(c => c.ddl), ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL,
-    ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL];
+    ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL, ...SOCIAL_DEFAULTS_SQL];
   const bad = all.filter(d => forbiddenIn(d).length > 0);
-  check('scripts Turso (lots 2, 3, 4, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
-  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
+  check('scripts Turso (lots 2 à 5, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
+  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
+  check('réseaux par défaut rejouables (INSERT OR IGNORE)', SOCIAL_DEFAULTS_SQL.every(d => /^INSERT OR IGNORE INTO/i.test(d)));
 }
 
 console.log(`\n${'='.repeat(50)}`);

@@ -1,6 +1,7 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory, SocialStat } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
 import { applyObjectivePatch, carryOverObjective, newObjective, validateObjective, type ObjectivePatch } from '../lib/weeklyObjectives';
+import { defaultSocialNetworks, mergeStats, newNetwork, statErrors, validateNetworkName } from '../lib/social';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -54,6 +55,11 @@ export type Action =
   | { type: 'ADD_WEEKLY_OBJECTIVE'; payload: { id: string; weekStart: string; text: string; ownerId: string | null; todayISO: string; nowISO: string } }
   | { type: 'UPDATE_WEEKLY_OBJECTIVE'; payload: { id: string; patch: ObjectivePatch; todayISO: string; nowISO: string } }
   | { type: 'CARRY_OVER_WEEKLY_OBJECTIVE'; payload: { id: string; newId: string; todayISO: string; nowISO: string } }
+  // Lot 5 : réseaux sociaux (jamais de suppression : archivage ; un mois se corrige).
+  | { type: 'ADD_SOCIAL_NETWORK'; payload: { id: string; name: string } }
+  | { type: 'RENAME_SOCIAL_NETWORK'; payload: { id: string; name: string } }
+  | { type: 'SET_SOCIAL_NETWORK_ARCHIVED'; payload: { id: string; archived: boolean } }
+  | { type: 'SAVE_SOCIAL_STATS'; payload: SocialStat[] }
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
   | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
@@ -158,6 +164,9 @@ export function getInitialState(): AppState {
       templateCategories: stored.templateCategories ?? [],
       // Lot 4 : absent des anciens states -> aucun objectif de la semaine.
       weeklyObjectives: stored.weeklyObjectives ?? [],
+      // Lot 5 : absent des anciens states -> 3 réseaux par défaut, aucune stat.
+      socialNetworks: stored.socialNetworks ?? defaultSocialNetworks(),
+      socialStats: stored.socialStats ?? [],
     };
   }
 
@@ -176,6 +185,8 @@ export function getInitialState(): AppState {
     defaultGoal: EMPTY_DEFAULT_GOAL,
     plannedActions: [],
     weeklyObjectives: [],
+    socialNetworks: defaultSocialNetworks(),
+    socialStats: [],
   };
 }
 
@@ -259,7 +270,7 @@ export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
       // Serveur d'avant le lot 2 (ou sauvegarde) : tableau absent -> [].
-      return { ...action.payload, plannedActions: action.payload.plannedActions ?? [], weeklyObjectives: action.payload.weeklyObjectives ?? [] };
+      return { ...action.payload, plannedActions: action.payload.plannedActions ?? [], weeklyObjectives: action.payload.weeklyObjectives ?? [], socialNetworks: action.payload.socialNetworks ?? [], socialStats: action.payload.socialStats ?? [] };
 
     case 'ADD_LEAD': {
       // Un lead cree directement dans un statut avance (ex. "Signe" en mode
@@ -530,6 +541,37 @@ export function reducer(state: AppState, action: Action): AppState {
       const r = carryOverObjective(list, id, newId, todayISO, nowISO);
       if (!r || !('objective' in r) || list.some(o => o.id === newId)) return state;
       return { ...state, weeklyObjectives: [...list, r.objective] };
+    }
+
+    // Lot 5 : réseaux sociaux. Règles (nom unique, stats valides) vérifiées ICI
+    // comme au serveur : une règle violée laisse l'état inchangé.
+    case 'ADD_SOCIAL_NETWORK': {
+      const list = state.socialNetworks ?? [];
+      const { id, name } = action.payload;
+      if (list.some(n => n.id === id) || validateNetworkName(name, list).length) return state;
+      return { ...state, socialNetworks: [...list, newNetwork(list, id, name)] };
+    }
+
+    case 'RENAME_SOCIAL_NETWORK': {
+      const list = state.socialNetworks ?? [];
+      const { id, name } = action.payload;
+      const current = list.find(n => n.id === id);
+      if (!current || current.name === name.trim() || validateNetworkName(name, list, id).length) return state;
+      return { ...state, socialNetworks: list.map(n => (n.id === id ? { ...n, name: name.trim() } : n)) };
+    }
+
+    case 'SET_SOCIAL_NETWORK_ARCHIVED': {
+      const list = state.socialNetworks ?? [];
+      const { id, archived } = action.payload;
+      const current = list.find(n => n.id === id);
+      if (!current || current.archived === archived) return state;
+      return { ...state, socialNetworks: list.map(n => (n.id === id ? { ...n, archived } : n)) };
+    }
+
+    case 'SAVE_SOCIAL_STATS': {
+      const networks = state.socialNetworks ?? [];
+      if (action.payload.length === 0 || action.payload.some(r => statErrors(r, networks).length)) return state;
+      return { ...state, socialStats: mergeStats(state.socialStats ?? [], action.payload) };
     }
 
     // Evenements d'agenda libres : actions confinees a state.calendarEvents,

@@ -418,3 +418,41 @@ model WeeklyObjective {
   @@index([ownerId])
   @@map("weekly_objectives")
 }
+
+// ============================================================
+// SocialNetwork / SocialStat — lot 5. Réseaux sociaux suivis dans Acquisition
+// (tables À PART : MonthlyStat n'est pas réutilisé). Jamais supprimés : un réseau
+// s'archive, un mois se corrige. Facebook / Instagram / LinkedIn créés par la
+// migration avec des identifiants fixes. Règles : src/lib/social.ts.
+// ============================================================
+model SocialNetwork {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name     String
+  position Int     @default(0)
+  archived Boolean @default(false)
+
+  stats SocialStat[]
+
+  @@map("social_networks")
+}
+
+model SocialStat {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  networkId String
+  network   SocialNetwork @relation(fields: [networkId], references: [id], onDelete: Restrict)
+  year      Int
+  month     Int
+  followers Int
+  posts     Int?
+  reach     Int?
+  comment   String        @default("")
+
+  @@unique([networkId, year, month])
+  @@map("social_stats")
+}

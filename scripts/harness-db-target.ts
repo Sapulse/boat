@@ -121,7 +121,7 @@ section('Vrais scripts, .env FACTICE, hôte injoignable : refus en code 1, aucun
     return { code: res.status, out: `${res.stdout}\n${res.stderr}`, ms: Date.now() - t0 };
   };
   const NETWORK = /ECONNREFUSED|fetch failed|getaddrinfo|ENOTFOUND|SQLITE_|LibsqlError|Leads en base|Leads : \d/;
-  const writers = ['apply-planned-actions-turso.ts', 'apply-weekly-objectives-turso.ts', 'apply-inbound-emails-turso.ts', 'apply-login-attempts-turso.ts', 'push-schema-turso.ts', 'purge-inbound.ts'];
+  const writers = ['apply-planned-actions-turso.ts', 'apply-weekly-objectives-turso.ts', 'apply-social-turso.ts', 'apply-inbound-emails-turso.ts', 'apply-login-attempts-turso.ts', 'push-schema-turso.ts', 'purge-inbound.ts'];
   for (const s of writers) {
     const a = run(s, []);
     check(`${s} sans argument -> refus, code 1, aucune connexion`, a.code === 1 && a.out.includes('cible non précisée') && !NETWORK.test(a.out), a.out.slice(-300));

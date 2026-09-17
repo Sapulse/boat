@@ -227,6 +227,43 @@ async function main() {
     check('file vide', outboxSize(storage) === 0);
   }
 
+  section('Lot 5 — réseaux sociaux : liste en PUT, SEULS les mois enregistrés partent, jamais de DELETE');
+  {
+    const srv = makeServer(getEmptyState());
+    const storage = makeStorage();
+    const { repo, cache, persist } = makeRepo(srv, storage);
+    const ytId = repo.addSocialNetwork('YouTube');
+    repo.addSocialNetwork('youtube'); // doublon : refusé par le reducer
+    persist(); await wait(30);
+    const netPuts = srv.received.filter(r => r.path === '/api/social-networks');
+    check('ajout (et doublon refusé dans le même tick) -> UN PUT /api/social-networks, liste complète', netPuts.length === 1 && netPuts[0].method === 'PUT' && (netPuts[0].body as { name: string }[]).map(n => n.name).join() === 'YouTube' && cache().socialNetworks?.length === 1);
+
+    srv.received.length = 0;
+    repo.renameSocialNetwork(ytId, 'YouTube Shorts');
+    repo.setSocialNetworkArchived(ytId, true);
+    persist(); await wait(20);
+    check('renommer + archiver dans le même tick -> UN PUT, état final', srv.received.length === 1 && (srv.received[0].body as { name: string; archived: boolean }[])[0].name === 'YouTube Shorts' && (srv.received[0].body as { archived: boolean }[])[0].archived === true);
+
+    const row = (id: string, month: number, followers: number) => ({ id, networkId: ytId, year: 2026, month, followers, posts: null, reach: null, comment: '' });
+    srv.received.length = 0;
+    repo.saveSocialStats([row('s8', 8, 100), row('s9', 9, 120)]);
+    persist(); await wait(20);
+    const statPuts = srv.received.filter(r => r.path === '/api/social-stats');
+    check('enregistrer 2 mois -> UN PUT /api/social-stats avec ces 2 lignes', statPuts.length === 1 && statPuts[0].method === 'PUT' && (statPuts[0].body as unknown[]).length === 2);
+
+    srv.received.length = 0;
+    repo.saveSocialStats([{ ...row('autre', 9, 130) }]);
+    persist(); await wait(20);
+    const fix = srv.received.find(r => r.path === '/api/social-stats');
+    check('corriger septembre -> seule la ligne de septembre part (août jamais renvoyé), id local conservé', (fix?.body as { month: number; followers: number; id: string }[])?.length === 1 && (fix?.body as { month: number; followers: number; id: string }[])[0].followers === 130 && (fix?.body as { id: string }[])[0].id === 's9');
+
+    srv.received.length = 0;
+    repo.saveSocialStats([{ ...row('x', 10, 1), networkId: 'fantome' }]);
+    persist(); await wait(20);
+    check('stat refusée par le reducer (réseau inconnu) -> aucune op', srv.received.length === 0);
+    check('aucun DELETE sur tout le parcours, file vide', !srv.received.some(r => r.method === 'DELETE') && outboxSize(storage) === 0);
+  }
+
   section('Lot 4 — objectifs de la semaine : PUT idempotent, refus du reducer = aucune op, jamais de DELETE');
   {
     const srv = makeServer(getEmptyState());

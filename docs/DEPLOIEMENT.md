@@ -112,8 +112,9 @@ migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
 | 2 | 3 | `scripts/apply-template-layout-turso.ts` | table `template_categories` + colonnes `message_templates.categoryId` / `position` ; aucune donnée réécrite |
 | 3 | 3 | `scripts/fusion-sources-turso.ts` | **données** : `leads.source` seulement, table explicite (« http://topbarcos.com/ » → « Top barcos », 1 lead au 17/09) ; sauvegarde intégrée avant écriture ; preuve (même nombre, autres colonnes identiques, répartition attendue) ; rejeu = 0 |
 | 4 | 4 | `scripts/apply-weekly-objectives-turso.ts` | table neuve `weekly_objectives` + 2 index ; aucune table existante touchée, aucune donnée écrite ; preuve (commerciaux, leads, actions programmées identiques ; table vide) ; rejeu = rien à faire |
+| 5 | 5 | `scripts/apply-social-turso.ts` | tables neuves `social_networks` + `social_stats` + index unique (réseau, année, mois) ; **3 réseaux par défaut** (Facebook, Instagram, LinkedIn, identifiants fixes, `INSERT OR IGNORE` : un réseau renommé ou archivé n'est jamais réécrit) ; aucune table existante touchée (`monthly_stats` comprise) ; preuve (commerciaux, leads, stats mensuelles identiques ; tables, index, colonnes ; 3 réseaux ; aucune stat) ; rejeu = rien à faire |
 
-*(Complété au fil des lots 3 à 5.)*
+*(Liste complète des lots 2 à 5.)*
 
 ### Retour arrière
 

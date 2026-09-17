@@ -33,6 +33,9 @@ export interface RestoreReport {
   templateCategories?: number;
   /** Lot 4 (facultatif). */
   weeklyObjectives?: number;
+  /** Lot 5 (facultatif). */
+  socialNetworks?: number;
+  socialStats?: number;
 }
 
 /** Construit l'enveloppe de sauvegarde à partir de l'état courant. */

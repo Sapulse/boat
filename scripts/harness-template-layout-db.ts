@@ -19,6 +19,7 @@ import {
   applyTemplateLayoutSchema, templateLayoutTodo, proveTemplateLayout, templatesFingerprint,
 } from './apply-template-layout-turso';
 import { applyWeeklyObjectivesSchema } from './apply-weekly-objectives-turso';
+import { applySocialSchema } from './apply-social-turso';
 import { fingerprint } from './apply-planned-actions-turso';
 import { getState, detectSchema, saveTemplateLayout, createTemplate, updateTemplate, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
@@ -120,6 +121,7 @@ async function main() {
   }
   // Le lot 4 passe juste après (script 4) ; le code courant lit sa table.
   await applyWeeklyObjectivesSchema(db);
+  await applySocialSchema(db);
   db.close();
 
   section('API (store) sur la base migrée');

@@ -243,7 +243,38 @@ export interface MonthlyStat {
   leads: number | null;
 }
 
-export type CalendarEventCategory = 'reunion' | 'conge' | 'deplacement' | 'perso' | 'autre';
+/**
+ * Réseau social suivi (lot 5) — Facebook, Instagram, LinkedIn par défaut (ids
+ * fixes), ajout / renommage / archivage par l'équipe. Jamais supprimé : un réseau
+ * archivé reste visible dans l'historique et disparaît de la saisie.
+ * Distinct de MonthlyStat (qui porte budget / leads / CPL des sources).
+ */
+export interface SocialNetwork {
+  id: string;
+  name: string;
+  /** Ordre d'affichage. */
+  position: number;
+  archived: boolean;
+}
+
+/**
+ * Chiffres d'un réseau pour un mois (lot 5). Un seul enregistrement par
+ * (réseau, année, mois) ; jamais supprimé, un mois se corrige. Règles : lib/social.
+ */
+export interface SocialStat {
+  id: string;
+  networkId: string;
+  year: number;
+  month: number;
+  /** Obligatoire. */
+  followers: number;
+  posts: number | null;
+  reach: number | null;
+  /** '' = aucun commentaire. */
+  comment: string;
+}
+
+export type CalendarEventCategory ='reunion' | 'conge' | 'deplacement' | 'perso' | 'autre';
 
 /**
  * Evenement d'agenda INDEPENDANT des leads (reunion, conge, deplacement, bloc
@@ -395,4 +426,8 @@ export interface AppState {
   // Objectifs de la semaine (lot 4). Absent des anciens states et des
   // sauvegardes d'avant le lot 4 -> [].
   weeklyObjectives?: WeeklyObjective[];
+  // Réseaux sociaux (lot 5). Absent des anciens states et des sauvegardes
+  // d'avant le lot 5 -> 3 réseaux par défaut, aucune stat.
+  socialNetworks?: SocialNetwork[];
+  socialStats?: SocialStat[];
 }

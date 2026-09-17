@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
   MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory, WeeklyObjective,
+  SocialNetwork, SocialStat,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +12,7 @@ import {
   parseCalendarCreate, parseCalendarPatch,
   parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
   parsePlannedActionUpsert, parseTemplateLayout, parseWeeklyObjectiveUpsert,
+  parseSocialNetworksBatch, parseSocialStatsBatch,
 } from './validate.js';
 // Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
@@ -20,6 +22,8 @@ import { positionsFromBackup } from '../../src/lib/templateLayout.js';
 import { normalizeSource } from '../../src/lib/sources.js';
 // Lot 4 : règles des objectifs de la semaine, identiques à l'app.
 import { MAX_ACTIVE_OBJECTIVES, isMonday, isValidOwner, parisTodayISO, serverMergeObjective } from '../../src/lib/weeklyObjectives.js';
+// Lot 5 : réseaux sociaux (réseaux par défaut, noms uniques, clé (réseau, année, mois)).
+import { defaultSocialNetworks, networksListErrors, statKey } from '../../src/lib/social.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -179,6 +183,18 @@ async function knownCategoryId(prisma: Pick<PrismaClient, 'templateCategory'>, c
   return (await prisma.templateCategory.findUnique({ where: { id: categoryId } })) ? categoryId : null;
 }
 
+function toSocialNetwork(r: Record<string, unknown>): SocialNetwork {
+  return { id: r.id as string, name: r.name as string, position: r.position as number, archived: r.archived as boolean };
+}
+
+function toSocialStat(r: Record<string, unknown>): SocialStat {
+  return {
+    id: r.id as string, networkId: r.networkId as string, year: r.year as number, month: r.month as number,
+    followers: r.followers as number, posts: (r.posts as number | null) ?? null, reach: (r.reach as number | null) ?? null,
+    comment: (r.comment as string | null) ?? '',
+  };
+}
+
 function toWeeklyObjective(r: Record<string, unknown>): WeeklyObjective {
   return {
     id: r.id as string,
@@ -296,13 +312,14 @@ export interface SchemaFeatures {
   lot2: boolean;            // actions programmées
   templateLayout: boolean;  // lot 3 : catégories + ordre des modèles
   weeklyObjectives: boolean; // lot 4 : objectifs de la semaine
+  social: boolean;          // lot 5 : réseaux sociaux
 }
-export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true, weeklyObjectives: true };
+export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true, weeklyObjectives: true, social: true };
 
 export async function detectSchema(prisma: PrismaClient): Promise<SchemaFeatures> {
   const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table'`);
   const has = (t: string) => tables.some(r => r.name === t);
-  return { lot2: has('planned_actions'), templateLayout: has('template_categories'), weeklyObjectives: has('weekly_objectives') };
+  return { lot2: has('planned_actions'), templateLayout: has('template_categories'), weeklyObjectives: has('weekly_objectives'), social: has('social_networks') && has('social_stats') };
 }
 
 /** Colonnes des modèles AVANT le lot 3. */
@@ -315,7 +332,7 @@ const LEGACY_TEMPLATE_SELECT = { id: true, createdAt: true, type: true, title: t
  * `features` (plus fin) : lot par lot ; `schema: 'avant-lot2'` = aucune évolution.
  */
 export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2'; features?: SchemaFeatures } = {}): Promise<AppState> {
-  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false, weeklyObjectives: false } : ALL_FEATURES);
+  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false, weeklyObjectives: false, social: false } : ALL_FEATURES);
   const legacy = !f.lot2;
   const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
     legacy ? prisma.lead.findMany({ select: LEGACY_LEAD_SELECT }) : prisma.lead.findMany(),
@@ -335,11 +352,14 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
   ]);
   const categories = f.templateLayout ? (await prisma.templateCategory.findMany({ orderBy: { position: 'asc' } })).map(r => toTemplateCategory(r as unknown as Record<string, unknown>)) : undefined;
   const objectives = f.weeklyObjectives ? (await prisma.weeklyObjective.findMany({ orderBy: [{ weekStart: 'asc' }, { position: 'asc' }] })).map(r => toWeeklyObjective(r as unknown as Record<string, unknown>)) : undefined;
-  // Évolutions des lots 3 et 4 : présentes seulement si la base les a (sauvegarde d'une base en cours de migration).
+  const socialNetworks = f.social ? (await prisma.socialNetwork.findMany({ orderBy: [{ position: 'asc' }, { name: 'asc' }] })).map(r => toSocialNetwork(r as unknown as Record<string, unknown>)) : undefined;
+  const socialStats = f.social ? (await prisma.socialStat.findMany({ orderBy: [{ year: 'asc' }, { month: 'asc' }] })).map(r => toSocialStat(r as unknown as Record<string, unknown>)) : undefined;
+  // Évolutions des lots 3 à 5 : présentes seulement si la base les a (sauvegarde d'une base en cours de migration).
   const withLayout = <T extends object>(st: T): T => ({
     ...st,
     ...(categories ? { templateCategories: categories } : {}),
     ...(objectives ? { weeklyObjectives: objectives } : {}),
+    ...(socialNetworks ? { socialNetworks, socialStats } : {}),
   });
   if (legacy) {
     const state = {
@@ -399,6 +419,47 @@ export async function upsertPlannedAction(prisma: PrismaClient, id: string, body
 }
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+
+// ---------------------------------------------------------------------------
+// Réseaux sociaux (lot 5) — UPSERT sans suppression. PUT /api/social-networks :
+// liste des réseaux (ajout, renommage, archivage, ordre) ; noms uniques vérifiés
+// sur la table ENTIÈRE dans la transaction (409). PUT /api/social-stats : seules
+// les lignes modifiées ; upsert par (réseau, année, mois) — une ligne déjà
+// présente pour la clé garde son id (jamais de doublon entre deux postes).
+// ---------------------------------------------------------------------------
+export async function saveSocialNetworks(prisma: PrismaClient, input: unknown): Promise<SocialNetwork[]> {
+  const list = parseSocialNetworksBatch(input) as SocialNetwork[];
+  const all = await prisma.$transaction(async (tx) => {
+    for (const n of list) {
+      const cols = { name: n.name, position: n.position, archived: n.archived };
+      await tx.socialNetwork.upsert({ where: { id: n.id }, create: { id: n.id, ...cols }, update: cols });
+    }
+    const rows = (await tx.socialNetwork.findMany()).map(r => toSocialNetwork(r as unknown as Record<string, unknown>));
+    const errors = networksListErrors(rows);
+    if (errors.length) throw new HttpError(409, `réseaux sociaux — ${errors.join(', ')}`);
+    return rows;
+  });
+  return all.sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+}
+
+export async function saveSocialStats(prisma: PrismaClient, input: unknown): Promise<SocialStat[]> {
+  const list = parseSocialStatsBatch(input) as SocialStat[];
+  return prisma.$transaction(async (tx) => {
+    const ids = new Set((await tx.socialNetwork.findMany({ select: { id: true } })).map(r => r.id));
+    const unknownNetwork = list.find(s => !ids.has(s.networkId));
+    if (unknownNetwork) throw new HttpError(400, `stats des réseaux sociaux invalides — réseau inconnu : ${unknownNetwork.networkId}`);
+    const saved: SocialStat[] = [];
+    for (const s of list) {
+      const cols = { followers: s.followers, posts: s.posts, reach: s.reach, comment: s.comment };
+      const existing = await tx.socialStat.findUnique({ where: { networkId_year_month: { networkId: s.networkId, year: s.year, month: s.month } } });
+      const row = existing
+        ? await tx.socialStat.update({ where: { id: existing.id }, data: cols })
+        : await tx.socialStat.create({ data: { id: s.id, networkId: s.networkId, year: s.year, month: s.month, ...cols } });
+      saved.push(toSocialStat(row as unknown as Record<string, unknown>));
+    }
+    return saved;
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Objectifs de la semaine (lot 4) — PUT /api/weekly-objectives/:id = UPSERT
@@ -708,6 +769,8 @@ export interface RestoreReport {
   plannedActions: number;
   templateCategories: number;
   weeklyObjectives: number;
+  socialNetworks: number;
+  socialStats: number;
 }
 
 export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
@@ -736,9 +799,21 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
 
   // Lot 4 : objectifs de la semaine tels quels (traces et dates d'atteinte conservées).
   const objectives = d.weeklyObjectives ?? [];
+  // Lot 5 : sauvegarde d'avant le lot 5 -> les 3 réseaux par défaut, aucune stat.
+  const rawSocial = (payload as { data?: { socialNetworks?: unknown } } | null)?.data?.socialNetworks;
+  const socialNetworks: SocialNetwork[] = rawSocial === undefined ? defaultSocialNetworks() : (d.socialNetworks ?? []);
+  const socialStats: SocialStat[] = d.socialStats ?? [];
+  const socialErrors = networksListErrors(socialNetworks);
+  if (socialErrors.length) throw new HttpError(400, `sauvegarde invalide — réseaux sociaux : ${socialErrors.join(', ')}`);
+  const networkIds = new Set(socialNetworks.map(n => n.id));
+  const orphan = socialStats.find(x => !networkIds.has(x.networkId));
+  if (orphan) throw new HttpError(400, `sauvegarde invalide — stat d'un réseau absent : ${orphan.networkId}`);
+  if (new Set(socialStats.map(statKey)).size !== socialStats.length) throw new HttpError(400, 'sauvegarde invalide — deux stats pour le même réseau et le même mois');
 
   await prisma.$transaction([
     // (2) Purge FK-safe : enfants d'abord.
+    prisma.socialStat.deleteMany(),
+    prisma.socialNetwork.deleteMany(),
     prisma.weeklyObjective.deleteMany(),
     prisma.plannedActionPerson.deleteMany(),
     prisma.plannedAction.deleteMany(),
@@ -763,6 +838,10 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
       id: o.id, weekStart: o.weekStart, position: o.position, text: o.text, ownerId: o.ownerId ?? null, done: o.done,
       doneAt: o.doneAt ?? null, active: o.active, copiedFromId: o.copiedFromId ?? null, modifiedAfterWeekAt: o.modifiedAfterWeekAt ?? null,
     })) })] : []),
+    ...(socialNetworks.length ? [prisma.socialNetwork.createMany({ data: socialNetworks.map(n => ({ id: n.id, name: n.name, position: n.position, archived: n.archived })) })] : []),
+    ...(socialStats.length ? [prisma.socialStat.createMany({ data: socialStats.map(x => ({
+      id: x.id, networkId: x.networkId, year: x.year, month: x.month, followers: x.followers, posts: x.posts, reach: x.reach, comment: x.comment,
+    })) })] : []),
     ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
     ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
     ...(d.monthlyStats.length ? [prisma.monthlyStat.createMany({ data: d.monthlyStats })] : []),
@@ -776,6 +855,8 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     plannedActions: planned.length,
     templateCategories: categories.length,
     weeklyObjectives: objectives.length,
+    socialNetworks: socialNetworks.length,
+    socialStats: socialStats.length,
   };
 }
 

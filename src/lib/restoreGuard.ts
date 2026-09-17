@@ -71,6 +71,8 @@ export function restorePreview(
     { label: 'Événements', before: current.calendarEvents.length, after: incoming.calendarEvents.length },
     { label: 'Objectifs', before: current.goals.length, after: incoming.goals.length },
     { label: 'Stats mensuelles', before: current.monthlyStats.length, after: incoming.monthlyStats.length },
+    // Lot 5 : sauvegarde d'avant le lot 5 -> aucune stat de réseau social.
+    { label: 'Stats réseaux sociaux', before: current.socialStats?.length ?? 0, after: incoming.socialStats?.length ?? 0 },
   ];
 
   // Âge en jours PLEINS écoulés. Une date illisible ou future -> âge inconnu

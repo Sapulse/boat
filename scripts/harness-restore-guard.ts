@@ -119,7 +119,7 @@ section('Tableau récapitulatif avant/après');
   const p = restorePreview(cur, inc, NOW.toISOString(), NOW);
   const leads = p.rows.find(r => r.label === 'Leads');
   check('ligne Leads : 3 -> 1', leads?.before === 3 && leads?.after === 1);
-  check('toutes les entités de AppState sont couvertes', p.rows.length === 7, `${p.rows.length} lignes`);
+  check('toutes les entités de AppState sont couvertes (lot 5 : stats réseaux sociaux)', p.rows.length === 8 && p.rows.some(r => r.label === 'Stats réseaux sociaux'), `${p.rows.length} lignes`);
   check('aucune ligne sans libellé', p.rows.every(r => r.label.length > 0));
 }
 
