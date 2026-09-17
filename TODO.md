@@ -31,6 +31,11 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
 - [ ] **Date pré-remplie dans la fenêtre « Prochaine action »** selon le type (ex. relance
   J+3, après un devis J+7), toujours modifiable. Demandé le 17/09 — pas avant la mise en prod.
 
+- [ ] **Icône CRM sur l'écran d'accueil des téléphones** — à faire AVEC la bascule VPS (l'adresse
+  change : les icônes seront à recréer sur les téléphones à ce moment-là). Ajouter un manifest :
+  nom « CRM BOB », icônes logo BOB 192 px et 512 px + `apple-touch-icon`, `display: standalone`,
+  couleur de thème ; compatible avec la base `/boat/` et avec la future adresse du VPS.
+  **Pas** de service worker, **pas** de mode hors ligne. Demandé le 17/09 (main gelée).
 - [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
   types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
