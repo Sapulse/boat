@@ -242,6 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addTemplate: repository.addTemplate,
       updateTemplate: repository.updateTemplate,
       deleteTemplate: repository.deleteTemplate,
+      saveTemplateLayout: repository.saveTemplateLayout,
       addCalendarEvent: repository.addCalendarEvent,
       updateCalendarEvent: repository.updateCalendarEvent,
       deleteCalendarEvent: repository.deleteCalendarEvent,

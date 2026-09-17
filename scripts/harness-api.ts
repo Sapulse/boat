@@ -45,8 +45,8 @@ function section(title: string) { console.log(`\n— ${title}`); }
 
 function migrationSql(): string {
   const dir = path.resolve('prisma/migrations');
-  // Schéma métier = init + lot 2 (actions programmées, colonnes ajoutées).
-  return ['_init_crm_schema', '_lot2_planned_actions'].map(suffix => {
+  // Schéma métier = init + lot 2 (actions programmées) + lot 3 (rangement des modèles).
+  return ['_init_crm_schema', '_lot2_planned_actions', '_lot3_template_layout'].map(suffix => {
     const sub = readdirSync(dir).find(d => d.endsWith(suffix));
     if (!sub) throw new Error(`migration ${suffix} introuvable`);
     return readFileSync(path.join(dir, sub, 'migration.sql'), 'utf-8');

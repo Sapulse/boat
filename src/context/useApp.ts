@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory } from '../data/types';
+import type { TemplatePlacement } from '../lib/templateLayout';
 import type { SyncInfo } from '../lib/repository';
 import type { PlanInput } from '../lib/plannedActions';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
@@ -49,6 +50,7 @@ export interface AppContextType {
   addTemplate: (template: Omit<MessageTemplate, 'id'>) => string;
   updateTemplate: (id: string, data: Partial<MessageTemplate>) => void;
   deleteTemplate: (id: string) => void;
+  saveTemplateLayout: (categories: TemplateCategory[], placements: TemplatePlacement[]) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;

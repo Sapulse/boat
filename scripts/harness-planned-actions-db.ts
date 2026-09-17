@@ -23,6 +23,7 @@ import { PrismaClient } from '@prisma/client';
 import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
+import { applyTemplateLayoutSchema } from './apply-template-layout-turso';
 import {
   applyPlannedActionsSchema, planReprise, applyReprise, proveMigration, leadsFingerprint, actionsFingerprint,
 } from './apply-planned-actions-turso';
@@ -159,6 +160,9 @@ async function main() {
   pdb.close();
 
   section('API (store) sur la base migrée');
+  // Fenêtre de maintenance : le lot 3 (rangement des modèles) passe juste après le
+  // lot 2 ; le code courant lit ses colonnes.
+  await applyTemplateLayoutSchema(db);
   db.close();
   const prisma = new PrismaClient({ adapter: new PrismaLibSql({ url: `file:${DB_FILE}` }) });
   const st = await getState(prisma);

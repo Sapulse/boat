@@ -152,13 +152,31 @@ const PlannedActionSchema = z.object({
   .refine(p => new Set(p.people.map(x => x.commercialId)).size === p.people.length, { message: 'personne en double', path: ['people'] });
 const CommercialPatch = z.object(commercialShape).omit({ id: true }).partial();
 
+const position = z.number().int().min(0).max(100_000);
 const templateShape = {
   id,
   type: z.enum(TEMPLATE_TYPES),
   title: shortStr,
   subject: shortStr,
   body: longStr,
+  // Lot 3 : facultatifs (anciens clients, anciennes sauvegardes). null/'' = « Non classés ».
+  categoryId: z.union([id, z.literal('')]).nullish(),
+  position: position.optional(),
 };
+
+// Lot 3 — catégories de modèles et rangement groupé (PUT /template-layout).
+const templateCategoryShape = {
+  id,
+  name: z.string().trim().min(1, 'nom requis').max(60, 'nom trop long (max 60)'),
+  position,
+};
+const TemplateCategorySchema = z.object(templateCategoryShape);
+const TemplateLayoutSchema = z.object({
+  categories: z.array(TemplateCategorySchema).max(500)
+    .refine(list => new Set(list.map(c => c.id)).size === list.length, { message: 'catégorie en double' }),
+  placements: z.array(z.object({ id, categoryId: z.union([id, z.literal('')]).nullish(), position })).max(BATCH_MAX)
+    .refine(list => new Set(list.map(p => p.id)).size === list.length, { message: 'modèle en double' }),
+});
 const TemplateCreate = z.object(templateShape);
 const TemplatePatch = z.object(templateShape).omit({ id: true }).partial();
 
@@ -241,6 +259,7 @@ export const parseCommercialCreate = (d: unknown) => parse(CommercialCreate, d, 
 export const parseCommercialPatch = (d: unknown) => parse(CommercialPatch, d, 'commercial');
 export const parseTemplateCreate = (d: unknown) => parse(TemplateCreate, d, 'modèle');
 export const parseTemplatePatch = (d: unknown) => parse(TemplatePatch, d, 'modèle');
+export const parseTemplateLayout = (d: unknown) => parse(TemplateLayoutSchema, d, 'rangement des modèles');
 export const parseCalendarCreate = (d: unknown) => parse(CalendarCreate, d, 'événement');
 export const parseCalendarPatch = (d: unknown) => parse(CalendarPatch, d, 'événement');
 export const parseGoalsBatch = (d: unknown) => parse(GoalsBatch, d, 'objectifs');
@@ -269,6 +288,8 @@ const RestoreEnvelopeSchema = z.object({
     defaultGoal: DefaultGoalSchema,
     // Lot 2 : absent des sauvegardes d'avant le lot 2 -> [] (restaurables telles quelles).
     plannedActions: z.array(PlannedActionSchema).max(RESTORE_MAX).optional().default([]),
+    // Lot 3 : absent des sauvegardes d'avant le lot 3 -> aucun rangement (tout « Non classés »).
+    templateCategories: z.array(TemplateCategorySchema).max(RESTORE_MAX).optional().default([]),
   }),
 });
 export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');

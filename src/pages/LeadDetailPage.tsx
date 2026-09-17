@@ -20,6 +20,8 @@ import { buildLeadVars, renderEmail, renderTemplate, buildMailto } from '../lib/
 import { buildSms } from '../lib/sms';
 import { buildWhatsApp } from '../lib/whatsapp';
 import { buildCommunicationAction } from '../lib/communication';
+import { groupTemplates } from '../lib/templateLayout';
+import TemplateMenuItems from '../components/leads/TemplateMenuItems';
 import { generateVCard } from '../lib/vcard';
 import { useAutoReveal } from '../hooks/useAutoReveal';
 import { diffLeadForConflict, canCheckConflict, type FieldChange } from '../lib/concurrencyGuard';
@@ -201,10 +203,11 @@ export default function LeadDetailPage() {
     setShowEmailMenu(false);
   };
 
-  // Chaque bouton (Email / SMS / WhatsApp) ne liste que les modeles de son type.
-  const emailTemplates = state.templates.filter(t => t.type === 'email');
-  const smsTemplates = state.templates.filter(t => t.type === 'sms');
-  const whatsappTemplates = state.templates.filter(t => t.type === 'whatsapp');
+  // Chaque bouton (Email / SMS / WhatsApp) ne liste que les modeles de son type,
+  // groupés par catégorie dans l'ordre de la page Modèles (lot 3).
+  const emailGroups = groupTemplates(state.templates, state.templateCategories, { type: 'email', hideEmpty: true });
+  const smsGroups = groupTemplates(state.templates, state.templateCategories, { type: 'sms', hideEmpty: true });
+  const whatsappGroups = groupTemplates(state.templates, state.templateCategories, { type: 'whatsapp', hideEmpty: true });
 
   // Envoi SMS pre-rempli : miroir strict de sendEmail — interpole UNIQUEMENT
   // le corps du modele (un SMS n'a pas de sujet), memes variables que l'email,
@@ -355,17 +358,10 @@ export default function LeadDetailPage() {
                 {showEmailMenu && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowEmailMenu(false)} />
-                    <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                      {emailTemplates.length > 0 && (
-                        <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
-                      )}
-                      {emailTemplates.map(t => (
-                        <button key={t.id} onClick={() => sendEmail(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                          {t.title}
-                        </button>
-                      ))}
+                    <div className="absolute left-0 top-full mt-1 z-20 w-64 max-h-[60vh] overflow-y-auto bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                      <TemplateMenuItems groups={emailGroups} onPick={sendEmail} />
                       {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
-                      {emailTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                      {emailGroups.length > 0 && <div className="my-1 border-t border-gray-100" />}
                       <button onClick={() => sendEmail(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         Email vierge (sans modèle)
                       </button>
@@ -386,17 +382,10 @@ export default function LeadDetailPage() {
               {showSmsMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowSmsMenu(false)} />
-                  <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                    {smsTemplates.length > 0 && (
-                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
-                    )}
-                    {smsTemplates.map(t => (
-                      <button key={t.id} onClick={() => sendSms(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        {t.title}
-                      </button>
-                    ))}
+                  <div className="absolute left-0 top-full mt-1 z-20 w-64 max-h-[60vh] overflow-y-auto bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                    <TemplateMenuItems groups={smsGroups} onPick={sendSms} />
                     {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
-                    {smsTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                    {smsGroups.length > 0 && <div className="my-1 border-t border-gray-100" />}
                     <button onClick={() => sendSms(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                       SMS vierge (sans modèle)
                     </button>
@@ -416,17 +405,10 @@ export default function LeadDetailPage() {
               {showWhatsappMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowWhatsappMenu(false)} />
-                  <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                    {whatsappTemplates.length > 0 && (
-                      <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400">Modèle pré-rempli</p>
-                    )}
-                    {whatsappTemplates.map(t => (
-                      <button key={t.id} onClick={() => sendWhatsapp(t)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        {t.title}
-                      </button>
-                    ))}
+                  <div className="absolute left-0 top-full mt-1 z-20 w-64 max-h-[60vh] overflow-y-auto bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                    <TemplateMenuItems groups={whatsappGroups} onPick={sendWhatsapp} />
                     {/* Envoi vierge TOUJOURS possible (separateur si des modeles precedent). */}
-                    {whatsappTemplates.length > 0 && <div className="my-1 border-t border-gray-100" />}
+                    {whatsappGroups.length > 0 && <div className="my-1 border-t border-gray-100" />}
                     <button onClick={() => sendWhatsapp(null)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                       WhatsApp vierge (sans modèle)
                     </button>

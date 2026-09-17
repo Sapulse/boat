@@ -1,4 +1,5 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory } from '../data/types';
+import type { TemplatePlacement } from '../lib/templateLayout';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -45,6 +46,8 @@ export type Action =
   | { type: 'ADD_TEMPLATE'; payload: MessageTemplate }
   | { type: 'UPDATE_TEMPLATE'; payload: { id: string; data: Partial<MessageTemplate> } }
   | { type: 'DELETE_TEMPLATE'; payload: string }
+  // Lot 3 : liste COMPLÈTE des catégories + placements (catégorie, rang) des modèles concernés.
+  | { type: 'SAVE_TEMPLATE_LAYOUT'; payload: { categories: TemplateCategory[]; placements: TemplatePlacement[] } }
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
   | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
@@ -145,6 +148,8 @@ export function getInitialState(): AppState {
       // des prochaines actions déjà saisies sur les leads (idempotent : ids
       // déterministes, un lead déjà repris n'est jamais repris deux fois).
       plannedActions: hydratePlannedActions(stored),
+      // Lot 3 : absent des anciens states -> aucune catégorie (tout « Non classés »).
+      templateCategories: stored.templateCategories ?? [],
     };
   }
 
@@ -473,6 +478,20 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         templates: state.templates.filter(t => t.id !== action.payload),
       };
+
+    // Lot 3 : rangement. Retirer une catégorie qui contient encore un modèle est
+    // REFUSÉ (state inchangé) — même règle que le serveur (409).
+    case 'SAVE_TEMPLATE_LAYOUT': {
+      const { categories, placements } = action.payload;
+      const kept = new Set(categories.map(c => c.id));
+      const byId = new Map(placements.map(p => [p.id, p]));
+      const templates = state.templates.map(t => {
+        const p = byId.get(t.id);
+        return p ? { ...t, categoryId: p.categoryId && kept.has(p.categoryId) ? p.categoryId : undefined, position: p.position } : t;
+      });
+      if (templates.some(t => t.categoryId && !kept.has(t.categoryId))) return state;
+      return { ...state, templateCategories: categories, templates };
+    }
 
     // Evenements d'agenda libres : actions confinees a state.calendarEvents,
     // AUCUN effet de bord sur leads / actions / templates (entite isolee).

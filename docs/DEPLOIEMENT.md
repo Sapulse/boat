@@ -97,6 +97,22 @@ actions reprises pour 11 leads (N = N), aucun écart lead / action.
 **Fenêtre à réserver : 30 min** (≈ 25 min d'opérations + marge), **45 min** avec un
 retour arrière complet.
 
+### Scripts de migration, dans l'ordre d'exécution (lots 2 à 5, une seule fenêtre)
+
+Les lots 3, 4 et 5 sont développés sur `main` par-dessus le lot 2 (non déployé) : tout
+passe dans la MÊME fenêtre. Aux étapes 3 et 5 du tableau ci-dessus, enchaîner ces
+scripts DANS CET ORDRE — d'abord tous à blanc (`--target=prod`), relus, GO, puis tous en
+`--apply` avec `BOB_CONFIRM_PROD=bob-brestoceanboat`. Chacun affiche sa preuve et se
+rejoue sans effet. La sauvegarde (`backup:prod`) lit une base où seule une partie des
+migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
+
+| # | Lot | Script | Nature |
+|---|---|---|---|
+| 1 | 2 | `scripts/apply-planned-actions-turso.ts` | 4 colonnes + 2 tables + reprise des prochaines actions |
+| 2 | 3 | `scripts/apply-template-layout-turso.ts` | table `template_categories` + colonnes `message_templates.categoryId` / `position` ; aucune donnée réécrite |
+
+*(Complété au fil des lots 3 à 5.)*
+
 ### Retour arrière
 
 > 🛑 **Uniquement dans l'heure qui suit la mise en production.**

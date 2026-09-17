@@ -7,7 +7,7 @@ import {
   createLead, updateLead, deleteLead,
   createAction, updateAction, deleteAction,
   createCommercial, updateCommercial,
-  createTemplate, updateTemplate, deleteTemplate,
+  createTemplate, updateTemplate, deleteTemplate, saveTemplateLayout,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
   upsertPlannedAction,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
@@ -66,6 +66,11 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
     case 'commercials':
       if (!id && m === 'POST') return sendJson(res, 201, await createCommercial(prisma, body<Commercial>(req)));
       if (id && m === 'PATCH') return sendJson(res, 200, await updateCommercial(prisma, id, body<Partial<Commercial>>(req)));
+      break;
+
+    case 'template-layout':
+      // Lot 3 : catégories + ordre des modèles, en une transaction (409 si une catégorie non vide est retirée).
+      if (!id && m === 'PUT') return sendJson(res, 200, await saveTemplateLayout(prisma, body(req)));
       break;
 
     case 'templates':

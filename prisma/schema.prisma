@@ -219,7 +219,32 @@ model MessageTemplate {
   subject String @default("")
   body    String
 
+  // Lot 3 (ajouts). categoryId absent = « Non classés » (catégorie virtuelle).
+  // Suppression d'une catégorie NON VIDE refusée (RESTRICT) : jamais de modèle
+  // supprimé ou déplacé en cascade.
+  categoryId String?
+  category   TemplateCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  position   Int               @default(0)
+
+  @@index([categoryId])
   @@map("message_templates")
+}
+
+// ============================================================
+// TemplateCategory — lot 3. Catégories de modèles créées / renommées /
+// réordonnées par l'équipe. « Non classés » n'est PAS une ligne (virtuelle).
+// ============================================================
+model TemplateCategory {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name     String
+  position Int    @default(0)
+
+  templates MessageTemplate[]
+
+  @@map("template_categories")
 }
 
 // ============================================================

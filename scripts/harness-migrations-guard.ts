@@ -13,6 +13,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { PLANNED_ACTIONS_COLUMNS, PLANNED_ACTIONS_TABLES_DDL } from './apply-planned-actions-turso';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
+import { TEMPLATE_LAYOUT_COLUMNS, TEMPLATE_LAYOUT_TABLES_DDL, TEMPLATE_LAYOUT_INDEX_DDL } from './apply-template-layout-turso';
 
 let passed = 0;
 let failed = 0;
@@ -67,14 +68,26 @@ section('Migrations du dépôt : ajouts uniquement');
   for (const c of PLANNED_ACTIONS_COLUMNS) {
     check(`lot 2 : même ALTER dans la migration et dans le script Turso (${c.table}.${c.column})`, clean.replace(/\s+/g, ' ').includes(c.ddl.replace(/\s+/g, ' ')));
   }
+  const lot3Dir = subs.find(s => s.endsWith('_lot3_template_layout'));
+  check('lot 3 : migration « template_layout » présente', !!lot3Dir);
+  if (lot3Dir) {
+    const lot3 = readFileSync(path.join(dir, lot3Dir, 'migration.sql'), 'utf-8');
+    const clean3 = stripSqlComments(lot3).replace(/\s+/g, ' ');
+    check('lot 3 : la migration porte la note « écrite à la main »', /écrite à la main/i.test(lot3));
+    check('lot 3 : colonnes ajoutées par ALTER TABLE … ADD COLUMN (2)', (clean3.match(/ALTER\s+TABLE\s+"\w+"\s+ADD\s+COLUMN/gi) ?? []).length === 2);
+    for (const c of TEMPLATE_LAYOUT_COLUMNS) {
+      check(`lot 3 : même ALTER dans la migration et dans le script Turso (${c.table}.${c.column})`, clean3.includes(c.ddl.replace(/\s+/g, ' ')));
+    }
+  }
 }
 
 section('DDL des scripts Turso : ajouts uniquement');
 {
-  const all = [...PLANNED_ACTIONS_COLUMNS.map(c => c.ddl), ...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL];
+  const all = [...PLANNED_ACTIONS_COLUMNS.map(c => c.ddl), ...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL,
+    ...TEMPLATE_LAYOUT_COLUMNS.map(c => c.ddl), ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL];
   const bad = all.filter(d => forbiddenIn(d).length > 0);
-  check('apply-planned-actions + apply-inbound-emails : aucun motif interdit', bad.length === 0, bad.join('\n'));
-  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL].every(d => /IF NOT EXISTS/i.test(d)));
+  check('scripts Turso (lots 2, 3, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
+  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
 }
 
 console.log(`\n${'='.repeat(50)}`);

@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
-  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction,
+  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import { randomUUID } from 'node:crypto';
@@ -10,11 +10,12 @@ import {
   parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
   parseCalendarCreate, parseCalendarPatch,
   parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
-  parsePlannedActionUpsert,
+  parsePlannedActionUpsert, parseTemplateLayout,
 } from './validate.js';
 // Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
 import { migrateLegacyNextActions, pendingActionOf, summarizeNextAction } from '../../src/lib/plannedActions.js';
+import { positionsFromBackup } from '../../src/lib/templateLayout.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -157,7 +158,21 @@ function toTemplate(r: Record<string, unknown>): MessageTemplate {
     subject: r.subject as string,
     body: r.body as string,
     createdAt: (r.createdAt as Date | undefined)?.toISOString(),
+    // Lot 3 : absents d'une base pas encore migrée (lecture « avant lot 3 »).
+    ...(typeof r.categoryId === 'string' ? { categoryId: r.categoryId } : {}),
+    ...(typeof r.position === 'number' ? { position: r.position } : {}),
   };
+}
+
+function toTemplateCategory(r: Record<string, unknown>): TemplateCategory {
+  return { id: r.id as string, name: r.name as string, position: r.position as number };
+}
+
+/** '' ou catégorie inconnue -> null (« Non classés ») : jamais d'erreur de clé étrangère pour un rangement obsolète. */
+async function knownCategoryId(prisma: Pick<PrismaClient, 'templateCategory'>, categoryId: string | null | undefined): Promise<string | null | undefined> {
+  if (categoryId === undefined) return undefined;
+  if (!categoryId) return null;
+  return (await prisma.templateCategory.findUnique({ where: { id: categoryId } })) ? categoryId : null;
 }
 
 function toStat(r: Record<string, unknown>): MonthlyStat {
@@ -251,12 +266,35 @@ export async function hasLot2Schema(prisma: PrismaClient): Promise<boolean> {
 }
 
 /**
+ * Évolutions de schéma présentes dans la base (lots 2 à 5). La SAUVEGARDE doit
+ * lire une base où seules certaines migrations sont passées (fenêtre de
+ * maintenance : sauvegarde avant tout, puis sauvegardes intégrées entre deux
+ * scripts). L'app, elle, tourne toujours sur une base complète.
+ */
+export interface SchemaFeatures {
+  lot2: boolean;            // actions programmées
+  templateLayout: boolean;  // lot 3 : catégories + ordre des modèles
+}
+export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true };
+
+export async function detectSchema(prisma: PrismaClient): Promise<SchemaFeatures> {
+  const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table'`);
+  const has = (t: string) => tables.some(r => r.name === t);
+  return { lot2: has('planned_actions'), templateLayout: has('template_categories') };
+}
+
+/** Colonnes des modèles AVANT le lot 3. */
+const LEGACY_TEMPLATE_SELECT = { id: true, createdAt: true, type: true, title: true, subject: true, body: true } as const;
+
+/**
  * `schema: 'avant-lot2'` (sauvegarde d'une base non migrée) : leads et historique
  * lus SANS les colonnes du lot 2, et `plannedActions` ABSENT de l'état renvoyé —
  * restaurer ce fichier déclenchera la reprise des prochaines actions.
+ * `features` (plus fin) : lot par lot ; `schema: 'avant-lot2'` = aucune évolution.
  */
-export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2' } = {}): Promise<AppState> {
-  const legacy = opts.schema === 'avant-lot2';
+export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2'; features?: SchemaFeatures } = {}): Promise<AppState> {
+  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false } : ALL_FEATURES);
+  const legacy = !f.lot2;
   const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
     legacy ? prisma.lead.findMany({ select: LEGACY_LEAD_SELECT }) : prisma.lead.findMany(),
     legacy ? prisma.leadAction.findMany({ select: LEGACY_ACTION_SELECT }) : prisma.leadAction.findMany(),
@@ -265,12 +303,16 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
     // Plus récent d'abord : la page Modèles retrie de toute façon (lib/templates,
     // pour couvrir le mode localStorage et les créations optimistes), mais autant
     // que la lecture serveur arrive déjà dans le bon ordre.
-    prisma.messageTemplate.findMany({ orderBy: { createdAt: 'desc' } }),
+    f.templateLayout
+      ? prisma.messageTemplate.findMany({ orderBy: [{ position: 'asc' }, { createdAt: 'desc' }] })
+      : prisma.messageTemplate.findMany({ select: LEGACY_TEMPLATE_SELECT, orderBy: { createdAt: 'desc' } }),
     prisma.calendarEvent.findMany(),
     prisma.commercialGoal.findMany(),
     prisma.defaultGoal.findUnique({ where: { id: 1 } }),
     legacy ? Promise.resolve([]) : prisma.plannedAction.findMany({ include: { people: true } }),
   ]);
+  const categories = f.templateLayout ? (await prisma.templateCategory.findMany({ orderBy: { position: 'asc' } })).map(r => toTemplateCategory(r as unknown as Record<string, unknown>)) : undefined;
+  const withLayout = <T extends object>(st: T): T => (categories ? { ...st, templateCategories: categories } : st);
   if (legacy) {
     const state = {
       leads: leads.map(l => { const x = toLead(l as LeadRow); delete x.noNextActionReason; delete x.noNextActionAt; return x; }),
@@ -282,9 +324,9 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
       goals: goals.map(toGoal),
       defaultGoal: dg ? toDefaultGoal(dg as Record<string, unknown>) : EMPTY_DEFAULT_GOAL,
     };
-    return state as unknown as AppState; // plannedActions volontairement absent
+    return withLayout(state) as unknown as AppState; // plannedActions volontairement absent
   }
-  return {
+  return withLayout({
     leads: leads.map(l => toLead(l as LeadRow)),
     actions: actions.map(a => toAction(a as Record<string, unknown>)),
     commercials: commercials.map(toCommercial),
@@ -294,7 +336,7 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
     goals: goals.map(toGoal),
     defaultGoal: dg ? toDefaultGoal(dg as Record<string, unknown>) : EMPTY_DEFAULT_GOAL,
     plannedActions: planned.map(p => toPlannedAction(p as unknown as PlannedRow)),
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -414,18 +456,51 @@ export async function updateCommercial(prisma: PrismaClient, id: string, patch: 
 // Modèles de message.
 // ---------------------------------------------------------------------------
 export async function createTemplate(prisma: PrismaClient, template: MessageTemplate): Promise<MessageTemplate> {
-  const data = parseTemplateCreate(template) as unknown as MessageTemplate;
+  const parsed = parseTemplateCreate(template) as unknown as MessageTemplate & { categoryId?: string | null };
+  const data = { ...parsed, categoryId: await knownCategoryId(prisma, parsed.categoryId) };
   const row = await prisma.messageTemplate.create({ data });
   return toTemplate(row as Record<string, unknown>);
 }
 export async function updateTemplate(prisma: PrismaClient, id: string, patch: Partial<MessageTemplate>): Promise<MessageTemplate> {
-  const data = parseTemplatePatch(patch) as Partial<MessageTemplate>;
+  const parsed = parseTemplatePatch(patch) as Partial<MessageTemplate> & { categoryId?: string | null };
+  const data = { ...parsed, categoryId: await knownCategoryId(prisma, parsed.categoryId) };
   const row = await prisma.messageTemplate.update({ where: { id }, data });
   return toTemplate(row as Record<string, unknown>);
 }
 export async function deleteTemplate(prisma: PrismaClient, id: string): Promise<void> {
   // Garde min-1 = règle CLIENT (reducer). L'API supprime sans état d'âme.
   await prisma.messageTemplate.delete({ where: { id } });
+}
+
+/**
+ * Lot 3 — rangement groupé (PUT /template-layout) : liste COMPLÈTE des catégories
+ * + placement (catégorie, rang) des modèles, en UNE transaction.
+ *  1. catégories créées / renommées / réordonnées (upsert) ;
+ *  2. placements appliqués aux modèles EXISTANTS (un modèle supprimé ailleurs
+ *     est ignoré ; catégorie inconnue -> « Non classés ») ;
+ *  3. catégories absentes de la liste = supprimées, SEULEMENT si vides :
+ *     sinon 409, rien n'est écrit (jamais de modèle supprimé ni déplacé en cascade).
+ */
+export async function saveTemplateLayout(prisma: PrismaClient, body: unknown): Promise<{ categories: TemplateCategory[] }> {
+  const { categories, placements } = parseTemplateLayout(body);
+  const ids = new Set(categories.map(c => c.id));
+  const saved = await prisma.$transaction(async (tx) => {
+    for (const c of categories) {
+      await tx.templateCategory.upsert({ where: { id: c.id }, create: { id: c.id, name: c.name, position: c.position }, update: { name: c.name, position: c.position } });
+    }
+    for (const p of placements) {
+      const categoryId = p.categoryId && ids.has(p.categoryId) ? p.categoryId : null;
+      await tx.messageTemplate.updateMany({ where: { id: p.id }, data: { categoryId, position: p.position } });
+    }
+    const removed = await tx.templateCategory.findMany({ where: { id: { notIn: [...ids] } } });
+    for (const r of removed) {
+      const n = await tx.messageTemplate.count({ where: { categoryId: r.id } });
+      if (n > 0) throw new HttpError(409, `La catégorie « ${r.name} » contient encore ${n} modèle(s) : suppression refusée.`);
+      await tx.templateCategory.delete({ where: { id: r.id } });
+    }
+    return tx.templateCategory.findMany({ orderBy: { position: 'asc' } });
+  });
+  return { categories: saved.map(r => toTemplateCategory(r as unknown as Record<string, unknown>)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +635,7 @@ export interface RestoreReport {
   commercials: number; leads: number; actions: number;
   templates: number; calendarEvents: number; goals: number; monthlyStats: number;
   plannedActions: number;
+  templateCategories: number;
 }
 
 export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
@@ -575,6 +651,16 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
   const people = planned.flatMap(p => p.people.map(x => ({
     id: `${p.id}:${x.commercialId}`, plannedActionId: p.id, commercialId: x.commercialId, role: x.role, active: true,
   })));
+  // Lot 3 : l'ordre d'affichage du fichier est FIGÉ en positions (la restauration
+  // remet createdAt à l'heure du jour) ; catégorie inconnue -> « Non classés ».
+  const categories = d.templateCategories ?? [];
+  // La validation retire createdAt (colonne d'audit) : on le relit dans le fichier
+  // BRUT, le temps de calculer l'ordre, puis on ne l'écrit pas.
+  const rawTemplates = ((payload as { data?: { templates?: unknown } } | null)?.data?.templates ?? []) as { id?: string; createdAt?: string }[];
+  const rawCreated = new Map(rawTemplates.map(t => [t.id, typeof t.createdAt === 'string' ? t.createdAt : undefined]));
+  const templates = positionsFromBackup(d.templates.map(t => ({ ...t, createdAt: rawCreated.get(t.id) })), categories)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    .map(({ createdAt: _c, ...t }) => ({ ...t, categoryId: t.categoryId ?? null }));
 
   await prisma.$transaction([
     // (2) Purge FK-safe : enfants d'abord.
@@ -586,6 +672,7 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     prisma.lead.deleteMany(),
     prisma.commercial.deleteMany(),
     prisma.messageTemplate.deleteMany(),
+    prisma.templateCategory.deleteMany(),
     prisma.monthlyStat.deleteMany(),
     prisma.defaultGoal.deleteMany(),
     // (3) Recréation ordre FK : commerciaux -> leads -> actions -> reste.
@@ -594,7 +681,8 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     ...(d.actions.length ? [prisma.leadAction.createMany({ data: d.actions })] : []),
     ...(planned.length ? [prisma.plannedAction.createMany({ data: planned.map(p => ({ id: p.id, ...plannedColumns(p) })) })] : []),
     ...(people.length ? [prisma.plannedActionPerson.createMany({ data: people })] : []),
-    ...(d.templates.length ? [prisma.messageTemplate.createMany({ data: d.templates })] : []),
+    ...(categories.length ? [prisma.templateCategory.createMany({ data: categories.map(c => ({ id: c.id, name: c.name, position: c.position })) })] : []),
+    ...(templates.length ? [prisma.messageTemplate.createMany({ data: templates })] : []),
     ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
     ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
     ...(d.monthlyStats.length ? [prisma.monthlyStat.createMany({ data: d.monthlyStats })] : []),
@@ -606,6 +694,7 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     templates: d.templates.length, calendarEvents: d.calendarEvents.length,
     goals: d.goals.length, monthlyStats: d.monthlyStats.length,
     plannedActions: planned.length,
+    templateCategories: categories.length,
   };
 }
 

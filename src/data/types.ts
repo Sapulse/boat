@@ -66,6 +66,25 @@ export interface MessageTemplate {
    * (lib/templates) les traite alors comme les plus anciens. Jamais affichee.
    */
   createdAt?: string;
+  /**
+   * Lot 3 — catégorie (TemplateCategory.id). Absente / inconnue = « Non classés »
+   * (catégorie VIRTUELLE, toujours en tête, non renommable).
+   */
+  categoryId?: string;
+  /**
+   * Lot 3 — rang MANUEL dans sa catégorie (0 = en tête). Absent (anciens states,
+   * sauvegardes d'avant le lot 3) = 0 : l'ordre retombe alors sur « plus récent
+   * d'abord » (lib/templateLayout), c'est-à-dire l'ordre d'avant le lot.
+   */
+  position?: number;
+}
+
+/** Lot 3 — catégorie de modèles, créée / renommée / réordonnée par l'équipe. */
+export interface TemplateCategory {
+  id: string;
+  name: string;
+  /** Rang manuel des catégories (0 = première après « Non classés »). */
+  position: number;
 }
 
 /**
@@ -343,4 +362,7 @@ export interface AppState {
   // d'avant le lot 2 -> hydraté en [] puis repris depuis les champs nextAction*
   // des leads (lib/plannedActions.migrateLegacyNextActions, idempotent).
   plannedActions: PlannedAction[];
+  // Catégories de modèles (lot 3). Absent des anciens states et des sauvegardes
+  // d'avant le lot 3 -> tous les modèles sont « Non classés ».
+  templateCategories?: TemplateCategory[];
 }

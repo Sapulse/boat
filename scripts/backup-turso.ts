@@ -54,13 +54,16 @@ async function main() {
   applyTargetToProcessEnv(guard.target); // le client Prisma partagé lit l'environnement à l'import
 
   const { prisma } = await import('../api/_lib/prisma');
-  const { getState, hasLot2Schema } = await import('../api/_lib/store');
+  const { getState, detectSchema } = await import('../api/_lib/store');
   const { parseRestorePayload } = await import('../api/_lib/validate');
 
   const now = new Date();
-  const migrated = await hasLot2Schema(prisma);
-  console.log(`Schéma : ${migrated ? 'lot 2 (actions programmées)' : "d'avant le lot 2 (pas encore migré)"}`);
-  const state = await getState(prisma, { schema: migrated ? 'courant' : 'avant-lot2' });
+  // Fenêtre de maintenance : la base peut n'avoir qu'une partie des migrations.
+  const features = await detectSchema(prisma);
+  const migrated = features.lot2;
+  const present = [features.lot2 && 'lot 2 (actions programmées)', features.templateLayout && 'lot 3 (rangement des modèles)'].filter(Boolean);
+  console.log(`Schéma : ${present.length ? present.join(' · ') : "d'avant le lot 2 (pas encore migré)"}`);
+  const state = await getState(prisma, { features });
   const inbound = await readInbound(prisma);
   await prisma.$disconnect();
 
@@ -77,6 +80,7 @@ async function main() {
     ['goals', state.goals.length],
     ['monthlyStats', state.monthlyStats.length],
     ...(migrated ? [['plannedActions', state.plannedActions.length] as [string, number]] : []),
+    ...(features.templateLayout ? [['templateCategories', state.templateCategories?.length ?? 0] as [string, number]] : []),
     ['inbound_emails *', inbound.length],
   ];
   for (const [label, n] of counts) console.log(`${label.padEnd(24)} ${String(n).padStart(6)}`);

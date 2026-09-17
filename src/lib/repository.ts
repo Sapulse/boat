@@ -1,9 +1,10 @@
 import type { Dispatch } from 'react';
 import type {
   AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate,
-  ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial,
+  ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory,
 } from '../data/types';
 import type { Action } from '../context/appReducer';
+import type { TemplatePlacement } from './templateLayout';
 import { getInitialState as loadInitialState } from '../context/appReducer';
 import { saveState } from './storage';
 import { generateId, toISODate } from './utils';
@@ -101,6 +102,8 @@ export interface CrmRepository {
   addTemplate(template: Omit<MessageTemplate, 'id'>): string;
   updateTemplate(id: string, data: Partial<MessageTemplate>): void;
   deleteTemplate(id: string): void;
+  /** Lot 3 : liste COMPLÈTE des catégories + placements modifiés (refusé si une catégorie non vide disparaît). */
+  saveTemplateLayout(categories: TemplateCategory[], placements: TemplatePlacement[]): void;
 
   // — Événements d'agenda libres —
   addCalendarEvent(event: Omit<CalendarEvent, 'id'>): string;
@@ -173,6 +176,7 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     },
     updateTemplate: (id, data) => dispatch({ type: 'UPDATE_TEMPLATE', payload: { id, data } }),
     deleteTemplate: (id) => dispatch({ type: 'DELETE_TEMPLATE', payload: id }),
+    saveTemplateLayout: (categories, placements) => dispatch({ type: 'SAVE_TEMPLATE_LAYOUT', payload: { categories, placements } }),
 
     addCalendarEvent: (event) => {
       const id = generateId();
@@ -252,7 +256,7 @@ export interface RepositorySync {
 type EntityName = 'leads' | 'actions' | 'commercials' | 'templates' | 'calendar-events';
 type Intent =
   | { kind: 'create' | 'update' | 'delete'; entity: EntityName; id: string }
-  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' }
+  | { kind: 'batch'; entity: 'goals' | 'monthly-stats' | 'default-goal' | 'template-layout' }
   // Lot 2 : les actions programmées d'UN lead, envoyées en PUT (upsert
   // idempotent). Le repository ne sait pas si la programmation a créé ou mis à
   // jour l'action à faire (c'est le reducer qui tranche) : on renvoie l'état
@@ -382,8 +386,11 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     if (intent.kind === 'batch') {
       const body = intent.entity === 'goals' ? state.goals
         : intent.entity === 'monthly-stats' ? state.monthlyStats
-        : state.defaultGoal;
-      const label = { goals: 'Objectifs', 'monthly-stats': 'Stats acquisition', 'default-goal': 'Objectifs par défaut' }[intent.entity];
+        : intent.entity === 'template-layout'
+          // Lot 3 : TOUT le rangement (idempotent) — catégories + place de chaque modèle.
+          ? { categories: state.templateCategories ?? [], placements: state.templates.map(t => ({ id: t.id, categoryId: t.categoryId ?? '', position: t.position ?? 0 })) }
+          : state.defaultGoal;
+      const label = { goals: 'Objectifs', 'monthly-stats': 'Stats acquisition', 'default-goal': 'Objectifs par défaut', 'template-layout': 'Rangement des modèles' }[intent.entity];
       return { op: { method: 'PUT', path: `/${intent.entity}`, body, entity: intent.entity, label: `${label} — enregistrement` } };
     }
     if (intent.kind === 'delete') {
@@ -739,6 +746,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     addTemplate: (t) => { const id = base.addTemplate(t); remember({ kind: 'create', entity: 'templates', id }); return id; },
     updateTemplate: (id, data) => { base.updateTemplate(id, data); remember({ kind: 'update', entity: 'templates', id }); },
     deleteTemplate: (id) => { base.deleteTemplate(id); remember({ kind: 'delete', entity: 'templates', id }); },
+    saveTemplateLayout: (categories, placements) => { base.saveTemplateLayout(categories, placements); remember({ kind: 'batch', entity: 'template-layout' }); },
 
     addCalendarEvent: (e) => { const id = base.addCalendarEvent(e); remember({ kind: 'create', entity: 'calendar-events', id }); return id; },
     updateCalendarEvent: (id, data) => { base.updateCalendarEvent(id, data); remember({ kind: 'update', entity: 'calendar-events', id }); },
