@@ -21,6 +21,7 @@ const PerformancePage = lazy(() => import('./pages/PerformancePage'));
 const AcquisitionPage = lazy(() => import('./pages/AcquisitionPage'));
 const ObjectifsPage = lazy(() => import('./pages/ObjectifsPage'));
 const ObjectifsDefautPage = lazy(() => import('./pages/ObjectifsDefautPage'));
+const ObjectifsSemainePage = lazy(() => import('./pages/ObjectifsSemainePage'));
 const EspaceCommercialPage = lazy(() => import('./pages/EspaceCommercialPage'));
 const EquipePage = lazy(() => import('./pages/EquipePage'));
 const ExportsPage = lazy(() => import('./pages/ExportsPage'));
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/acquisition" element={<AcquisitionPage />} />
             <Route path="/objectifs" element={<ObjectifsPage />} />
+            <Route path="/objectifs-semaine" element={<ObjectifsSemainePage />} />
             <Route path="/espace-commercial" element={<EspaceCommercialPage />} />
             <Route path="/objectifs-defaut" element={<ObjectifsDefautPage />} />
             <Route path="/equipe" element={<EquipePage />} />

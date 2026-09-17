@@ -14,6 +14,7 @@ const titles: Record<string, string> = {
   '/pipeline': 'Pipeline',
   '/relances': 'À relancer',
   '/performance': 'Performance',
+  '/objectifs-semaine': 'Objectifs de la semaine',
   '/acquisition': 'Acquisition',
   '/equipe': 'Équipe',
   '/templates': 'Modèles de message',

@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronRight,
   Crosshair,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { cn, toISODate } from '../../lib/utils';
@@ -42,6 +43,7 @@ const sections: NavSection[] = [
     defaultOpen: true,
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Objectifs de la semaine', href: '/objectifs-semaine', icon: ListChecks },
       { name: 'Performance', href: '/performance', icon: BarChart3 },
       { name: 'Objectifs', href: '/objectifs', icon: Target },
       { name: 'Acquisition', href: '/acquisition', icon: Megaphone },
@@ -128,7 +130,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           onClick={onClose}
           aria-label={`${overdueCount} action${overdueCount > 1 ? 's' : ''} en retard — ouvrir la liste`}
           title={`${overdueCount} action(s) en retard`}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-danger-600 hover:bg-danger-700 px-2 py-0.5 text-xs font-semibold text-white"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-danger-600 hover:bg-danger-700 px-2 py-0.5 text-xs font-semibold text-white before:absolute before:-inset-x-2 before:-inset-y-3 before:content-['']"
         >
           {overdueCount}
         </Link>
