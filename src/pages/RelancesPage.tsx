@@ -1,16 +1,15 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLeadClickProps } from '../hooks/useOpenLead';
 import { CalendarClock, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import EmptyState from '../components/ui/EmptyState';
 import { getAlertLevel, getLeadFullName, cn } from '../lib/utils';
 import { getFollowUpLeads } from '../lib/relances';
-import { activateOnKey } from '../lib/a11y';
 
 export default function RelancesPage() {
   const { state, getCommercialName } = useApp();
-  const navigate = useNavigate();
+  const leadClick = useLeadClickProps();
 
   const [filterCommercial, setFilterCommercial] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<'' | 'danger' | 'warning'>('');
@@ -73,8 +72,7 @@ export default function RelancesPage() {
               key={lead.id}
               role="button"
               tabIndex={0}
-              onClick={() => navigate(`/leads/${lead.id}`)}
-              onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+              {...leadClick(lead.id)}
               className="flex items-start gap-3 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
             >
               <div className="pt-0.5"><AlertDot level={getAlertLevel(lead)} /></div>

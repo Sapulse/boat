@@ -10,6 +10,7 @@ import {
   toISODate,
 } from '../lib/utils';
 import { buildAgendaEvents } from '../lib/agenda';
+import LeadLink from '../components/leads/LeadLink';
 import { MONTHS, LEAD_STATUSES, ACTION_TYPES } from '../data/constants';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import CommercialHeader from '../components/commercial/CommercialHeader';
@@ -249,7 +250,7 @@ export default function EspaceCommercialPage() {
                   <ul className="space-y-1.5">
                     {hotLeads.slice(0, 5).map((l) => (
                       <li key={l.id} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="font-medium text-gray-800 truncate">{getLeadFullName(l)}</span>
+                        <LeadLink leadId={l.id} className="font-medium text-gray-800 truncate hover:text-primary-700 hover:underline">{getLeadFullName(l)}</LeadLink>
                         <StatusBadge status={l.status} />
                       </li>
                     ))}
@@ -278,7 +279,8 @@ export default function EspaceCommercialPage() {
                           <span className="font-medium text-gray-800">
                             {ACTION_TYPES.find((a) => a.value === ev.type)?.label ?? 'Action'}
                           </span>
-                          <span className="text-gray-500"> · {ev.leadName}</span>
+                          <span className="text-gray-500"> · </span>
+                          <LeadLink leadId={ev.leadId} className="text-gray-500 hover:text-primary-700 hover:underline">{ev.leadName}</LeadLink>
                         </span>
                         <span className={`text-xs font-medium shrink-0 ${EVENT_STATUS_CLS[ev.status]}`}>
                           {formatDate(ev.date)}

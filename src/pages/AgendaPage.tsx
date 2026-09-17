@@ -1,5 +1,4 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, Trash2, Check,
   Users, Palmtree, Plane, User, Tag, type LucideIcon,
@@ -20,6 +19,7 @@ import { useSubmitLock } from '../hooks/useSubmitLock';
 import Modal from '../components/ui/Modal';
 import DialogShell from '../components/nextAction/DialogShell';
 import PeoplePicker from '../components/nextAction/PeoplePicker';
+import LeadLink from '../components/leads/LeadLink';
 import { ACTION_TYPES, CALENDAR_EVENT_CATEGORIES, getCategoryInfo, AGENDA_HOUR_START, AGENDA_SLOT_MIN, AGENDA_SCROLL_TO_HOUR } from '../data/constants';
 import { cn, toISODate, formatDate, getLeadFullName } from '../lib/utils';
 import { useIsCompact } from '../lib/useIsCompact';
@@ -106,7 +106,6 @@ type OnCreate = (dateISO: string, timeHHmm?: string) => void;
 
 export default function AgendaPage() {
   const { state, reschedulePlannedAction, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp();
-  const navigate = useNavigate();
   const toast = useToast();
 
   // Vue par DÉFAUT selon l'écran (audit mobile) : la grille Semaine fait
@@ -275,7 +274,6 @@ export default function AgendaPage() {
           key={openPlanned.plannedId}
           item={openPlanned}
           onClose={() => setOpenPlannedId(null)}
-          onOpenLead={() => navigate(`/leads/${openPlanned.leadId}`)}
           onReschedule={when => { reschedule(openPlanned, when); setOpenPlannedId(null); }}
         />
       )}
@@ -1199,10 +1197,9 @@ function CreateActionModal({ dateISO, initialTime, onClose }: {
 // d'ecran sur telephone). « Fait » -> fenetre selon le type (appel, envoi,
 // compte rendu), action grisee, puis fenetre Prochaine action non fermable.
 // « Pas fait » -> rien. « Reporter » -> date/heure, trace dans l'historique. ---
-function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
+function PlannedActionSheet({ item, onClose, onReschedule }: {
   item: PlannedAgendaItem;
   onClose: () => void;
-  onOpenLead: () => void;
   onReschedule: (when: { date: string; time?: string; endTime?: string }) => void;
 }) {
   const { state, getCommercialName } = useApp();
@@ -1321,7 +1318,7 @@ function PlannedActionSheet({ item, onClose, onOpenLead, onReschedule }: {
               <p className="text-gray-700 whitespace-pre-line">{item.note}</p>
             </div>
           )}
-          <button type="button" onClick={onOpenLead} className="text-primary-700 underline hover:text-primary-900">Ouvrir la fiche du lead</button>
+          <LeadLink leadId={item.leadId} className="text-primary-700 underline hover:text-primary-900">Ouvrir la fiche du lead</LeadLink>
         </div>
       )}
     </DialogShell>

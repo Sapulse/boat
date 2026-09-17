@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { useLeadClickProps } from '../hooks/useOpenLead';
 import { Search, Download, Check, Users, Euro } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { SortIcon, type SortDir } from '../components/ui/SortIcon';
@@ -7,7 +8,6 @@ import { formatDate, formatCurrency, getLeadFullName, isoDateDaysAgo } from '../
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { BOAT_TYPES, SOURCES, NO_COMMERCIAL_FILTER } from '../data/constants';
-import { activateOnKey } from '../lib/a11y';
 import type { Lead } from '../data/types';
 
 // Colonnes triables de la liste Clients (même mécanisme que Leads).
@@ -19,7 +19,7 @@ const clientAmount = (l: Lead) => l.quoteAmount ?? l.budget ?? 0;
 
 export default function ClientsPage() {
   const { state, getCommercialName } = useApp();
-  const navigate = useNavigate();
+  const leadClick = useLeadClickProps();
 
   const [searchParams] = useSearchParams();
 
@@ -203,8 +203,7 @@ export default function ClientsPage() {
             <div
               key={lead.id}
               tabIndex={0}
-              onClick={() => navigate(`/leads/${lead.id}`)}
-              onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+              {...leadClick(lead.id)}
               className="px-4 py-3 active:bg-gray-50 cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
@@ -260,8 +259,7 @@ export default function ClientsPage() {
                   key={lead.id}
                   tabIndex={0}
                   className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/leads/${lead.id}`)}
-                  onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+                  {...leadClick(lead.id)}
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>

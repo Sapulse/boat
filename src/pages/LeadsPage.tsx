@@ -1,5 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLeadClickProps } from '../hooks/useOpenLead';
+import LeadLink from '../components/leads/LeadLink';
 import { Search, Plus, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useNextActionFlow } from '../context/useNextActionFlow';
@@ -12,7 +14,6 @@ import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
 import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES, QUOTE_STATUSES, NO_COMMERCIAL_FILTER } from '../data/constants';
-import { activateOnKey } from '../lib/a11y';
 
 type SavedView = { label: string; key: string; apply: () => void };
 
@@ -35,6 +36,7 @@ export default function LeadsPage() {
   // Lot 2 (F) : appel = note obligatoire puis fenêtre Prochaine action.
   const flow = useNextActionFlow();
   const navigate = useNavigate();
+  const leadClick = useLeadClickProps();
   const [searchParams] = useSearchParams();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,8 +305,7 @@ export default function LeadsPage() {
               <div
                 key={lead.id}
                 tabIndex={0}
-                onClick={() => navigate(`/leads/${lead.id}`)}
-                onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}
+                {...leadClick(lead.id)}
                 className="px-4 py-3 active:bg-gray-50 cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -399,7 +400,7 @@ export default function LeadsPage() {
                 return (
                   <tr key={lead.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
                     <td className="px-3 py-2.5"><AlertDot level={alert} /></td>
-                    <td tabIndex={0} className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
+                    <td tabIndex={0} className="px-3 py-2.5 cursor-pointer" {...leadClick(lead.id)}>
                       <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>
                       <div className="text-xs text-gray-500">{lead.email || lead.phone}</div>
                     </td>
@@ -438,9 +439,9 @@ export default function LeadsPage() {
                           actions restent visibles. focus-within : visibles
                           aussi au clavier sur desktop. */}
                       <div className="flex items-center gap-1 justify-center transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100">
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Voir">
+                        <LeadLink leadId={lead.id} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Voir la fiche">
                           <Eye className="w-3.5 h-3.5" />
-                        </button>
+                        </LeadLink>
                         {lead.phone && (
                           <a
                             href={`tel:${lead.phone}`}

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, FlaskConical, Inbox, Info, Link2, Mail, Minus, Plus, RefreshCw, RotateCcw, Search, X } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useToast } from '../context/useToast';
 import { useNextActionFlow } from '../context/useNextActionFlow';
+import LeadLink from '../components/leads/LeadLink';
 import { pendingActionOf } from '../lib/plannedActions';
 import { useInboundDemo } from '../context/useInboundDemo';
 import { findDuplicateLeads } from '../lib/duplicateLeads';
@@ -273,9 +273,9 @@ export default function InboxProspectsPage() {
         >
           <p>
             Demande rattachée à{' '}
-            <Link to={`/leads/${reopenLead.id}`} className="font-semibold underline hover:text-sky-700">
+            <LeadLink leadId={reopenLead.id} className="font-semibold underline hover:text-sky-700">
               {`${reopenLead.firstName} ${reopenLead.lastName}`.trim() || reopenLead.email}
-            </Link>
+            </LeadLink>
             . Ce lead est <StatusBadge status={reopenLead.status} />. Rouvrir le lead ?
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -492,9 +492,9 @@ function ProcessedSection({ onReopen }: { onReopen: (mail: InboundEmail) => Prom
                   </button>
                 )}
                 {(mail.status === 'accepte' || mail.status === 'rattache') && mail.leadId && (
-                  <Link to={`/leads/${mail.leadId}`} className="text-primary-600 hover:underline whitespace-nowrap">
+                  <LeadLink leadId={mail.leadId} className="text-primary-600 hover:underline whitespace-nowrap">
                     Voir le lead
-                  </Link>
+                  </LeadLink>
                 )}
               </div>
             </li>
@@ -593,9 +593,9 @@ function InboundCard({ mail, leads, commercials, assignee, onAssign, onEdit, onA
           <p className="text-amber-700 flex flex-wrap items-center gap-x-3 gap-y-1">
             {duplicates.slice(0, 3).map(l => (
               <span key={l.id} className="inline-flex items-center gap-1.5">
-                <Link to={`/leads/${l.id}`} className="underline hover:text-amber-900">
+                <LeadLink leadId={l.id} className="underline hover:text-amber-900">
                   {`${l.firstName} ${l.lastName}`.trim() || l.email || l.phone}
-                </Link>
+                </LeadLink>
                 <StatusBadge status={l.status} />
               </span>
             ))}

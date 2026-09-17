@@ -21,6 +21,7 @@ import { buildSms } from '../lib/sms';
 import { buildWhatsApp } from '../lib/whatsapp';
 import { buildCommunicationAction } from '../lib/communication';
 import { groupTemplates } from '../lib/templateLayout';
+import { backTarget } from '../lib/openLead';
 import TemplateMenuItems from '../components/leads/TemplateMenuItems';
 import { generateVCard } from '../lib/vcard';
 import { useAutoReveal } from '../hooks/useAutoReveal';
@@ -268,7 +269,8 @@ export default function LeadDetailPage() {
       {/* Header — flex-wrap : sous ~500px les boutons passent a la ligne au
           lieu d'ecraser le titre / deborder. */}
       <div className="flex items-center gap-4 flex-wrap">
-        <button onClick={() => navigate(-1)} className="btn-ghost btn-sm">
+        {/* Onglet ouvert depuis une liste (lot 3) : pas d'historique -> retour à la liste. */}
+        <button onClick={() => (backTarget(window.history.length) === 'history' ? navigate(-1) : navigate('/leads'))} className="btn-ghost btn-sm">
           <ArrowLeft className="w-4 h-4" /> Retour
         </button>
         <div className="flex-1">

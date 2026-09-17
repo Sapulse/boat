@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useOpenLead } from '../hooks/useOpenLead';
 import {
   DndContext,
   DragOverlay,
@@ -78,7 +78,7 @@ const CLICK_MOVE_THRESHOLD = 6;
 // Pas de transform sur la source : le DragOverlay porte le visuel du
 // deplacement, la source reste en place a 30% d'opacite.
 function DraggableCard({ lead }: { lead: Lead }) {
-  const navigate = useNavigate();
+  const openLead = useOpenLead();
   const pointerDownAt = useRef<{ x: number; y: number } | null>(null);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -93,7 +93,7 @@ function DraggableCard({ lead }: { lead: Lead }) {
     pointerDownAt.current = null;
     if (!start) return;
     const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-    if (moved < CLICK_MOVE_THRESHOLD) navigate(`/leads/${lead.id}`);
+    if (moved < CLICK_MOVE_THRESHOLD) openLead(lead.id, e);
   };
 
   return (
@@ -107,6 +107,7 @@ function DraggableCard({ lead }: { lead: Lead }) {
       {...listeners}
       onPointerDownCapture={e => { pointerDownAt.current = { x: e.clientX, y: e.clientY }; }}
       onClick={handleClick}
+      onAuxClick={e => { if (e.button === 1) { e.preventDefault(); openLead(lead.id, e); } }}
     >
       <LeadCard lead={lead} />
     </div>

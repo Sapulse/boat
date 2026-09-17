@@ -1,5 +1,6 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLeadClickProps } from '../hooks/useOpenLead';
 import {
   Users, AlertTriangle, CheckCircle2, DollarSign,
   FileText, ArrowRight, Filter, Flame, Clock, XCircle,
@@ -29,6 +30,7 @@ function ChartSkeleton({ height }: { height: number }) {
 export default function DashboardPage() {
   const { state } = useApp();
   const navigate = useNavigate();
+  const leadClick = useLeadClickProps();
   // Graphes a barres horizontales : sur ecran etroit, le YAxis 120px mangeait
   // un tiers de la largeur -> axe reduit + libelles tronques (tooltip complet).
   const compact = useIsCompact();
@@ -189,7 +191,7 @@ export default function DashboardPage() {
           {stats.urgentLeads.length > 0 ? (
             <div className="space-y-1.5">
               {stats.urgentLeads.map(lead => (
-                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" {...leadClick(lead.id)}>
                   <AlertDot level={getAlertLevel(lead)} />
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <span className="text-gray-400">{daysSince(lead.lastActionDate || lead.createdAt)}j</span>
@@ -209,7 +211,7 @@ export default function DashboardPage() {
           {stats.hotLeads.length > 0 ? (
             <div className="space-y-1.5">
               {stats.hotLeads.map(lead => (
-                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" {...leadClick(lead.id)}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <StatusBadge status={lead.status} />
                 </div>
@@ -228,7 +230,7 @@ export default function DashboardPage() {
           {stats.devisSansRelance.length > 0 ? (
             <div className="space-y-1.5">
               {stats.devisSansRelance.map(lead => (
-                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" {...leadClick(lead.id)}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <span className="text-warning-600">{daysSince(lead.lastActionDate || lead.createdAt)}j</span>
                 </div>
@@ -247,7 +249,7 @@ export default function DashboardPage() {
           {stats.sansProchAction.length > 0 ? (
             <div className="space-y-1.5">
               {stats.sansProchAction.map(lead => (
-                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" onClick={() => navigate(`/leads/${lead.id}`)} onKeyDown={activateOnKey(() => navigate(`/leads/${lead.id}`))}>
+                <div key={lead.id} role="button" tabIndex={0} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs" {...leadClick(lead.id)}>
                   <span className="font-medium text-gray-900 truncate flex-1">{getLeadFullName(lead)}</span>
                   <StatusBadge status={lead.status} />
                 </div>
