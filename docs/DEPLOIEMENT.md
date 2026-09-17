@@ -1,5 +1,16 @@
 # Déploiement du CRM (boat-eta.vercel.app)
 
+> ## 🛑 Retour arrière du lot 2 — deux règles absolues
+>
+> 1. **Retour arrière UNIQUEMENT dans l'heure qui suit la mise en production.**
+>    Au-delà : on corrige en avant (hotfix sur le lot 2), on ne revient pas à
+>    `prod-2026-09-16`.
+> 2. **Ne JAMAIS utiliser le bouton « Restaurer » de la version `prod-2026-09-16`**
+>    (ni pendant un retour arrière, ni après) : sur une base migrée, il vide
+>    TOUTES les actions programmées.
+>
+> Détails et limites : section « Retour arrière » plus bas.
+
 ## ⚠️ Tant que la migration Turso du lot 2 n'est pas faite : NE JAMAIS DÉPLOYER `main`
 
 Depuis le commit `b431234` (lot 2, arrêt 1), le code de `main` lit des colonnes et des
@@ -87,6 +98,9 @@ actions reprises pour 11 leads (N = N), aucun écart lead / action.
 retour arrière complet.
 
 ### Retour arrière
+
+> 🛑 **Uniquement dans l'heure qui suit la mise en production.**
+> 🛑 **Jamais le bouton « Restaurer » de `prod-2026-09-16`.**
 
 **Principe : on ne revient PAS en arrière sur la base.** La migration est
 purement additive (colonnes avec valeur par défaut, 2 tables) : prouvé le
