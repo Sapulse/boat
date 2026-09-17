@@ -36,8 +36,9 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
   Annonce du bateau, Boats Wizard) sur les sources des leads.
 - [ ] **BoatsGroup** : source séparée en attente de confirmation client.
-- [ ] Script de **réalignement** lead ↔ actions programmées : seulement si un retour
-  arrière du lot 2 a lieu (voir « Retour arrière » dans `docs/DEPLOIEMENT.md`).
+- [x] Script de **cohérence / réalignement** lead ↔ actions programmées
+  (`scripts/realign-planned-actions-turso.ts`, 17/09) : en lecture seule au jour J (étape 8 bis,
+  attendu 0 divergence) ; en `--apply` seulement pour revenir à la v4 après un retour arrière.
 - [ ] **Supprimer un commercial** (test / doublons) : à concevoir avec les données liées
   (leads, actions, objectifs, objectifs de la semaine — FK `RESTRICT`).
 

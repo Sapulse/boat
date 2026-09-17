@@ -16,6 +16,7 @@ import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import { TEMPLATE_LAYOUT_COLUMNS, TEMPLATE_LAYOUT_TABLES_DDL, TEMPLATE_LAYOUT_INDEX_DDL } from './apply-template-layout-turso';
 import { WEEKLY_OBJECTIVES_TABLES_DDL, WEEKLY_OBJECTIVES_INDEX_DDL } from './apply-weekly-objectives-turso';
 import { SOCIAL_TABLES_DDL, SOCIAL_INDEX_DDL, SOCIAL_DEFAULTS_SQL } from './apply-social-turso';
+import { REALIGN_SQL } from './realign-planned-actions-turso';
 
 let passed = 0;
 let failed = 0;
@@ -123,6 +124,18 @@ section('DDL des scripts Turso : ajouts uniquement');
   check('scripts Turso (lots 2 à 5, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
   check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
   check('réseaux par défaut rejouables (INSERT OR IGNORE)', SOCIAL_DEFAULTS_SQL.every(d => /^INSERT OR IGNORE INTO/i.test(d)));
+}
+
+section('Script de réalignement : données seulement, au verrou');
+{
+  const src = readFileSync(path.resolve('scripts/realign-planned-actions-turso.ts'), 'utf-8');
+  check('réalignement : verrou de cible en écriture (guardDbTarget, write: true)', /guardDbTarget\(\{\s*scriptName: 'realign-planned-actions-turso', write: true \}\)/.test(src));
+  check('réalignement : lecture seule sans --apply (retour avant toute écriture)', /if \(!apply\) \{[\s\S]*?return;\s*\}[\s\S]*applyRealignment\(db/.test(src));
+  const sql = Object.values(REALIGN_SQL);
+  // Script de DONNÉES : UPDATE / INSERT autorisés (contrairement aux migrations), jamais de DDL ni de suppression.
+  check('réalignement : aucun DDL ni DELETE dans le SQL d\'écriture', sql.every(s => !/\b(CREATE|ALTER|DROP|DELETE|RENAME|PRAGMA)\b/i.test(s)), sql.join('\n'));
+  check('réalignement : la table leads n\'est jamais écrite', sql.every(s => !/(UPDATE|INTO)\s+"?leads"?\s/i.test(s)));
+  check('réalignement : aucune écriture SQL hors REALIGN_SQL', !/execute\(\s*[`'"]\s*(INSERT|UPDATE|DELETE)/i.test(src));
 }
 
 console.log(`\n${'='.repeat(50)}`);
