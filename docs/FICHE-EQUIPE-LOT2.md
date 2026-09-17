@@ -1,54 +1,70 @@
-# CRM — ce qui change (brouillon à relire avant envoi)
+CRM — CE QUI CHANGE
 
-**En une phrase : chaque lead en cours a toujours une prochaine action prévue, et
-votre journée se pilote depuis l'Agenda.**
+En une phrase : chaque lead en cours a toujours une prochaine action prévue,
+et votre journée se pilote depuis l'Agenda.
 
-## 1. L'Agenda est la page d'accueil
-- En ouvrant le CRM, vous arrivez sur l'**Agenda** (le Dashboard reste dans le menu).
-- La **pastille rouge** à côté d'« Agenda » dans le menu = le nombre d'actions **en retard**.
-- Sur téléphone, l'Agenda s'ouvre sur la journée ; sur ordinateur, sur la semaine.
+1. L'AGENDA EST LA PAGE D'ACCUEIL
+- En ouvrant le CRM, vous arrivez sur l'Agenda. Le Dashboard reste dans le menu.
+- Pastille rouge à côté d'« Agenda » = nombre d'actions en retard
+  (sur téléphone : dans le menu ☰, et en haut de la page Agenda).
+- Sur téléphone : vue journée. Sur ordinateur : vue semaine.
 - Filtre « Tous les commerciaux » : choisissez votre nom pour ne voir que vos actions.
-  Une action à plusieurs (ex. un RDV Tom + Fred) apparaît chez **chacun**.
+  Une action à plusieurs (ex. RDV Tom + Fred) apparaît chez chacun.
 
-## 2. Couleurs sur l'Agenda
-- **Couleur du commercial** : action à faire.
-- **Rouge** : en retard. Elle reste **à sa date** tant qu'elle n'est ni faite ni reportée.
-- **Gris barré** : action faite.
+2. LES COULEURS
+- Couleur du commercial : action à faire.
+- Rouge : en retard. Elle reste à sa date tant qu'elle n'est ni faite ni reportée.
+- Gris barré : action faite.
 
-## 3. Cliquer sur une action : Fait / Pas fait / Reporter
-- **Fait** : le CRM vous demande ce qui s'est passé, puis la prochaine action.
-  - Appel : choisissez le résultat (voir 5).
-  - Email, SMS, WhatsApp : confirmez que le message est bien parti.
-  - RDV, visite, devis… : écrivez un court compte rendu (quelques mots suffisent).
-  - « Réalisée par » : si c'est un collègue qui l'a faite, choisissez son nom
-    (ça compte dans **ses** objectifs).
-- **Pas fait** : rien ne change, l'action reste à faire.
-- **Reporter** : choisissez la nouvelle date. L'ancienne date reste notée dans
-  l'historique du lead. Vous pouvez aussi **glisser** l'action sur l'Agenda.
-- Cliquer sur un **créneau vide** permet de planifier une action pour un lead qui
-  n'en a pas.
+3. CLIQUER SUR UNE ACTION : FAIT / PAS FAIT / REPORTER
+- Fait : le CRM demande ce qui s'est passé, puis la prochaine action.
+  • Appel : choisissez le résultat (voir 5).
+  • Email, SMS, WhatsApp : confirmez que le message est bien parti.
+  • RDV, visite, devis… : quelques mots de compte rendu.
+  • « Réalisée par » : le CRM est partagé, vérifiez que c'est bien votre nom
+    (l'action compte dans les objectifs de la personne choisie).
+- Pas fait : rien ne change, l'action reste à faire.
+- Reporter : choisissez la nouvelle date. L'ancienne reste notée dans l'historique.
+  Sur ordinateur, vous pouvez aussi glisser l'action sur l'Agenda.
+- Créneau vide : cliquez pour planifier une action sur un lead qui n'en a pas.
 
-## 4. Prochaine action obligatoire
-Après chaque action (appel, message, RDV, changement de statut…), une fenêtre
-**« Prochaine action »** s'ouvre : type, date (heure facultative), qui s'en occupe.
-- Plus rien de prévu ? Cliquez **« Aucune prochaine action… »** et choisissez le
-  motif. Le lead sort des alertes « aucune action prévue ».
-- Lead **Reporté** : la date de reprise est obligatoire.
-- Lead **Signé** ou **Perdu** : vous pouvez **Passer**.
-- Dans la liste Leads, le filtre **« À planifier »** montre les leads sans prochaine action.
+4. PROCHAINE ACTION OBLIGATOIRE
+Après chaque action (appel, message, RDV, changement de statut si aucune action
+n'est déjà prévue, nouveau lead), la fenêtre « Prochaine action » s'ouvre :
+type, date (heure facultative), qui s'en occupe.
+- Plus rien de prévu ? « Aucune prochaine action » + motif. L'alerte
+  « aucune action prévue » disparaît, mais le lead repasse en alerte après
+  7 jours sans contact.
+- Lead Reporté : date de reprise obligatoire.
+- Lead Signé ou Perdu : vous pouvez « Passer ».
+- Lead sans commercial (ex. venu de la boîte de réception) : choisissez qui s'en occupe.
+- Fenêtre fermée par erreur (page rechargée) : l'action est bien enregistrée,
+  mais le lead passe dans « À planifier ».
+- Liste Leads, filtre « À planifier » : tous les leads sans prochaine action.
 
-## 5. Appels : le résultat en un clic
-**Joint · Message laissé · Pas de réponse · Rappel demandé · Mauvais numéro**
+5. APPELS : LE RÉSULTAT EN UN CLIC
+Joint · Message laissé · Pas de réponse · Rappel demandé · Mauvais numéro
 - Joint et Rappel demandé : quelques mots de note obligatoires.
 - Les autres : note facultative.
-- Un appel sans réponse **compte** comme un appel passé (objectifs).
+- Un appel sans réponse compte comme un appel passé dans les objectifs.
 
-## 6. Emails, SMS, WhatsApp
-Après avoir ouvert votre messagerie depuis le CRM, il demande **« Avez-vous bien
-envoyé le message ? »** : **Oui** l'ajoute à l'historique, **Non** n'enregistre rien.
+6. EMAILS, SMS, WHATSAPP
+Après ouverture de votre messagerie depuis le CRM : « Avez-vous bien envoyé
+le message ? ». Oui = ajouté à l'historique. Non = rien n'est enregistré.
 
-## Le premier jour
-Les prochaines actions déjà saisies sont reprises telles quelles. Quelques actions
-datant d'août / début septembre apparaîtront **en rouge** : faites-les, reportez-les,
-ou indiquez « Aucune prochaine action ». Les leads en cours sans prochaine action
-sont dans le filtre **« À planifier »** : à traiter au fil de l'eau.
+7. BOÎTE DE RÉCEPTION
+- Accepter : crée le lead (température Neutre), puis « Planifier » pour
+  lui donner sa première action. Si vous manquez le bouton « Planifier »
+  (il disparaît au bout de quelques secondes), le lead est dans « À planifier ».
+- Rattacher : ajoute la demande à un lead existant. Si ce lead est Perdu ou
+  Reporté, le CRM propose de le rouvrir (il repasse en « À contacter »).
+- Un email rejeté par erreur se retrouve dans « Traités » et peut être remis dans la file.
+
+LE PREMIER JOUR — réunion de [date, heure]
+- Quelques actions d'août / début septembre apparaîtront en rouge :
+  faites-les, reportez-les ou « Aucune prochaine action ».
+- Environ 250 leads en cours n'ont aucune action prévue (filtre « À planifier »),
+  dont près de 40 Reportés sans date de reprise et 26 leads sans commercial.
+  On les trie ensemble : les vieux leads sans suite passent en Perdu, les autres
+  reçoivent une prochaine action, en commençant par les plus récents.
+- Objectif : plus aucun lead « À planifier » d'ici [date, une semaine après].
