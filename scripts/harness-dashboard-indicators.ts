@@ -82,6 +82,15 @@ check("Fred : a2 + a6 = 2 (l'action à deux compte chez chacun)", countDueToday(
 check('action à deux : 1 dans le total (Tom 2 + Fred 2 ≠ total 3)', countDueToday(planned, leads, TODAY) < countDueToday(planned, leads, TODAY, 'tom') + countDueToday(planned, leads, TODAY, 'fred'));
 check('faites, annulées, futures et lead supprimé exclus', countDueToday([planned[6], planned[7], planned[8], planned[9]], leads, TODAY) === 0);
 
+section("a) Action dont la seule personne est « Non attribué »");
+const naLeads = [...leads, lead('l12', { commercialId: 'na', nextActionDate: TODAY })];
+const naPlanned = [...planned, pa('a11', 'l12', TODAY, ['na'])];
+check('compte dans le total : 3 + 1 = 4', countDueToday(naPlanned, naLeads, TODAY) === 4, String(countDueToday(naPlanned, naLeads, TODAY)));
+check("chez aucun commercial : Tom 2, Fred 2 (inchangés)", countDueToday(naPlanned, naLeads, TODAY, 'tom') === 2 && countDueToday(naPlanned, naLeads, TODAY, 'fred') === 2);
+check('vue filtrée Tom / Fred : les indicateurs ne la comptent pas', planningIndicators(naPlanned, naLeads, COMMERCIALS, TODAY, 'tom').today === 2 && planningIndicators(naPlanned, naLeads, COMMERCIALS, TODAY, 'fred').today === 2);
+check('vue filtrée sur une action dont Tom est absent : 0', countDueToday([pa('a12', 'l12', TODAY, ['na'])], naLeads, TODAY, 'tom') === 0);
+check('vue Tous : 4', planningIndicators(naPlanned, naLeads, COMMERCIALS, TODAY).today === 4);
+
 section('b) En retard = pastille du menu');
 check('total : a4 + a5 (Perdu exclu, Reporté inclus) = 2', countOverdue(planned, leads, TODAY) === 2);
 check("liste du bandeau = compteur, plus ancienne d'abord", overdueActions(planned, leads, TODAY).map(p => p.id).join() === 'a5,a4');

@@ -202,7 +202,6 @@ function WeekCard({ weekStart, kind, list, todayISO }: { weekStart: string; kind
         </h2>
         <span className="text-sm text-gray-500 sm:ml-auto">
           {score.total > 0 ? `${score.done}/${score.total} atteint${score.done > 1 ? 's' : ''}` : 'Aucun objectif'}
-          {' · '}{score.total}/{MAX_ACTIVE_OBJECTIVES}
         </span>
       </div>}
       {kind === 'suivante' && <p className="text-xs text-gray-500 mt-1">Préparez la semaine à venir ; les objectifs non atteints de cette semaine peuvent y être repris.</p>}
