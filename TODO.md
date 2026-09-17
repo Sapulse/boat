@@ -36,6 +36,18 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
   nom « CRM BOB », icônes logo BOB 192 px et 512 px + `apple-touch-icon`, `display: standalone`,
   couleur de thème ; compatible avec la base `/boat/` et avec la future adresse du VPS.
   **Pas** de service worker, **pas** de mode hors ligne. Demandé le 17/09 (main gelée).
+  - Android : bouton « Installer le CRM » (événement `beforeinstallprompt`), masqué si le CRM
+    est déjà installé ;
+  - iPhone : petit bandeau explicatif affiché une seule fois (Safari → Partager → Sur l'écran
+    d'accueil), masquable.
+- [ ] **Piste à chiffrer — envoi des mails directement depuis le CRM (Microsoft Graph)** :
+  DIAGNOSTIC SEULEMENT, pas de code.
+  - nécessite la permission `Mail.Send` accordée par Sopitec sur l'application Azure
+    existante (aujourd'hui `Mail.Read` seulement, pour la boîte de réception) ;
+  - enregistrement automatique dans l'historique : plus de confirmation « Avez-vous bien
+    envoyé le message ? » pour ces envois ;
+  - à étudier : boîte expéditrice avec le compte partagé, pièces jointes, copie dans
+    « Éléments envoyés », gestion des erreurs, RGPD.
 - [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
   types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
