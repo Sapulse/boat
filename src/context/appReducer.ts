@@ -1,5 +1,6 @@
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
+import { applyObjectivePatch, carryOverObjective, newObjective, validateObjective, type ObjectivePatch } from '../lib/weeklyObjectives';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
@@ -48,6 +49,11 @@ export type Action =
   | { type: 'DELETE_TEMPLATE'; payload: string }
   // Lot 3 : liste COMPLÈTE des catégories + placements (catégorie, rang) des modèles concernés.
   | { type: 'SAVE_TEMPLATE_LAYOUT'; payload: { categories: TemplateCategory[]; placements: TemplatePlacement[] } }
+  // Lot 4 : objectifs de la semaine (jamais de suppression). Dates passées en
+  // charge utile : le reducer reste pur et rejouable au harnais.
+  | { type: 'ADD_WEEKLY_OBJECTIVE'; payload: { id: string; weekStart: string; text: string; ownerId: string | null; todayISO: string; nowISO: string } }
+  | { type: 'UPDATE_WEEKLY_OBJECTIVE'; payload: { id: string; patch: ObjectivePatch; todayISO: string; nowISO: string } }
+  | { type: 'CARRY_OVER_WEEKLY_OBJECTIVE'; payload: { id: string; newId: string; todayISO: string; nowISO: string } }
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
   | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
@@ -150,6 +156,8 @@ export function getInitialState(): AppState {
       plannedActions: hydratePlannedActions(stored),
       // Lot 3 : absent des anciens states -> aucune catégorie (tout « Non classés »).
       templateCategories: stored.templateCategories ?? [],
+      // Lot 4 : absent des anciens states -> aucun objectif de la semaine.
+      weeklyObjectives: stored.weeklyObjectives ?? [],
     };
   }
 
@@ -167,6 +175,7 @@ export function getInitialState(): AppState {
     goals: [],
     defaultGoal: EMPTY_DEFAULT_GOAL,
     plannedActions: [],
+    weeklyObjectives: [],
   };
 }
 
@@ -250,7 +259,7 @@ export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
       // Serveur d'avant le lot 2 (ou sauvegarde) : tableau absent -> [].
-      return { ...action.payload, plannedActions: action.payload.plannedActions ?? [] };
+      return { ...action.payload, plannedActions: action.payload.plannedActions ?? [], weeklyObjectives: action.payload.weeklyObjectives ?? [] };
 
     case 'ADD_LEAD': {
       // Un lead cree directement dans un statut avance (ex. "Signe" en mode
@@ -491,6 +500,36 @@ export function reducer(state: AppState, action: Action): AppState {
       });
       if (templates.some(t => t.categoryId && !kept.has(t.categoryId))) return state;
       return { ...state, templateCategories: categories, templates };
+    }
+
+    // Lot 4 : objectifs de la semaine. Règles (5 actifs max, porteur valide,
+    // texte) vérifiées ICI comme au serveur : une règle violée laisse l'état
+    // inchangé (l'écran prévient avant). Aucune suppression possible.
+    case 'ADD_WEEKLY_OBJECTIVE': {
+      const list = state.weeklyObjectives ?? [];
+      const { id, weekStart, text, ownerId, todayISO, nowISO } = action.payload;
+      if (list.some(o => o.id === id)) return state;
+      const o = newObjective({ id, weekStart, text, ownerId, list, todayISO, nowISO });
+      if (validateObjective(o, list, state.commercials).length) return state;
+      return { ...state, weeklyObjectives: [...list, o] };
+    }
+
+    case 'UPDATE_WEEKLY_OBJECTIVE': {
+      const list = state.weeklyObjectives ?? [];
+      const { id, patch, todayISO, nowISO } = action.payload;
+      const current = list.find(o => o.id === id);
+      if (!current) return state;
+      const next = applyObjectivePatch(current, patch, todayISO, nowISO);
+      if (next === current || validateObjective(next, list, state.commercials).length) return state;
+      return { ...state, weeklyObjectives: list.map(o => (o.id === id ? next : o)) };
+    }
+
+    case 'CARRY_OVER_WEEKLY_OBJECTIVE': {
+      const list = state.weeklyObjectives ?? [];
+      const { id, newId, todayISO, nowISO } = action.payload;
+      const r = carryOverObjective(list, id, newId, todayISO, nowISO);
+      if (!r || !('objective' in r) || list.some(o => o.id === newId)) return state;
+      return { ...state, weeklyObjectives: [...list, r.objective] };
     }
 
     // Evenements d'agenda libres : actions confinees a state.calendarEvents,

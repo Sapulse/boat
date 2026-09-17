@@ -5,6 +5,7 @@ import type {
 } from '../data/types';
 import type { Action } from '../context/appReducer';
 import type { TemplatePlacement } from './templateLayout';
+import type { ObjectivePatch } from './weeklyObjectives';
 import { getInitialState as loadInitialState } from '../context/appReducer';
 import { saveState } from './storage';
 import { generateId, toISODate } from './utils';
@@ -105,6 +106,14 @@ export interface CrmRepository {
   /** Lot 3 : liste COMPLÈTE des catégories + placements modifiés (refusé si une catégorie non vide disparaît). */
   saveTemplateLayout(categories: TemplateCategory[], placements: TemplatePlacement[]): void;
 
+  // — Objectifs de la semaine (lot 4) : jamais de suppression —
+  /** Ajoute un objectif (refusé par le reducer si la semaine a déjà 5 objectifs actifs). Renvoie l'id. */
+  addWeeklyObjective(weekStart: string, text: string, ownerId: string | null): string;
+  /** Texte, porteur, atteint, retiré / réactivé. */
+  updateWeeklyObjective(id: string, patch: ObjectivePatch): void;
+  /** « Reprendre la semaine suivante ». Renvoie l'id de la copie. */
+  carryOverWeeklyObjective(id: string): string;
+
   // — Événements d'agenda libres —
   addCalendarEvent(event: Omit<CalendarEvent, 'id'>): string;
   updateCalendarEvent(id: string, data: Partial<CalendarEvent>): void;
@@ -177,6 +186,19 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     updateTemplate: (id, data) => dispatch({ type: 'UPDATE_TEMPLATE', payload: { id, data } }),
     deleteTemplate: (id) => dispatch({ type: 'DELETE_TEMPLATE', payload: id }),
     saveTemplateLayout: (categories, placements) => dispatch({ type: 'SAVE_TEMPLATE_LAYOUT', payload: { categories, placements } }),
+
+    addWeeklyObjective: (weekStart, text, ownerId) => {
+      const id = generateId();
+      dispatch({ type: 'ADD_WEEKLY_OBJECTIVE', payload: { id, weekStart, text, ownerId, todayISO: toISODate(new Date()), nowISO: new Date().toISOString() } });
+      return id;
+    },
+    updateWeeklyObjective: (id, patch) =>
+      dispatch({ type: 'UPDATE_WEEKLY_OBJECTIVE', payload: { id, patch, todayISO: toISODate(new Date()), nowISO: new Date().toISOString() } }),
+    carryOverWeeklyObjective: (id) => {
+      const newId = generateId();
+      dispatch({ type: 'CARRY_OVER_WEEKLY_OBJECTIVE', payload: { id, newId, todayISO: toISODate(new Date()), nowISO: new Date().toISOString() } });
+      return newId;
+    },
 
     addCalendarEvent: (event) => {
       const id = generateId();
@@ -261,7 +283,10 @@ type Intent =
   // idempotent). Le repository ne sait pas si la programmation a créé ou mis à
   // jour l'action à faire (c'est le reducer qui tranche) : on renvoie l'état
   // post-reducer de toutes celles du lead (quelques lignes au plus).
-  | { kind: 'lead-planned'; entity: 'planned-actions'; leadId: string };
+  | { kind: 'lead-planned'; entity: 'planned-actions'; leadId: string }
+  // Lot 4 : un objectif de la semaine, envoyé COMPLET en PUT (upsert idempotent).
+  // Résolu à null si le reducer a refusé l'écriture (6e objectif, porteur invalide).
+  | { kind: 'weekly-objective'; entity: 'weekly-objectives'; id: string };
 
 const COLLECTION: Record<EntityName, (s: AppState) => ReadonlyArray<{ id: string }>> = {
   leads: s => s.leads,
@@ -383,6 +408,11 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   // Fige une intention en opération concrète depuis l'état POST-REDUCER.
   function resolveIntent(intent: Intent, state: AppState): { op: Parameters<typeof box.enqueue>[0] } | null {
     if (intent.kind === 'lead-planned') return null; // traité dans persist (plusieurs ops)
+    if (intent.kind === 'weekly-objective') {
+      const o = (state.weeklyObjectives ?? []).find(x => x.id === intent.id);
+      if (!o) return null;
+      return { op: { method: 'PUT', path: `/weekly-objectives/${o.id}`, body: o, entity: 'weekly-objectives', entityId: o.id, label: `Objectif de la semaine « ${o.text.slice(0, 40)} » — enregistrement` } };
+    }
     if (intent.kind === 'batch') {
       const body = intent.entity === 'goals' ? state.goals
         : intent.entity === 'monthly-stats' ? state.monthlyStats
@@ -747,6 +777,17 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     updateTemplate: (id, data) => { base.updateTemplate(id, data); remember({ kind: 'update', entity: 'templates', id }); },
     deleteTemplate: (id) => { base.deleteTemplate(id); remember({ kind: 'delete', entity: 'templates', id }); },
     saveTemplateLayout: (categories, placements) => { base.saveTemplateLayout(categories, placements); remember({ kind: 'batch', entity: 'template-layout' }); },
+    addWeeklyObjective: (weekStart, text, ownerId) => {
+      const id = base.addWeeklyObjective(weekStart, text, ownerId);
+      remember({ kind: 'weekly-objective', entity: 'weekly-objectives', id });
+      return id;
+    },
+    updateWeeklyObjective: (id, patch) => { base.updateWeeklyObjective(id, patch); remember({ kind: 'weekly-objective', entity: 'weekly-objectives', id }); },
+    carryOverWeeklyObjective: (id) => {
+      const newId = base.carryOverWeeklyObjective(id);
+      remember({ kind: 'weekly-objective', entity: 'weekly-objectives', id: newId });
+      return newId;
+    },
 
     addCalendarEvent: (e) => { const id = base.addCalendarEvent(e); remember({ kind: 'create', entity: 'calendar-events', id }); return id; },
     updateCalendarEvent: (id, data) => { base.updateCalendarEvent(id, data); remember({ kind: 'update', entity: 'calendar-events', id }); },

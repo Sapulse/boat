@@ -18,6 +18,7 @@ import { applyPlannedActionsSchema } from './apply-planned-actions-turso';
 import {
   applyTemplateLayoutSchema, templateLayoutTodo, proveTemplateLayout, templatesFingerprint,
 } from './apply-template-layout-turso';
+import { applyWeeklyObjectivesSchema } from './apply-weekly-objectives-turso';
 import { fingerprint } from './apply-planned-actions-turso';
 import { getState, detectSchema, saveTemplateLayout, createTemplate, updateTemplate, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
@@ -83,7 +84,7 @@ async function main() {
   {
     const p = new PrismaClient({ adapter: new PrismaLibSql({ url: `file:${DB_FILE}` }) });
     const f = await detectSchema(p);
-    check('schéma détecté : lot 2 oui, lot 3 non', f.lot2 && !f.templateLayout, JSON.stringify(f));
+    check('schéma détecté : lot 2 oui, lot 3 non', f.lot2 && !f.templateLayout && !f.weeklyObjectives, JSON.stringify(f));
     let full: unknown = null;
     try { await getState(p); } catch (e) { full = e; }
     check('lecture complète impossible (colonnes du lot 3 absentes)', full !== null);
@@ -117,6 +118,8 @@ async function main() {
     for (const t of ['message_templates', 'template_categories']) check(`schéma identique : ${t}`, (await schemaOf(db, t)) === (await schemaOf(pdb, t)));
     pdb.close();
   }
+  // Le lot 4 passe juste après (script 4) ; le code courant lit sa table.
+  await applyWeeklyObjectivesSchema(db);
   db.close();
 
   section('API (store) sur la base migrée');

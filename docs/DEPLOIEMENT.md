@@ -111,6 +111,7 @@ migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
 | 1 | 2 | `scripts/apply-planned-actions-turso.ts` | 4 colonnes + 2 tables + reprise des prochaines actions |
 | 2 | 3 | `scripts/apply-template-layout-turso.ts` | table `template_categories` + colonnes `message_templates.categoryId` / `position` ; aucune donnée réécrite |
 | 3 | 3 | `scripts/fusion-sources-turso.ts` | **données** : `leads.source` seulement, table explicite (« http://topbarcos.com/ » → « Top barcos », 1 lead au 17/09) ; sauvegarde intégrée avant écriture ; preuve (même nombre, autres colonnes identiques, répartition attendue) ; rejeu = 0 |
+| 4 | 4 | `scripts/apply-weekly-objectives-turso.ts` | table neuve `weekly_objectives` + 2 index ; aucune table existante touchée, aucune donnée écrite ; preuve (commerciaux, leads, actions programmées identiques ; table vide) ; rejeu = rien à faire |
 
 *(Complété au fil des lots 3 à 5.)*
 

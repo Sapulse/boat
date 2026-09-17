@@ -177,6 +177,20 @@ const TemplateLayoutSchema = z.object({
   placements: z.array(z.object({ id, categoryId: z.union([id, z.literal('')]).nullish(), position })).max(BATCH_MAX)
     .refine(list => new Set(list.map(p => p.id)).size === list.length, { message: 'modèle en double' }),
 });
+// Lot 4 — objectif de la semaine, envoyé COMPLET (PUT = upsert idempotent, pas de DELETE).
+// Règles de liste (5 actifs, porteur, trace) : lib/weeklyObjectives, appliquées par le store.
+const WeeklyObjectiveSchema = z.object({
+  id,
+  weekStart: dateStr,
+  position,
+  text: z.string().trim().min(1, 'texte requis').max(200, 'trop long (max 200)'),
+  ownerId: id.nullish(),
+  done: z.boolean(),
+  doneAt: shortStr.nullish(),
+  active: z.boolean(),
+  copiedFromId: id.nullish(),
+  modifiedAfterWeekAt: shortStr.nullish(),
+});
 const TemplateCreate = z.object(templateShape);
 const TemplatePatch = z.object(templateShape).omit({ id: true }).partial();
 
@@ -267,6 +281,7 @@ export const parseMonthlyStatsBatch = (d: unknown) => parse(MonthlyStatsBatch, d
 export const parseDefaultGoal = (d: unknown) => parse(DefaultGoalSchema, d, 'objectifs par défaut');
 export const parseImportPayload = (d: unknown) => parse(ImportPayloadSchema, d, 'import');
 export const parsePlannedActionUpsert = (d: unknown) => parse(PlannedActionSchema, d, 'action programmée');
+export const parseWeeklyObjectiveUpsert = (d: unknown) => parse(WeeklyObjectiveSchema, d, 'objectif de la semaine');
 
 // Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
 // Enveloppe versionnée { format, version, data: AppState } : format/version stricts
@@ -290,6 +305,8 @@ const RestoreEnvelopeSchema = z.object({
     plannedActions: z.array(PlannedActionSchema).max(RESTORE_MAX).optional().default([]),
     // Lot 3 : absent des sauvegardes d'avant le lot 3 -> aucun rangement (tout « Non classés »).
     templateCategories: z.array(TemplateCategorySchema).max(RESTORE_MAX).optional().default([]),
+    // Lot 4 : absent des sauvegardes d'avant le lot 4 -> aucun objectif de la semaine.
+    weeklyObjectives: z.array(WeeklyObjectiveSchema).max(RESTORE_MAX).optional().default([]),
   }),
 });
 export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');

@@ -227,6 +227,43 @@ async function main() {
     check('file vide', outboxSize(storage) === 0);
   }
 
+  section('Lot 4 — objectifs de la semaine : PUT idempotent, refus du reducer = aucune op, jamais de DELETE');
+  {
+    const srv = makeServer(getEmptyState());
+    const storage = makeStorage();
+    const { repo, cache, persist } = makeRepo(srv, storage);
+    const week = '2026-09-14';
+    const ids: string[] = [];
+    for (let i = 1; i <= 5; i++) ids.push(repo.addWeeklyObjective(week, `Objectif ${i}`, null));
+    persist(); await wait(30);
+    const puts = srv.received.filter(r => r.method === 'PUT' && r.path.startsWith('/api/weekly-objectives/'));
+    check('5 ajouts -> 5 PUT /api/weekly-objectives/:id, dans l\'ordre', puts.length === 5 && puts.every((r, i) => r.path === `/api/weekly-objectives/${ids[i]}`));
+    check('le PUT porte l\'objectif complet', (puts[0]?.body as { text?: string; active?: boolean; weekStart?: string })?.text === 'Objectif 1' && (puts[0]?.body as { active?: boolean }).active === true);
+
+    srv.received.length = 0;
+    repo.addWeeklyObjective(week, 'Sixième', null);
+    persist(); await wait(20);
+    check('6e objectif refusé par le reducer -> aucune op envoyée', srv.received.length === 0 && cache().weeklyObjectives?.length === 5);
+
+    repo.updateWeeklyObjective(ids[0], { done: true });
+    repo.updateWeeklyObjective(ids[0], { ownerId: null, text: 'Objectif 1 revu' });
+    persist(); await wait(20);
+    const upd = srv.received.filter(r => r.method === 'PUT');
+    check('deux modifications du même objectif dans le même tick -> UN PUT, état final', upd.length === 1 && (upd[0].body as { done?: boolean; text?: string }).done === true && (upd[0].body as { text?: string }).text === 'Objectif 1 revu');
+
+    srv.received.length = 0;
+    const copyId = repo.carryOverWeeklyObjective(ids[1]);
+    persist(); await wait(20);
+    const copy = srv.received.find(r => r.method === 'PUT' && r.path === `/api/weekly-objectives/${copyId}`);
+    check('« Reprendre » -> PUT de la copie liée (semaine suivante)', (copy?.body as { copiedFromId?: string; weekStart?: string })?.copiedFromId === ids[1]);
+
+    srv.received.length = 0;
+    repo.updateWeeklyObjective(ids[2], { active: false });
+    persist(); await wait(20);
+    check('retirer -> PUT active=false, aucun DELETE', srv.received.length === 1 && srv.received[0].method === 'PUT' && (srv.received[0].body as { active?: boolean }).active === false);
+    check('file vide', outboxSize(storage) === 0);
+  }
+
   section('Garde-fou : base non migrée -> erreur DÉDIÉE (écran « mise à jour en cours »)');
   {
     const srv = makeServer(getEmptyState());

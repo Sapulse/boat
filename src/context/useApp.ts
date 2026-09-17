@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
+import type { ObjectivePatch } from '../lib/weeklyObjectives';
 import type { SyncInfo } from '../lib/repository';
 import type { PlanInput } from '../lib/plannedActions';
 import type { ImportPayload, ImportReport } from '../lib/importLeads';
@@ -51,6 +52,9 @@ export interface AppContextType {
   updateTemplate: (id: string, data: Partial<MessageTemplate>) => void;
   deleteTemplate: (id: string) => void;
   saveTemplateLayout: (categories: TemplateCategory[], placements: TemplatePlacement[]) => void;
+  addWeeklyObjective: (weekStart: string, text: string, ownerId: string | null) => string;
+  updateWeeklyObjective: (id: string, patch: ObjectivePatch) => void;
+  carryOverWeeklyObjective: (id: string) => string;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;

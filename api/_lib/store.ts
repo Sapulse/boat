@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
-  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory,
+  MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory, WeeklyObjective,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,7 @@ import {
   parseCommercialCreate, parseCommercialPatch, parseTemplateCreate, parseTemplatePatch,
   parseCalendarCreate, parseCalendarPatch,
   parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
-  parsePlannedActionUpsert, parseTemplateLayout,
+  parsePlannedActionUpsert, parseTemplateLayout, parseWeeklyObjectiveUpsert,
 } from './validate.js';
 // Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
@@ -18,6 +18,8 @@ import { migrateLegacyNextActions, pendingActionOf, summarizeNextAction } from '
 import { positionsFromBackup } from '../../src/lib/templateLayout.js';
 // Lot 3 : sources normalisées à l'écriture (saisie, import, boîte de réception) — anti-retour.
 import { normalizeSource } from '../../src/lib/sources.js';
+// Lot 4 : règles des objectifs de la semaine, identiques à l'app.
+import { MAX_ACTIVE_OBJECTIVES, isMonday, isValidOwner, parisTodayISO, serverMergeObjective } from '../../src/lib/weeklyObjectives.js';
 
 // Objectifs par défaut « vides » — dupliqué de src/data/constants
 // (EMPTY_DEFAULT_GOAL) : `api/` ne doit RIEN importer de `src/` au runtime.
@@ -177,6 +179,23 @@ async function knownCategoryId(prisma: Pick<PrismaClient, 'templateCategory'>, c
   return (await prisma.templateCategory.findUnique({ where: { id: categoryId } })) ? categoryId : null;
 }
 
+function toWeeklyObjective(r: Record<string, unknown>): WeeklyObjective {
+  return {
+    id: r.id as string,
+    weekStart: r.weekStart as string,
+    position: r.position as number,
+    text: r.text as string,
+    ownerId: (r.ownerId as string | null) ?? null,
+    done: r.done as boolean,
+    doneAt: (r.doneAt as string | null) ?? null,
+    active: r.active as boolean,
+    copiedFromId: (r.copiedFromId as string | null) ?? null,
+    modifiedAfterWeekAt: (r.modifiedAfterWeekAt as string | null) ?? null,
+    createdAt: (r.createdAt as Date).toISOString(),
+    updatedAt: (r.updatedAt as Date).toISOString(),
+  };
+}
+
 function toStat(r: Record<string, unknown>): MonthlyStat {
   return {
     id: r.id as string,
@@ -276,13 +295,14 @@ export async function hasLot2Schema(prisma: PrismaClient): Promise<boolean> {
 export interface SchemaFeatures {
   lot2: boolean;            // actions programmées
   templateLayout: boolean;  // lot 3 : catégories + ordre des modèles
+  weeklyObjectives: boolean; // lot 4 : objectifs de la semaine
 }
-export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true };
+export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true, weeklyObjectives: true };
 
 export async function detectSchema(prisma: PrismaClient): Promise<SchemaFeatures> {
   const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table'`);
   const has = (t: string) => tables.some(r => r.name === t);
-  return { lot2: has('planned_actions'), templateLayout: has('template_categories') };
+  return { lot2: has('planned_actions'), templateLayout: has('template_categories'), weeklyObjectives: has('weekly_objectives') };
 }
 
 /** Colonnes des modèles AVANT le lot 3. */
@@ -295,7 +315,7 @@ const LEGACY_TEMPLATE_SELECT = { id: true, createdAt: true, type: true, title: t
  * `features` (plus fin) : lot par lot ; `schema: 'avant-lot2'` = aucune évolution.
  */
 export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2'; features?: SchemaFeatures } = {}): Promise<AppState> {
-  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false } : ALL_FEATURES);
+  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false, weeklyObjectives: false } : ALL_FEATURES);
   const legacy = !f.lot2;
   const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
     legacy ? prisma.lead.findMany({ select: LEGACY_LEAD_SELECT }) : prisma.lead.findMany(),
@@ -314,7 +334,13 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
     legacy ? Promise.resolve([]) : prisma.plannedAction.findMany({ include: { people: true } }),
   ]);
   const categories = f.templateLayout ? (await prisma.templateCategory.findMany({ orderBy: { position: 'asc' } })).map(r => toTemplateCategory(r as unknown as Record<string, unknown>)) : undefined;
-  const withLayout = <T extends object>(st: T): T => (categories ? { ...st, templateCategories: categories } : st);
+  const objectives = f.weeklyObjectives ? (await prisma.weeklyObjective.findMany({ orderBy: [{ weekStart: 'asc' }, { position: 'asc' }] })).map(r => toWeeklyObjective(r as unknown as Record<string, unknown>)) : undefined;
+  // Évolutions des lots 3 et 4 : présentes seulement si la base les a (sauvegarde d'une base en cours de migration).
+  const withLayout = <T extends object>(st: T): T => ({
+    ...st,
+    ...(categories ? { templateCategories: categories } : {}),
+    ...(objectives ? { weeklyObjectives: objectives } : {}),
+  });
   if (legacy) {
     const state = {
       leads: leads.map(l => { const x = toLead(l as LeadRow); delete x.noNextActionReason; delete x.noNextActionAt; return x; }),
@@ -373,6 +399,46 @@ export async function upsertPlannedAction(prisma: PrismaClient, id: string, body
 }
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+
+// ---------------------------------------------------------------------------
+// Objectifs de la semaine (lot 4) — PUT /api/weekly-objectives/:id = UPSERT
+// complet et idempotent. AUCUN DELETE (retirer = active false). Dans UNE
+// transaction : 5 actifs au plus par semaine (409 sinon), porteur valide
+// (« Non attribué » refusé), semaine et lien de reprise figés, trace « modifié
+// après la fin de semaine » et doneAt décidés par le SERVEUR (heure de Paris).
+// ---------------------------------------------------------------------------
+export async function upsertWeeklyObjective(prisma: PrismaClient, id: string, body: unknown, now: Date = new Date()): Promise<WeeklyObjective> {
+  const p = parseWeeklyObjectiveUpsert(body);
+  if (p.id !== id) throw new HttpError(400, 'objectif de la semaine invalide — id du corps différent de celui du chemin');
+  if (!isMonday(p.weekStart)) throw new HttpError(400, 'objectif de la semaine invalide — champ « weekStart » : un lundi est attendu');
+  const nowISO = now.toISOString();
+  const todayISO = parisTodayISO(now);
+  const row = await prisma.$transaction(async (tx) => {
+    const existingRow = await tx.weeklyObjective.findUnique({ where: { id } });
+    const existing = existingRow ? toWeeklyObjective(existingRow as unknown as Record<string, unknown>) : undefined;
+    const incoming: WeeklyObjective = {
+      id, weekStart: p.weekStart, position: p.position, text: p.text, ownerId: p.ownerId ?? null, done: p.done,
+      doneAt: p.doneAt ?? null, active: p.active, copiedFromId: p.copiedFromId ?? null,
+      modifiedAfterWeekAt: p.modifiedAfterWeekAt ?? null, createdAt: nowISO, updatedAt: nowISO,
+    };
+    const m = serverMergeObjective(existing, incoming, todayISO, nowISO);
+    if (m.ownerId && (!existing || existing.ownerId !== m.ownerId)) {
+      const commercials = (await tx.commercial.findMany({ where: { id: m.ownerId } })).map(toCommercial);
+      if (!isValidOwner(m.ownerId, commercials)) throw new HttpError(400, 'objectif de la semaine invalide — porteur inconnu ou « Non attribué »');
+    }
+    if (m.active && !existing?.active) {
+      const others = await tx.weeklyObjective.count({ where: { weekStart: m.weekStart, active: true, id: { not: id } } });
+      if (others >= MAX_ACTIVE_OBJECTIVES) throw new HttpError(409, `${MAX_ACTIVE_OBJECTIVES} objectifs au plus par semaine — cette semaine est déjà complète`);
+    }
+    const cols = {
+      weekStart: m.weekStart, position: m.position, text: m.text, ownerId: m.ownerId, done: m.done, doneAt: m.doneAt,
+      active: m.active, copiedFromId: m.copiedFromId, modifiedAfterWeekAt: m.modifiedAfterWeekAt,
+    };
+    await tx.weeklyObjective.upsert({ where: { id }, create: { id, ...cols }, update: cols });
+    return tx.weeklyObjective.findUniqueOrThrow({ where: { id } });
+  });
+  return toWeeklyObjective(row as unknown as Record<string, unknown>);
+}
 
 /**
  * Le SERVEUR fait foi pour le résumé nextAction* d'un lead qui a des actions
@@ -641,6 +707,7 @@ export interface RestoreReport {
   templates: number; calendarEvents: number; goals: number; monthlyStats: number;
   plannedActions: number;
   templateCategories: number;
+  weeklyObjectives: number;
 }
 
 export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
@@ -667,8 +734,12 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .map(({ createdAt: _c, ...t }) => ({ ...t, categoryId: t.categoryId ?? null }));
 
+  // Lot 4 : objectifs de la semaine tels quels (traces et dates d'atteinte conservées).
+  const objectives = d.weeklyObjectives ?? [];
+
   await prisma.$transaction([
     // (2) Purge FK-safe : enfants d'abord.
+    prisma.weeklyObjective.deleteMany(),
     prisma.plannedActionPerson.deleteMany(),
     prisma.plannedAction.deleteMany(),
     prisma.leadAction.deleteMany(),
@@ -688,6 +759,10 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     ...(people.length ? [prisma.plannedActionPerson.createMany({ data: people })] : []),
     ...(categories.length ? [prisma.templateCategory.createMany({ data: categories.map(c => ({ id: c.id, name: c.name, position: c.position })) })] : []),
     ...(templates.length ? [prisma.messageTemplate.createMany({ data: templates })] : []),
+    ...(objectives.length ? [prisma.weeklyObjective.createMany({ data: objectives.map(o => ({
+      id: o.id, weekStart: o.weekStart, position: o.position, text: o.text, ownerId: o.ownerId ?? null, done: o.done,
+      doneAt: o.doneAt ?? null, active: o.active, copiedFromId: o.copiedFromId ?? null, modifiedAfterWeekAt: o.modifiedAfterWeekAt ?? null,
+    })) })] : []),
     ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
     ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
     ...(d.monthlyStats.length ? [prisma.monthlyStat.createMany({ data: d.monthlyStats })] : []),
@@ -700,6 +775,7 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     goals: d.goals.length, monthlyStats: d.monthlyStats.length,
     plannedActions: planned.length,
     templateCategories: categories.length,
+    weeklyObjectives: objectives.length,
   };
 }
 

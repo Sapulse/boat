@@ -88,6 +88,33 @@ export interface TemplateCategory {
 }
 
 /**
+ * Objectif de la semaine (lot 4) — COMMUN à l'équipe, 5 actifs au plus par
+ * semaine, jamais supprimé (active=false = retiré). Règles : lib/weeklyObjectives.
+ */
+export interface WeeklyObjective {
+  id: string;
+  /** Lundi de la semaine, "YYYY-MM-DD". */
+  weekStart: string;
+  /** Ordre d'affichage dans la semaine. */
+  position: number;
+  /** 200 caractères au plus. */
+  text: string;
+  /** Porteur facultatif : commercial de l'Équipe (« Non attribué » exclu). */
+  ownerId: string | null;
+  done: boolean;
+  /** Instant ISO où l'objectif a été coché atteint. */
+  doneAt: string | null;
+  /** false = retiré (jamais de suppression). */
+  active: boolean;
+  /** « Reprendre la semaine suivante » : objectif d'origine. */
+  copiedFromId: string | null;
+  /** Dernière modification faite APRÈS la fin de sa semaine (trace). */
+  modifiedAfterWeekAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Nature d'une ligne d'historique (lot 2). Absent = 'realisee' (les actions
  * d'avant le lot 2).
  *  - realisee : une action vraiment faite (appel, email, RDV…) — met à jour la
@@ -365,4 +392,7 @@ export interface AppState {
   // Catégories de modèles (lot 3). Absent des anciens states et des sauvegardes
   // d'avant le lot 3 -> tous les modèles sont « Non classés ».
   templateCategories?: TemplateCategory[];
+  // Objectifs de la semaine (lot 4). Absent des anciens states et des
+  // sauvegardes d'avant le lot 4 -> [].
+  weeklyObjectives?: WeeklyObjective[];
 }

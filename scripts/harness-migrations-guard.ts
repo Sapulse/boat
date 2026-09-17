@@ -14,6 +14,7 @@ import path from 'node:path';
 import { PLANNED_ACTIONS_COLUMNS, PLANNED_ACTIONS_TABLES_DDL } from './apply-planned-actions-turso';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import { TEMPLATE_LAYOUT_COLUMNS, TEMPLATE_LAYOUT_TABLES_DDL, TEMPLATE_LAYOUT_INDEX_DDL } from './apply-template-layout-turso';
+import { WEEKLY_OBJECTIVES_TABLES_DDL, WEEKLY_OBJECTIVES_INDEX_DDL } from './apply-weekly-objectives-turso';
 
 let passed = 0;
 let failed = 0;
@@ -79,15 +80,31 @@ section('Migrations du dépôt : ajouts uniquement');
       check(`lot 3 : même ALTER dans la migration et dans le script Turso (${c.table}.${c.column})`, clean3.includes(c.ddl.replace(/\s+/g, ' ')));
     }
   }
+  const lot4Dir = subs.find(s => s.endsWith('_lot4_weekly_objectives'));
+  check('lot 4 : migration « weekly_objectives » présente', !!lot4Dir);
+  if (lot4Dir) {
+    const lot4 = readFileSync(path.join(dir, lot4Dir, 'migration.sql'), 'utf-8');
+    const clean4 = stripSqlComments(lot4).replace(/\s+/g, ' ');
+    check('lot 4 : la migration porte la note « écrite à la main »', /écrite à la main/i.test(lot4));
+    check('lot 4 : aucune table existante modifiée (pas d\'ALTER TABLE)', !/ALTER\s+TABLE/i.test(clean4));
+    check('lot 4 : une seule table créée, weekly_objectives', (clean4.match(/CREATE\s+TABLE/gi) ?? []).length === 1 && /CREATE TABLE "weekly_objectives"/.test(clean4));
+    // Même DDL que le script, au « IF NOT EXISTS » près.
+    const noIfNotExists = (d: string) => d.replace(/\s+IF NOT EXISTS/i, '').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')');
+    const norm4 = clean4.replace(/\( /g, '(').replace(/ \)/g, ')');
+    for (const d of [...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL]) {
+      check(`lot 4 : même DDL dans la migration et dans le script Turso (${d.match(/"(\w+)"/)?.[1]})`, norm4.includes(noIfNotExists(d)));
+    }
+  }
 }
 
 section('DDL des scripts Turso : ajouts uniquement');
 {
   const all = [...PLANNED_ACTIONS_COLUMNS.map(c => c.ddl), ...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL,
-    ...TEMPLATE_LAYOUT_COLUMNS.map(c => c.ddl), ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL];
+    ...TEMPLATE_LAYOUT_COLUMNS.map(c => c.ddl), ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL,
+    ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL];
   const bad = all.filter(d => forbiddenIn(d).length > 0);
-  check('scripts Turso (lots 2, 3, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
-  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
+  check('scripts Turso (lots 2, 3, 4, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
+  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
 }
 
 console.log(`\n${'='.repeat(50)}`);

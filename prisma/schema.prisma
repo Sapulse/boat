@@ -52,6 +52,7 @@ model Commercial {
   goals          CommercialGoal[]
   calendarEvents CalendarEvent[]
   plannedActionPeople PlannedActionPerson[]
+  weeklyObjectives    WeeklyObjective[]
 
   @@map("commercials")
 }
@@ -391,4 +392,29 @@ model InboundEmail {
   @@index([status])
   @@index([receivedAt])
   @@map("inbound_emails")
+}
+
+// ============================================================
+// WeeklyObjective — lot 4. Objectifs de la semaine COMMUNS à l'équipe (5 actifs
+// max par semaine, règle appliquée par l'API). Jamais supprimés : active=false.
+// ============================================================
+model WeeklyObjective {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weekStart           String // lundi "YYYY-MM-DD"
+  position            Int         @default(0)
+  text                String
+  ownerId             String? // porteur facultatif (« Non attribué » refusé par l'API)
+  owner               Commercial? @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  done                Boolean     @default(false)
+  doneAt              String? // ISO
+  active              Boolean     @default(true)
+  copiedFromId        String? // « Reprendre la semaine suivante »
+  modifiedAfterWeekAt String? // ISO — trace d'une modification après la fin de semaine
+
+  @@index([weekStart])
+  @@index([ownerId])
+  @@map("weekly_objectives")
 }

@@ -9,7 +9,7 @@ import {
   createCommercial, updateCommercial,
   createTemplate, updateTemplate, deleteTemplate, saveTemplateLayout,
   createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
-  upsertPlannedAction,
+  upsertPlannedAction, upsertWeeklyObjective,
   saveGoals, saveMonthlyStats, saveDefaultGoal,
   bulkImport, type ImportPayload,
   restoreBackup, type RestorePayload,
@@ -89,6 +89,11 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
       // Lot 2 : upsert COMPLET et idempotent (personnes incluses). Pas de DELETE :
       // une action qui n'est plus à faire passe status 'annulee'.
       if (id && m === 'PUT') return sendJson(res, 200, await upsertPlannedAction(prisma, id, body(req)));
+      break;
+
+    case 'weekly-objectives':
+      // Lot 4 : upsert COMPLET et idempotent. Pas de DELETE : retirer = active false.
+      if (id && m === 'PUT') return sendJson(res, 200, await upsertWeeklyObjective(prisma, id, body(req)));
       break;
 
     case 'goals':
