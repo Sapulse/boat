@@ -16,7 +16,10 @@
 - Plus tard : aligner les noms des stats mensuelles (Le Bon Coin, Site web BOB, Annonce du bateau,
   Boats Wizard) sur ceux des leads.
 
-## Lot 4 — Dashboard + Objectifs de la semaine
+## Lot 4 — Dashboard + Objectifs de la semaine : TERMINÉ (2bc24bd, b6dd848, 62b235e, 3d8ba12, 098b61d)
+- Vérifié point par point le 17/09 ; test réel sur base jetable (ordinateur + 375 px) le 17/09.
+- Arbitrages du 17/09 : compteur de semaine « N/M atteints » (sans « · M/5 ») ; sur mobile, une
+  carte par semaine avec des lignes (pas une carte par objectif).
 ### Dashboard (/dashboard)
 - 3 indicateurs en haut, une seule source de calcul :
   a) À faire aujourd'hui : actions programmées « à faire » du jour. Total : une action compte UNE
