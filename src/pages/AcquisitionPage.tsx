@@ -1,15 +1,7 @@
-import { useState, useMemo, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense, type ReactNode } from 'react';
 import { Save, DollarSign, Users, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
 import { useApp } from '../context/useApp';
+import SocialTab from '../components/acquisition/SocialTab';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { ACQUISITION_SOURCES_ALL, MONTHS } from '../data/constants';
@@ -17,7 +9,13 @@ import { formatCurrency, generateId, buildYearRange } from '../lib/utils';
 import { computeCpl, acquisitionTotals, isPaidSource } from '../lib/acquisition';
 import type { MonthlyStat } from '../data/types';
 
-type Tab = 'saisie' | 'dashboard';
+type Tab = 'saisie' | 'dashboard' | 'reseaux';
+
+// Graphiques recharts (~340 kB) CHARGÉS À LA DEMANDE (lot 5) : l'onglet Saisie,
+// ouvert par défaut, ne les télécharge plus. Deux imports lazy -> même chunk.
+const BudgetLeadsChart = lazy(() => import('../components/acquisition/AcquisitionCharts').then(m => ({ default: m.BudgetLeadsChart })));
+const CplChart = lazy(() => import('../components/acquisition/AcquisitionCharts').then(m => ({ default: m.CplChart })));
+const ChartSkeleton = () => <div className="h-[240px] animate-pulse bg-gray-50 rounded" />;
 
 const CURRENT_YEAR = new Date().getFullYear();
 // Plage DYNAMIQUE (annee courante +- amplitude, cf. buildYearRange / constants) :
@@ -406,28 +404,15 @@ function DashboardTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Budget &amp; Leads mensuels</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
-              <Bar yAxisId="left" dataKey="budget" name="Budget (EUR)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="right" dataKey="leads" name="Leads" fill="#22c55e" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<ChartSkeleton />}>
+            <BudgetLeadsChart data={chartData} />
+          </Suspense>
         </div>
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">CPL mensuel</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => [`${v} EUR`, 'CPL']} />
-              <Bar dataKey="cpl" name="CPL (EUR)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<ChartSkeleton />}>
+            <CplChart data={chartData} />
+          </Suspense>
         </div>
       </div>
 
@@ -485,18 +470,21 @@ function DashboardTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Page — 2 onglets : Saisie / Tableau de bord
+// Page — 3 onglets : Saisie / Tableau de bord / Réseaux sociaux (lot 5)
 // ---------------------------------------------------------------------------
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'saisie', label: 'Saisie' },
   { id: 'dashboard', label: 'Tableau de bord' },
+  { id: 'reseaux', label: 'Réseaux sociaux' },
 ];
 
 export default function AcquisitionPage() {
   const [activeTab, setActiveTab] = useState<Tab>('saisie');
-  // Etat "modifications non enregistrees" de l'onglet Saisie, remonte par SaisieTab.
+  // Etat "modifications non enregistrees" des onglets de saisie (Saisie, Réseaux
+  // sociaux), remonte par chaque onglet : même garde pour les deux.
   const [saisieDirty, setSaisieDirty] = useState(false);
+  const [reseauxDirty, setReseauxDirty] = useState(false);
 
   const activeLabel = TABS.find((t) => t.id === activeTab)?.label ?? '';
 
@@ -505,12 +493,14 @@ export default function AcquisitionPage() {
   // bascule et on abandonne les modifs en cours (comportement actuel assume).
   const handleTabChange = (id: Tab) => {
     if (id === activeTab) return;
-    if (activeTab === 'saisie' && saisieDirty) {
+    const dirty = (activeTab === 'saisie' && saisieDirty) || (activeTab === 'reseaux' && reseauxDirty);
+    if (dirty) {
       const ok = window.confirm(
         'Vous avez des modifications non enregistrées dans la saisie. Quitter sans enregistrer ?'
       );
       if (!ok) return;
       setSaisieDirty(false);
+      setReseauxDirty(false);
     }
     setActiveTab(id);
   };
@@ -524,7 +514,7 @@ export default function AcquisitionPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Acquisition</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Suivi des budgets, CPL et volumes de leads par source
+            Suivi des budgets, CPL et volumes de leads par source, et des réseaux sociaux
           </p>
         </div>
         <PrintButton />
@@ -532,13 +522,13 @@ export default function AcquisitionPage() {
 
       {/* Tab bar */}
       <div className="border-b border-gray-200 no-print">
-        <nav className="-mb-px flex gap-1" aria-label="Onglets">
+        <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label="Onglets">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               className={[
-                'px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors focus:outline-none',
+                'px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors focus:outline-none whitespace-nowrap',
                 activeTab === tab.id
                   ? 'border-primary-600 text-primary-600 bg-primary-50/50'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
@@ -553,6 +543,7 @@ export default function AcquisitionPage() {
       {/* Tab content */}
       {activeTab === 'saisie' && <SaisieTab onDirtyChange={setSaisieDirty} />}
       {activeTab === 'dashboard' && <DashboardTab />}
+      {activeTab === 'reseaux' && <SocialTab onDirtyChange={setReseauxDirty} />}
     </div>
   );
 }
