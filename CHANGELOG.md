@@ -3,7 +3,91 @@
 Toutes les évolutions notables de **CRM Brest Ocean Boat**.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; versionnage [SemVer](https://semver.org/lang/fr/).
 
-App : SPA React + Vite + TypeScript, persistance localStorage, déployée sur GitHub Pages.
+App : SPA React + Vite + TypeScript, API + base Turso (compte unique partagé), déployée sur Vercel (migration VPS OVH prévue).
+
+---
+
+## [4.0.0] — 2026-09-17 — Lots 2 à 5 : prochaine action obligatoire, agenda, dashboard, objectifs de la semaine, réseaux sociaux
+
+Version MAJEURE : la journée se pilote désormais depuis l'Agenda et chaque lead en
+cours a toujours une prochaine action. **Non déployée au 17/09** : une seule fenêtre de
+mise en production, 5 scripts de migration dans l'ordre de `docs/DEPLOIEMENT.md`
+(répétition complète réussie le 17/09 sur une copie des données réelles).
+Version affichée en bas du menu réalignée : `package.json` indiquait encore 3.13.0.
+
+### Lot 2 — Prochaine action obligatoire + Agenda
+- **Actions programmées** (`planned_actions`, `planned_action_people`) : une action à
+  faire par lead, responsables et participants, jamais supprimée (faite / annulée) ;
+  traces « report » et « sans suite » dans l'historique, seules les actions
+  réalisées comptent dans les objectifs. Le résumé « prochaine action » du lead est
+  recalculé par le serveur (fait foi entre plusieurs postes).
+- **Fenêtre « Prochaine action »** après chaque action, changement de statut, nouveau
+  lead ou acceptation d'un email ; « Aucune prochaine action » + motif ; date de reprise
+  obligatoire pour un Reporté ; vue « À planifier » dans Leads.
+- **Agenda = page d'accueil** : Fait / Pas fait / Reporter, glisser-déposer, action à
+  plusieurs visible chez chacun, retards en rouge, pastille des retards dans le menu.
+- **Appels** : résultat en un clic (Joint, Message laissé, Pas de réponse, Rappel
+  demandé, Mauvais numéro) ; **emails / SMS / WhatsApp** : confirmation d'envoi.
+- Migration : `scripts/apply-planned-actions-turso.ts` (4 colonnes, 2 tables, reprise
+  des prochaines actions existantes).
+
+### Lot 3 — Ergonomie
+- **Modèles de message** : catégories créées par l'équipe, ordre manuel (glisser sur
+  ordinateur, flèches sur mobile), même ordre dans la fiche ; catégorie non vide
+  impossible à supprimer. Migration `apply-template-layout-turso.ts`.
+- **Fiche dans un nouvel onglet** sur ordinateur (liste, pipeline, clients, dashboard,
+  agenda…), même onglet sur mobile.
+- **Sources normalisées** à l'écriture (casse, accents, adresse web ; « leboncoin » →
+  LBC) + script de fusion `fusion-sources-turso.ts` (1 lead au 17/09).
+
+### Lot 4 — Dashboard + Objectifs de la semaine
+- **Dashboard** : 3 indicateurs cliquables (à faire aujourd'hui, en retard, à planifier)
+  calculés à une seule source (pastille du menu, vue « À planifier ») ; un seul
+  sélecteur commercial ; « Plus d'indicateurs » replié (graphiques chargés à
+  l'ouverture). L'Agenda lit `?vue= ?date= ?commercial= ?retards=1` ; bandeau repliable
+  des retards.
+- **Objectifs de la semaine** (menu Pilotage) : 5 objectifs communs au plus, porteur
+  facultatif, à cocher, « Reprendre la semaine suivante », historique, modification
+  après la fin de semaine tracée, jamais de suppression. Migration
+  `apply-weekly-objectives-turso.ts`.
+
+### Lot 5 — Réseaux sociaux dans Acquisition
+- **Onglet « Réseaux sociaux »** : saisie mensuelle par réseau (abonnés obligatoires,
+  publications, portée, commentaire), historique mois par mois avec variation +/−
+  (depuis le dernier mois saisi) et commentaires dépliables, cartes par mois sur
+  mobile, courbe des abonnés, réseaux ajoutés / renommés / archivés (jamais supprimés).
+  Facebook, Instagram, LinkedIn par défaut. Tables à part (`MonthlyStat` intact).
+  Migration `apply-social-turso.ts`.
+- recharts chargé à la demande sur toute la page Acquisition.
+
+### Technique
+- Toutes les migrations sont **additives et écrites à la main** (garde-fou
+  `harness-migrations-guard`), chaque script est **au verrou prod** (à blanc par
+  défaut, `--target=prod --apply` + `BOB_CONFIRM_PROD`), affiche sa preuve et se rejoue
+  sans effet. Sauvegardes d'avant chaque lot restaurables.
+- Écran « Mise à jour du CRM en cours » (`SCHEMA_NON_MIGRE`) si le code arrive avant la
+  migration. 46 harnais (`npm test`).
+
+---
+
+## [lot 1] — 2026-09-16 — En production (`prod-2026-09-16`)
+
+- **Température « Neutre »** : valeur d'entrée de tout nouveau lead ; la température
+  n'est plus décidée par le système.
+- **Boîte de réception** : « Traités » avec tout l'historique, filtre par statut et
+  recherche ; proposition de rouvrir un lead clos après un rattachement (jamais un
+  Signé).
+- **Modèles** : du plus récent au plus ancien, volet repliable, en-tête sur deux lignes
+  sous 640 px.
+
+## Juillet 2026 — entre 3.24.0 et le lot 1 (en prod au 16/09)
+
+Non versionné à l'époque, résumé : boîte de réception des prospects (collecte Microsoft
+365 en lecture seule, accepter / rejeter / rattacher, purge RGPD), synchro multi-postes
+(re-hydratation, rafraîchissement 5 s, détection de conflit à l'enregistrement),
+sécurité (rate-limit du login, en-têtes HTTP, HSTS, erreurs internes masquées),
+sauvegarde `npm run backup` et garde-fous de restauration, listes en cartes sur mobile,
+confirmation de signature avec montant et motif de perte obligatoire, CI GitHub Actions.
 
 ---
 

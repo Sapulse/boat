@@ -1,43 +1,47 @@
 # CRM Brest Ocean Boat — Roadmap & TODO
 
-État au jalon **V3.19** (dernier tag `v3.19.3`). Ce fichier sert de fil conducteur entre sessions.
+État au **17/09/2026** : **v4.0.0 prête, NON déployée** (lots 2 à 5 sur `main`). En prod :
+`prod-2026-09-16` (lot 1). Détail des décisions : `docs/LOTS.md` ; mise en production :
+`docs/DEPLOIEMENT.md` ; historique : `CHANGELOG.md`.
 
-App : SPA React + Vite + TS, HashRouter, persistance **localStorage**, déployée sur
-GitHub Pages (`sapulse.github.io/boat/`). Workflow : diagnostic read-only → plan validé
-→ branche → tsc + build + lint + 7 harnais → diff review → merge --ff-only → push (=
-déploiement auto) → tag annoté. Commits sémantiques.
+App : SPA React + Vite + TS, API (fonction unique `api/[...slug].ts`) + base **Turso**,
+compte unique partagé, déployée sur **Vercel** (`boat-eta.vercel.app`) ; bascule vers le
+VPS SAPulse (OVH) prévue. Méthode : diagnostic + plan → validation → code (commit local par
+sous-étape) → lint + typecheck + `npm test` (46 harnais) + build → test réel sur base
+jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations additives
+écrites à la main, scripts au verrou prod. Aucun déploiement sans GO.
+
+---
+
+## 🚧 EN COURS — mise en production v4.0.0
+
+- [x] Lots 2 à 5 développés, testés, poussés (voir `docs/LOTS.md`).
+- [x] Répétition complète du 17/09 sur une copie de la prod (5 scripts, preuves, rejeu
+  sans effet, app chargée sans erreur) — `docs/DEPLOIEMENT.md`.
+- [x] Fiche équipe à jour (`docs/FICHE-EQUIPE-LOT2.md`, section « Autres nouveautés »).
+- [ ] **Date de la fenêtre** à caler avec le client, **GO de César**.
+- [ ] Jour J : suivre `docs/DEPLOIEMENT.md` (fenêtre 45 min) ; recompter « Le premier
+  jour » juste avant d'envoyer la fiche (au 17/09 sur la copie : 8 retards, 252 à
+  planifier dont 26 sans commercial, 37 Reportés sur 38 sans date).
+- [ ] Le soir (après l'heure du retour arrière) : **rotation du token Turso** (option,
+  procédure dans `docs/DEPLOIEMENT.md` ; CLI `turso` à installer).
+
+## ⏭️ APRÈS LA MISE EN PRODUCTION
+
+- [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
+  types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
+- [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
+  Annonce du bateau, Boats Wizard) sur les sources des leads.
+- [ ] **BoatsGroup** : source séparée en attente de confirmation client.
+- [ ] Script de **réalignement** lead ↔ actions programmées : seulement si un retour
+  arrière du lot 2 a lieu (voir « Retour arrière » dans `docs/DEPLOIEMENT.md`).
+- [ ] **Supprimer un commercial** (test / doublons) : à concevoir avec les données liées
+  (leads, actions, objectifs, objectifs de la semaine — FK `RESTRICT`).
 
 ---
 
-## 🚧 EN COURS
-
-Aucun lot en cours. Prochain jalon : voir la roadmap ci-dessous.
-
-### ✅ Derniers lots livrés
-- **`v3.16.0`** — `objectifs-prospection`.
-- **`v3.17.0`** — `espace-commercial`.
-- **`v3.18.0`** — menu en sections repliables.
-- **`v3.19.0`** — **objectifs par défaut de l'équipe** : cible commune par indicateur réglée
-  une fois (écran Paramètres `/objectifs-defaut`), reconduite chaque mois pour chaque
-  commercial, surchargeable par (commercial, mois) ; cascade PURE `effectiveTarget`, cible
-  effective à l'affichage (Objectifs + Espace commercial). Harnais goals 49.
-- **`v3.19.1`** — liste Leads : colonne **« Prochaine action » triable** (type + date), 1er
-  clic ascendant, nettoyage de la cellule « Dern. action ».
-- **`v3.19.2`** — **Agenda sur 24h** : grille horaire 0h→24h (au lieu de 8h-18h) en vues
-  Semaine/Journée, conteneur scrollable à en-tête figé, ouverture ancrée sur les heures
-  ouvrées (`AGENDA_SCROLL_TO_HOUR=8`). Mois inchangé. Harnais reducer 206.
-- **`v3.19.3`** — **finitions UX** (audit fraîcheur) : recherche Pipeline alignée sur Leads
-  (helper partagé `leadMatchesSearch` : nom/email/tél/bateau/marque), doublons de boutons
-  nettoyés (crayon « Modifier » de la liste retiré ; « Relancer » ↔ éditeur de prochaine
-  action), envoi de **message vierge toujours possible** (Email/SMS/WhatsApp). Harnais
-  reducer 215.
-
-⚠️ **Point de vigilance — « Recommandation »** (issu de v3.16.0) : classée en source de
-**prospection active** aujourd'hui, mais **discutable** (souvent un flux entrant non sollicité).
-**Rebasculable en flux entrant** en retirant la valeur de `PROSPECTION_SOURCES` (un seul endroit,
-sans migration). À confirmer avec Nicolas/Mickaël.
-
----
+> Les sections ci-dessous sont l'historique de la V3 (prototype localStorage puis
+> backend). Les mentions « ✅ v3 » / « en partie depuis la v4 » signalent ce qui a été traité depuis.
 
 ## ✅ FAIT (en prod, V3)
 
@@ -133,7 +137,7 @@ sans migration). À confirmer avec Nicolas/Mickaël.
 
 ### 🟢 À TRAITER — ne dépend de personne (prêt à démarrer)
 
-- [ ] **Relances PROPOSÉES** (pré-remplies, modifiables) après certaines actions :
+- [ ] *(en partie depuis la v4 : le lot 2 impose une prochaine action après chaque action, mais aucun délai J+3 / J+7 n'est proposé)* **Relances PROPOSÉES** (pré-remplies, modifiables) après certaines actions :
   ex. devis envoyé → proposer une relance à J+3 / J+7. **Pré-remplissage, PAS
   automatisme** (l'utilisateur valide/ajuste). S'appuie sur le mécanisme
   `SET_NEXT_ACTION` + la détection de risques existante.
@@ -155,7 +159,7 @@ sans migration). À confirmer avec Nicolas/Mickaël.
 - [ ] **Import Excel** de la vraie base Ocean Boat (après validation client). Spec de
   mapping prête : `mapping-import-excel.md`. ⚠️ À faire dans la base partagée, pas en
   localStorage. Pré-requis : commerciaux créés, sources/types alignés, clarifier "DV"/"BO".
-- [ ] **Import de leads depuis emails** : semi-manuel d'abord, puis agent IA. *Le client
+- [x] ✅ v3 (boîte de réception, juillet) — **Import de leads depuis emails** : semi-manuel d'abord, puis agent IA. *Le client
   doit fournir 2-3 mails types* pour caler le parsing.
 - [ ] **Supprimer un commercial** (pas juste le masquer/désactiver) — *évolution
   fonctionnelle, hors chantier migration, à traiter APRÈS le Lot 5, une fois sur la base.*
@@ -186,7 +190,7 @@ sans migration). À confirmer avec Nicolas/Mickaël.
     d'auth côté serveur = backend).
 - [ ] **Synchro Outlook / Infocob** : Infocob déjà connecté à Outlook 365 — point
   d'intégration clé (cf. L4 ci-dessus : alternative à un calendrier maison).
-- [ ] **Base partagée multi-postes** (backend Vercel ou autre) — **LE grand jalon** : ce
+- [x] ✅ v3 (API + Turso) — **Base partagée multi-postes** (backend Vercel ou autre) — **LE grand jalon** : ce
   qui fait passer du prototype à l'outil utilisé par 4 commerciaux. Débloque comptes,
   déploiement chez eux, import Excel réel, agenda partagé (L3/L4). Bloqué sur le choix d'infra.
 - [ ] **Enregistrement / transcription d'appels** : sujet à part, **enjeu RGPD** fort.
@@ -235,11 +239,6 @@ sans migration). À confirmer avec Nicolas/Mickaël.
 
 ## Prochain vrai jalon
 
-Deux fronts en parallèle :
-1. **Court terme, autonome** : relances proposées → modèles multilingues.
-2. **Structurant** : **le backend / base partagée**, qui débloque comptes, déploiement
-   chez Ocean Boat, import Excel réel et l'agenda partagé (L3/L4 + synchro Outlook).
-   Toujours en attente de l'arbitrage d'infra.
-
-En attente client : arbitrages Mickaël (statuts/pipeline), réponses Infocob (types
-d'actions, export), mails types pour l'import IA, et infra serveur pour le backend.
+Mise en production de la **v4.0.0** (voir « EN COURS » en tête), puis bascule VPS OVH.
+En attente client : date de la fenêtre, arbitrages Mickaël (statuts/pipeline),
+réponses Infocob (types d'actions, export), confirmation BoatsGroup.

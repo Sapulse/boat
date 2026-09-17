@@ -71,31 +71,56 @@ Sauvegarde : `npm run backup:prod`.
 
 ---
 
-## Mise en production du lot 2 (plan — RIEN n'est exécuté sans GO)
+## Mise en production des lots 2 à 5 — v4.0.0 (plan — RIEN n'est exécuté sans GO)
 
-Répétition du 2026-09-16 sur une copie fraîche des données réelles (437 leads,
+Répétition du 2026-09-16 (lot 2 seul) sur une copie fraîche des données réelles (437 leads,
 98 actions, 143 emails) : chargement 6 s, migration à blanc 2 s, `--apply` 126 ms
 (dont 56 ms d'écriture), preuve complète ✅, rejeu : 0 ajout ✅, 11 prochaines
 actions reprises pour 11 leads (N = N), aucun écart lead / action.
+
+**Répétition COMPLÈTE du 2026-09-17 (lots 2 à 5, v4.0.0)** sur une copie de
+`backup:prod` du jour (438 leads, 98 actions, 16 modèles, 21 stats mensuelles,
+146 emails) : sauvegarde 6 s, chargement 6 s ; les 5 scripts à blanc (≈ 2 s chacun)
+puis en `--apply` dans l'ordre ci-dessous, **toutes les preuves ✅** (11 reprises,
+1 source fusionnée, 3 réseaux créés) ; rejeu complet sans effet (empreinte de TOUTES
+les tables identique avant / après un 2e rejeu) ; app chargée sans erreur console
+(Agenda, Leads, fiche, Dashboard, Modèles, Objectifs de la semaine, Acquisition +
+Réseaux sociaux) ; ≈ 3 min 20 de bout en bout ; copie supprimée.
 
 ### Ordre exact (fenêtre sans utilisateurs)
 
 | # | Étape | Commande / contrôle | Durée |
 |---|---|---|---|
 | 0 | Prévenir l'équipe, personne connecté | message ; `vercel whoami` = `brestoceanboat` | 5 min |
-| 1 | Figer le code : copie propre de `main` au commit validé | `git worktree add --detach ../deploy-lot2 <commit>` ; copier `.vercel/project.json` | 2 min |
+| 1 | Figer le code : copie propre de `main` au commit validé (v4.0.0) | `git worktree add --detach ../deploy-v4 <commit>` ; copier `.vercel/project.json` | 2 min |
 | 2 | Sauvegarde | `npm run backup:prod` → « Restaurable : oui ✅ » ; noter le fichier | 1 min |
-| 3 | Migration **à blanc** | `npx tsx scripts/apply-planned-actions-turso.ts --target=prod` → relire colonnes, tables, N reprises | 2 min |
-| 4 | **GO** (César) | N à blanc = N attendu ; hôte = `bob-brestoceanboat` | — |
-| 5 | Migration réelle | `BOB_CONFIRM_PROD=bob-brestoceanboat npx tsx scripts/apply-planned-actions-turso.ts --target=prod --apply` | 1 min |
-| 6 | Preuve | les 6 ✅ du script ; relancer `--apply` : 0 ajout | 2 min |
-| 7 | Déploiement du code | `cd ../deploy-lot2 && vercel --prod --yes` | 2 min |
-| 8 | Vérif prod (lecture seule) | nouveau hash de bundle, headers, `/api/*` en 401 sans session, connexion, Agenda en accueil, pastille = retards attendus, une fiche, la boîte de réception | 10 min |
-| 9 | Tag | `git tag -a prod-AAAA-MM-JJ <commit> -m "Lot 2 — <dpl id>"` ; `git push origin prod-AAAA-MM-JJ` | 1 min |
-| 10 | Ouvrir à l'équipe, envoyer la fiche | `docs/FICHE-EQUIPE-LOT2.md` relue | — |
+| 3 | Migrations **à blanc** : les **5 scripts dans l'ordre** du tableau suivant | `npx tsx scripts/<script>.ts --target=prod` × 5 → relire colonnes, tables, N reprises (≈ 11), 1 source à fusionner, 3 réseaux à créer | 4 min |
+| 4 | **GO** (César) | chiffres à blanc = attendus ; hôte = `bob-brestoceanboat` | — |
+| 5 | Migrations réelles, **mêmes 5 scripts, même ordre** | `BOB_CONFIRM_PROD=bob-brestoceanboat npx tsx scripts/<script>.ts --target=prod --apply` × 5 ; **arrêt au premier ❌** | 3 min |
+| 6 | Preuve | tous les ✅ de chaque script ; relancer les 5 `--apply` : rien à faire, 0 ajout, 0 lead modifié | 3 min |
+| 7 | Déploiement du code | `cd ../deploy-v4 && vercel --prod --yes` | 2 min |
+| 8 | Vérif prod (lecture seule) | nouveau hash de bundle, headers, `/api/*` en 401 sans session, connexion, **v4.0.0** en bas du menu, Agenda en accueil, pastille = retards attendus, une fiche, la boîte de réception, Dashboard (3 indicateurs), Modèles, Objectifs de la semaine, Acquisition › Réseaux sociaux (3 réseaux) | 12 min |
+| 9 | Tag | `git tag -a prod-AAAA-MM-JJ <commit> -m "v4.0.0 — lots 2 à 5 — <dpl id>"` ; `git push origin prod-AAAA-MM-JJ` | 1 min |
+| 10 | Recompter « Le premier jour » (lecture seule), puis ouvrir à l'équipe et envoyer la fiche | `docs/FICHE-EQUIPE-LOT2.md` relue | 5 min |
 
-**Fenêtre à réserver : 30 min** (≈ 25 min d'opérations + marge), **45 min** avec un
+**Fenêtre à réserver : 45 min** (≈ 38 min d'opérations + marge), **60 min** avec un
 retour arrière complet.
+
+**Rotation du token Turso (option, en fin de parcours — PAS dans la fenêtre)** : elle
+impose un nouveau déploiement (variable d'environnement Vercel), ce qui ferme la porte
+du `vercel rollback` (seul le déploiement immédiatement précédent est accessible) —
+donc **uniquement après l'heure du retour arrière**, le soir de la mise en prod (ou à la
+bascule VPS). Pré-requis : la CLI `turso` (absente du poste au 17/09 — l'installer, ou passer
+par le tableau de bord Turso). Déroulé (≈ 10 min, CRM indisponible de 1 à 4) — l'invalidation AVANT la création
+(elle invaliderait aussi un jeton créé juste avant) ; vérifier la syntaxe avec
+`turso db tokens --help` :
+1. invalider les jetons existants : `turso db tokens invalidate bob-brestoceanboat`
+   (TOUS les jetons de la base — le CRM en prod ne répond plus jusqu'à l'étape 4) ;
+2. nouveau jeton : `turso db tokens create bob-brestoceanboat` ;
+3. remplacer `TURSO_AUTH_TOKEN` dans Vercel (Production) et dans le `.env` local ;
+4. redéployer le MÊME commit (`vercel --prod --yes` depuis la copie propre) ;
+5. vérifier : connexion, une fiche, `npm run backup:prod` → « Restaurable : oui ✅ » ;
+   l'ancien jeton est refusé.
 
 ### Scripts de migration, dans l'ordre d'exécution (lots 2 à 5, une seule fenêtre)
 
@@ -127,6 +152,9 @@ purement additive (colonnes avec valeur par défaut, 2 tables) : prouvé le
 des données réelles — lecture ✅, modification de lead ✅, nouvelle action
 (kind `realisee` par défaut) ✅, nouveau lead ✅, suppression d'un lead avec action
 programmée (cascade, aucun orphelin) ✅. Seul le **code** revient en arrière.
+Lots 3 à 5 : uniquement des tables neuves et deux colonnes avec valeur par défaut
+(`message_templates`), ignorées par l'ancien code, plus la fusion d'UNE source (donnée
+valide pour l'ancien code) — non re-prouvé avec le code du tag le 17/09.
 
 **Procédure (≈ 5 min)**
 1. `vercel rollback dpl_6fCTheuCDSUkmaAhFzPtzKQq59pa --yes` (redéploiement instantané

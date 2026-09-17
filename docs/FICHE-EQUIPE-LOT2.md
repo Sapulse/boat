@@ -60,6 +60,20 @@ le message ? ». Oui = ajouté à l'historique. Non = rien n'est enregistré.
   Reporté, le CRM propose de le rouvrir (il repasse en « À contacter »).
 - Un email rejeté par erreur se retrouve dans « Traités » et peut être remis dans la file.
 
+8. AUTRES NOUVEAUTÉS
+- Modèles de mail : rangés par catégories, dans l'ordre choisi par l'équipe.
+- Sur ordinateur, une fiche client s'ouvre dans un nouvel onglet : votre liste
+  filtrée reste intacte dans l'onglet d'origine.
+- Dashboard : 3 chiffres en haut (à faire aujourd'hui, en retard, à planifier).
+  Cliquez dessus pour voir le détail ; choisissez un commercial pour n'afficher
+  que ses chiffres.
+- Objectifs de la semaine (menu Pilotage) : les 5 objectifs de la réunion hebdo,
+  à cocher quand ils sont atteints, avec l'historique des semaines passées.
+- Acquisition : nouvel onglet « Réseaux sociaux », à remplir une fois par mois
+  (abonnés, et si vous les avez : publications, portée, commentaire).
+- En bas du menu, le numéro de version doit indiquer v4.0.0 : vérifiez-le après
+  avoir rechargé la page.
+
 LE PREMIER JOUR — réunion de [date, heure]
 - Quelques actions d'août / début septembre apparaîtront en rouge :
   faites-les, reportez-les ou « Aucune prochaine action ».

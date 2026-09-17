@@ -53,7 +53,13 @@
 - Sauvegarde / restauration incluses (ancienne sauvegarde → liste vide).
 - Script apply-weekly-objectives-turso.ts. Mobile : cartes, cases 44 px.
 
-## Lot 5 — Réseaux sociaux dans Acquisition : À FAIRE
+## Lot 5 — Réseaux sociaux dans Acquisition : TERMINÉ (4933ffe, 6acfe59)
+- Test réel sur base jetable (ordinateur + 375 px) le 17/09.
+- Arbitrages du 17/09 : recharts chargé à la demande pour TOUTE la page Acquisition (graphiques
+  du Tableau de bord extraits à l'identique) ; synchro = seuls les mois modifiés, upsert serveur par
+  (réseau, année, mois) qui garde l'id existant ; variation depuis le DERNIER mois saisi (mention du
+  mois quand ce n'est pas le précédent) ; carte vide = rien enregistré, mois enregistré jamais vidé ;
+  aperçu de la variation pendant la saisie calculé sur les mois déjà enregistrés (laissé tel quel).
 - 3e onglet « Réseaux sociaux » dans Acquisition (à côté de Saisie et Dashboard).
 - MonthlyStat NON réutilisé (fausserait totaux, CPL, exports) ; réutiliser le MÉCANISME : navigation
   mois par mois, garde « modifications non enregistrées », enregistrement groupé, synchro, sauvegarde.
@@ -69,7 +75,11 @@
 - Restauration d'une ancienne sauvegarde : 3 réseaux par défaut, aucune stat.
 - Script apply-social-turso.ts.
 
-## Fin de lot 5 — obligatoire avant la mise en prod
+## Fin de lot 5 — obligatoire avant la mise en prod : FAIT le 17/09 (v4.0.0)
+- Répétition complète réussie sur une copie de backup:prod du 17/09 (détail dans DEPLOIEMENT.md) ;
+  « Premier jour » sur la copie : 8 retards, 252 à planifier dont 26 sans commercial, 37/38
+  Reportés sans date.
+- Version 4.0.0 ; CHANGELOG.md et TODO.md à jour ; fiche équipe : « Autres nouveautés ».
 - Répétition complète sur une copie locale d'une sauvegarde prod fraîche : TOUS les scripts
   enchaînés dans l'ordre de DEPLOIEMENT.md, preuve de chaque étape, rejeu complet sans effet,
   app chargée (Agenda, Leads, fiche, Dashboard, Modèles, Objectifs de la semaine, Acquisition),
