@@ -106,6 +106,33 @@ campagne (préparation comprise) et donc les compteurs dérivés ; `dateSalonDeb
 bornent les **RDV du stand**. Les confondre remettrait les compteurs à zéro le matin de
 l'ouverture du salon.
 
+### Test obligatoire AVANT la migration : l'ancien code sur la base migrée
+
+La prod en place continue de tourner toute la nuit sur la base qu'on vient de migrer. Le harnais
+`scripts/harness-campagnes.ts` extrait le **vrai code du tag** (`git archive`) et le fait tourner
+contre une base migrée : `detectSchema`, `getState`, puis `POST /api/login` et `GET /api/state` au
+niveau HTTP. L'assertion qui compte : **l'état renvoyé est identique au caractère près, base migrée
+ou non** — aucun écran ne peut donc changer. Le tag visé se règle par `BOB_TAG_PROD` ; si le tag
+n'est pas disponible (dépôt sans tags), le test est **sauté avec un message**, jamais en silence.
+
+```bash
+npx tsx scripts/harness-campagnes.ts    # attendu : « 48 OK, 0 KO »
+```
+
+### Retour arrière de la migration
+
+```bash
+npx tsx scripts/rollback-campagnes-turso.ts --target=prod                      # à blanc
+BOB_CONFIRM_PROD=bob-brestoceanboat \
+  npx tsx scripts/rollback-campagnes-turso.ts --target=prod --apply            # suppression
+```
+
+Supprime les deux tables du lot, **dans l'ordre des clés étrangères**, et rien d'autre ; rejouable.
+**Garde-fou** : s'il existe la moindre participation, le script **refuse** et n'écrit rien — ce sont
+des appels passés et des RDV pris. Pour passer outre : `--force`, qui annonce d'abord ce qui sera
+perdu. À n'utiliser **que** si le lot est abandonné avant sa mise en service ; une fois l'équipe au
+travail, le retour arrière n'est plus une suppression de tables mais une restauration de sauvegarde.
+
 ---
 
 ## Mise en production des lots 2 à 5 — v4.0.0 (plan — RIEN n'est exécuté sans GO)

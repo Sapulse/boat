@@ -146,7 +146,13 @@ section('Plus aucun chargement automatique de .env ni lecture directe de TURSO_*
   check('aucun script n\'importe dotenv', withDotenv.length === 0, withDotenv.join(', '));
   // Lecture DIRECTE de process.env.TURSO_* : autorisée seulement pour les RETIRER
   // (lanceur local, lanceur des harnais) ou pour refuser de tourner (harnais).
-  const allowed = new Set(['scripts/dev-local-test.ts', 'scripts/run-harnesses.ts', 'scripts/harness-backup.ts', 'scripts/harness-db-target.ts']);
+  // harness-campagnes : RETIRE TURSO_* avant d'importer le handler du tag de prod
+  // (test « ancien code sur base migrée ») — ce handler construirait sinon son
+  // client Prisma sur la prod. Retrait, jamais lecture.
+  const allowed = new Set([
+    'scripts/dev-local-test.ts', 'scripts/run-harnesses.ts', 'scripts/harness-backup.ts',
+    'scripts/harness-db-target.ts', 'scripts/harness-campagnes.ts',
+  ]);
   const direct = files.filter(f => !allowed.has(f) && /process\.env(\.|\[['"])TURSO_/.test(readFileSync(f, 'utf-8')));
   check('aucun script ne lit TURSO_* en direct (hors retrait)', direct.length === 0, direct.join(', '));
   const devLocal = readFileSync('scripts/dev-local-test.ts', 'utf-8');

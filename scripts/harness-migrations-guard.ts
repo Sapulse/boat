@@ -18,6 +18,7 @@ import { WEEKLY_OBJECTIVES_TABLES_DDL, WEEKLY_OBJECTIVES_INDEX_DDL } from './app
 import { SOCIAL_TABLES_DDL, SOCIAL_INDEX_DDL, SOCIAL_DEFAULTS_SQL } from './apply-social-turso';
 import { REALIGN_SQL } from './realign-planned-actions-turso';
 import { CAMPAGNES_TABLES_DDL, CAMPAGNES_INDEX_DDL, CAMPAGNES_SEED_SQL } from './apply-campagnes-turso';
+import { ROLLBACK_CAMPAGNES_SQL } from './rollback-campagnes-turso';
 
 let passed = 0;
 let failed = 0;
@@ -157,6 +158,28 @@ section('Lot salons : campagnes et participations, sans toucher aux leads');
   check("lot salons : le script n'écrit jamais dans leads",
     !/(UPDATE|INSERT\s+(OR\s+\w+\s+)?INTO|DELETE\s+FROM)\s+"?leads"?/i.test(src));
   check("lot salons : la preuve compare l'empreinte des SOURCES avant / après", /leadSources/.test(src));
+}
+
+section('Lot salons : le retour arrière ne détruit que ses propres tables');
+{
+  const src = readFileSync(path.resolve('scripts/rollback-campagnes-turso.ts'), 'utf-8');
+  check('retour arrière : verrou de cible en écriture (guardDbTarget, write: true)',
+    /guardDbTarget\(\{\s*scriptName: 'rollback-campagnes-turso', write: true \}\)/.test(src));
+  check('retour arrière : lecture seule sans --apply (retour avant toute écriture)',
+    /if \(!apply\) \{[\s\S]*?return;\s*\}[\s\S]*applyRollback\(db/.test(src));
+  // Les DROP sont ICI légitimes (c'est le but du script) mais STRICTEMENT bornés
+  // aux deux tables du lot, et dans l'ordre des clés étrangères.
+  check('retour arrière : exactement deux DROP, enfant puis parent',
+    ROLLBACK_CAMPAGNES_SQL.length === 2
+    && /DROP TABLE IF EXISTS "campagne_leads"/.test(ROLLBACK_CAMPAGNES_SQL[0])
+    && /DROP TABLE IF EXISTS "campagnes"/.test(ROLLBACK_CAMPAGNES_SQL[1]));
+  check('retour arrière : rejouable (IF EXISTS)', ROLLBACK_CAMPAGNES_SQL.every(d => /IF EXISTS/i.test(d)));
+  check('retour arrière : aucune table du CRM citée dans le SQL',
+    ROLLBACK_CAMPAGNES_SQL.every(d => !/"(leads|lead_actions|planned_actions|commercials|message_templates|monthly_stats)"/.test(d)));
+  check('retour arrière : garde-fou — refus si des participations existent, sauf --force',
+    /etat\.participations > 0 && !force/.test(src) && /--force/.test(src));
+  check('retour arrière : la preuve vérifie que leads et historique sont intacts',
+    /leads intacts/.test(src) && /historique intact/.test(src));
 }
 
 section('DDL des scripts Turso : ajouts uniquement');

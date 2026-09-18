@@ -22,8 +22,10 @@
 import { createClient } from '@libsql/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { PrismaClient } from '@prisma/client';
-import { readFileSync, rmSync, readdirSync } from 'node:fs';
+import { readFileSync, rmSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import {
   getState, detectSchema, createLead, createCommercial, deleteLead,
   addCampagneLeads, updateCampagneLead, upsertCampagne, updateCampagne, deleteCampagneLead,
@@ -52,7 +54,13 @@ function migrationSql(suffixes: string[]): string {
     return readFileSync(path.join(dir, sub, 'migration.sql'), 'utf-8');
   }).join('\n');
 }
-const SCHEMA_V4 = ['_init_crm_schema', '_lot2_planned_actions', '_lot3_template_layout', '_lot4_weekly_objectives', '_lot5_social'];
+// Schéma COMPLET de la prod v4 (login et boîte de réception compris) : sans eux,
+// la garde anti-brute-force du login tourne à vide (fail-open) et le test HTTP
+// ne prouverait pas grand-chose.
+const SCHEMA_V4 = [
+  '_init_crm_schema', '_add_login_attempts', '_add_inbound_emails',
+  '_lot2_planned_actions', '_lot3_template_layout', '_lot4_weekly_objectives', '_lot5_social',
+];
 const SCHEMA_SALONS = [...SCHEMA_V4, '_lot_salons_campagnes'];
 
 function makeLead(over: Partial<Lead> = {}): Lead {
@@ -89,7 +97,175 @@ function envelope(data: AppState) {
   return { format: 'bob-crm-backup', version: 1, appVersion: '4.0.0', exportedAt: new Date().toISOString(), data };
 }
 
+/**
+ * LE TEST DU SOIR DE MIGRATION — ANCIEN CODE SUR BASE MIGRÉE.
+ *
+ * Le reste du harnais prouve l'inverse (code neuf sur base ancienne). Or la
+ * séquence réelle est : on migre la base le soir, et la PROD EN PLACE — celle du
+ * tag, qui ne connaît pas les nouvelles tables — continue de tourner dessus
+ * toute la nuit. Si elle s'en trouvait perturbée, on l'apprendrait avec l'équipe
+ * devant l'écran.
+ *
+ * On extrait donc le VRAI code du tag (git archive) et on le fait tourner contre
+ * une base migrée : store (detectSchema, getState) ET HTTP (login + /api/state),
+ * puis on compare l'état renvoyé à celui obtenu sur une base NON migrée — s'il
+ * est identique au caractère près, aucun écran ne peut changer.
+ *
+ * Réutilisable à chaque lot : changer TAG_PROD.
+ */
+const TAG_PROD = process.env.BOB_TAG_PROD ?? 'prod-2026-09-18-lot2a5';
+const CODE_DIR = path.resolve('.tmp-code-prod');
+
+function tagDisponible(tag: string): boolean {
+  try { execFileSync('git', ['rev-parse', '--verify', `${tag}^{commit}`], { stdio: 'pipe' }); return true; }
+  catch { return false; }
+}
+
+/** Extrait `api/` et `src/` du tag DANS le projet (pour que node_modules se résolve). */
+function extraireCodeDuTag(tag: string): void {
+  rmSync(CODE_DIR, { recursive: true, force: true });
+  mkdirSync(CODE_DIR, { recursive: true });
+  const archive = execFileSync('git', ['archive', tag, 'api', 'src'], { maxBuffer: 256 * 1024 * 1024 });
+  const tarFile = path.join(CODE_DIR, 'code.tar');
+  writeFileSync(tarFile, archive);
+  // `tar` depuis le dossier, avec un nom RELATIF : sous Windows, « C:\… » est
+  // pris pour un hôte distant (« Cannot connect to C: »).
+  execFileSync('tar', ['-xf', 'code.tar'], { cwd: CODE_DIR });
+  rmSync(tarFile, { force: true });
+}
+
+async function ancienCodeSurBaseMigree(): Promise<void> {
+  section(`Ancien code de PROD (${TAG_PROD}) sur une base MIGRÉE — le test du soir de migration`);
+  if (!tagDisponible(TAG_PROD)) {
+    console.log(`  ⓘ SAUTÉ : le tag ${TAG_PROD} n'est pas disponible ici (dépôt sans tags).`);
+    console.log('    Ce saut est ANNONCÉ, jamais silencieux — le test tourne sur le poste avant chaque migration.');
+    return;
+  }
+  extraireCodeDuTag(TAG_PROD);
+  const vieux = await import(pathToFileURL(path.join(CODE_DIR, 'api/_lib/store.ts')).href) as {
+    detectSchema: (p: PrismaClient) => Promise<Record<string, boolean>>;
+    getState: (p: PrismaClient) => Promise<AppState>;
+    createCommercial: (p: PrismaClient, c: unknown) => Promise<unknown>;
+    createLead: (p: PrismaClient, l: unknown) => Promise<unknown>;
+    createAction: (p: PrismaClient, a: unknown) => Promise<unknown>;
+    upsertPlannedAction: (p: PrismaClient, id: string, body: unknown) => Promise<unknown>;
+  };
+
+  // Deux bases, MÊMES données : l'une v4, l'autre v4 + lot salons.
+  const bases: Record<string, { file: string; url: string }> = {
+    v4: { file: path.resolve('.harness-vieux-v4.db'), url: '' },
+    migree: { file: path.resolve('.harness-vieux-migree.db'), url: '' },
+  };
+  const etats: Record<string, AppState> = {};
+  for (const [nom, b] of Object.entries(bases)) {
+    b.url = `file:${b.file}`;
+    rmSync(b.file, { force: true });
+    const setup = createClient({ url: b.url });
+    await setup.executeMultiple('PRAGMA foreign_keys = ON;\n' + migrationSql(nom === 'v4' ? SCHEMA_V4 : SCHEMA_SALONS));
+    await setup.close();
+    const prisma = new PrismaClient({ adapter: new PrismaLibSql({ url: b.url }) });
+    // Jeu de données minimal mais représentatif des écrans : un commercial, un
+    // lead, une action d'historique, une action programmée (Agenda + Dashboard).
+    await vieux.createCommercial(prisma, { id: 'nicolas', name: 'Nicolas', active: true });
+    await vieux.createLead(prisma, makeLead());
+    await vieux.createAction(prisma, { id: 'a1', leadId: 'l1', authorId: 'nicolas', type: 'appel', date: '2026-09-17', result: 'OK', notes: '' });
+    await vieux.upsertPlannedAction(prisma, 'pa1', {
+      id: 'pa1', leadId: 'l1', type: 'relance', customLabel: '', date: '2026-09-19', originalDate: '2026-09-19',
+      note: '', status: 'a_faire', people: [{ commercialId: 'nicolas', role: 'responsable' }],
+    });
+    etats[nom] = await vieux.getState(prisma);
+    if (nom === 'migree') {
+      const f = await vieux.detectSchema(prisma);
+      check('ancien code : detectSchema ne lève RIEN sur la base migrée', typeof f === 'object' && f !== null);
+      check('ancien code : detectSchema ignore les tables du lot (aucune clé campagnes)', !('campagnes' in f));
+      check('ancien code : les lots 2 à 5 restent détectés', f.lot2 === true && f.social === true);
+    }
+    await prisma.$disconnect();
+  }
+
+  check('ancien code : getState répond sur la base migrée (leads, actions, actions programmées)',
+    etats.migree.leads.length === 1 && etats.migree.actions.length === 1 && etats.migree.plannedActions.length === 1);
+  check('ancien code : AUCUNE clé campagnes dans l\'état renvoyé',
+    etats.migree.campagnes === undefined && etats.migree.campagneLeads === undefined);
+  // LA preuve que le Dashboard, l'Agenda et la fiche ne peuvent pas changer :
+  // l'ancien code renvoie EXACTEMENT le même état, migration ou pas.
+  check('ancien code : état IDENTIQUE au caractère près, base migrée ou non (aucun écran ne peut changer)',
+    JSON.stringify(etats.migree) === JSON.stringify(etats.v4));
+
+  // --- Niveau HTTP : /api/state répond bien, avec le handler du tag ---
+  {
+    process.env.DATABASE_URL = bases.migree.url;
+    delete process.env.TURSO_DATABASE_URL;
+    delete process.env.TURSO_AUTH_TOKEN;
+    process.env.SESSION_SECRET = 'secret-de-harnais-32-caracteres-min';
+    process.env.APP_USERNAME = 'equipe@test.local';
+    const auth = await import(pathToFileURL(path.join(CODE_DIR, 'api/_lib/auth.ts')).href) as {
+      hashPassword: (p: string) => string; signSession: (s: string, n: number) => string;
+    };
+    process.env.APP_PASSWORD_HASH = auth.hashPassword('mot-de-passe-de-test');
+    const handlerMod = await import(pathToFileURL(path.join(CODE_DIR, 'api/[...slug].ts')).href) as { default: Handler };
+    const jeton = auth.signSession(process.env.SESSION_SECRET, Math.floor(Date.now() / 1000));
+
+    const login = await appeler(handlerMod.default, 'POST', '/api/login', { username: process.env.APP_USERNAME, password: 'mot-de-passe-de-test' });
+    check('ancien code, HTTP : POST /api/login répond 200 sur la base migrée', login.status === 200, `${login.status} ${login.body}`);
+    const sansSession = await appeler(handlerMod.default, 'GET', '/api/state');
+    check('ancien code, HTTP : /api/state sans session -> 401 (garde intacte)', sansSession.status === 401, String(sansSession.status));
+    const avecSession = await appeler(handlerMod.default, 'GET', '/api/state', undefined, `session=${jeton}`);
+    check('ancien code, HTTP : GET /api/state répond 200 sur la base migrée', avecSession.status === 200, `${avecSession.status} ${avecSession.body.slice(0, 200)}`);
+    const etat = avecSession.status === 200 ? JSON.parse(avecSession.body) as AppState : ({} as AppState);
+    check('ancien code, HTTP : la charge utile porte bien les données des écrans (lead, action, action programmée)',
+      etat.leads?.length === 1 && etat.actions?.length === 1 && etat.plannedActions?.length === 1);
+    check('ancien code, HTTP : aucune trace des campagnes dans la charge utile',
+      !('campagnes' in (etat as object)) && !JSON.stringify(etat).includes('campagne'));
+  }
+
+  // Constat mesuré, PAS un blocage de ce soir : avec l'ancien code, « Restaurer »
+  // efface les participations par cascade (il ne connaît pas la table). C'est ce
+  // qui justifie le verrou de l'écran de restauration livré avec S2a.
+  {
+    const prisma = new PrismaClient({ adapter: new PrismaLibSql({ url: bases.migree.url }) });
+    await addCampagneLeads(prisma, [makeParticipation({ campagneId: 'campagne-grand-pavois-2026' })]);
+    const avant = Number((await prisma.campagneLead.count()));
+    const vieuxRestore = await import(pathToFileURL(path.join(CODE_DIR, 'api/_lib/store.ts')).href) as {
+      restoreBackup: (p: PrismaClient, payload: unknown) => Promise<unknown>;
+      getState: (p: PrismaClient) => Promise<AppState>;
+    };
+    await vieuxRestore.restoreBackup(prisma, envelope(await vieuxRestore.getState(prisma)));
+    const apres = Number((await prisma.campagneLead.count()));
+    check('constat : avec l\'ancien code, « Restaurer » efface les participations (cascade) -> verrou UI livré avec S2a',
+      avant === 1 && apres === 0, `avant ${avant}, après ${apres}`);
+    await prisma.$disconnect();
+  }
+
+  // Nettoyage TOLÉRANT : sous Windows, le fichier d'une base tout juste fermée
+  // reste parfois verrouillé quelques instants. Ces fichiers sont hors git
+  // (*.db) et réécrits à chaque exécution — un échec de ménage n'est pas un
+  // échec de test.
+  try { rmSync(CODE_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+  for (const b of Object.values(bases)) { try { rmSync(b.file, { force: true }); } catch { /* ignore */ } }
+}
+
+/** Appel du handler Vercel HORS HTTP (même adaptateur minimal que scripts/dev-local-test.ts). */
+type Handler = (req: unknown, res: unknown) => Promise<void> | void;
+async function appeler(handler: Handler, method: string, url: string, body?: unknown, cookie?: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve) => {
+    let status = 200;
+    let payload = '';
+    const res = {
+      statusCode: 200,
+      setHeader() { /* ignoré */ },
+      status(code: number) { status = code; return res; },
+      json(o: unknown) { payload = JSON.stringify(o); resolve({ status, body: payload }); },
+      end(chunk?: string) { payload = chunk ?? ''; resolve({ status, body: payload }); },
+    };
+    const req = { method, url, headers: cookie ? { cookie } : {}, body };
+    void Promise.resolve(handler(req, res)).catch(e => resolve({ status: 500, body: String(e) }));
+  });
+}
+
 async function main() {
+  await ancienCodeSurBaseMigree();
+
   // ---------------------------------------------------------------------
   section('Base NON migrée (v4 sans le lot salons) — le CRM fonctionne normalement');
   {
