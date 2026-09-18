@@ -85,8 +85,42 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
     - création rapide d'un lead sur mobile pendant le salon (nom, téléphone, bateau, source = le
       salon) enchaînée sur le RDV ;
     - stat après salon : nombre de contacts et de RDV par salon (lien avec Acquisition ?).
+### Bascule VPS
+
+Audit complet du 18/09 : **`docs/MIGRATION-VPS.md`** (le détail d'infrastructure et les points
+sensibles sont dans une fiche locale hors dépôt, chemin connu de César).
+
+- [ ] **PREMIER PRÉREQUIS — identification de l'IP cliente derrière le reverse proxy**
+  (`api/_lib/loginRateLimit.ts`). **Bloquant : pas de bascule sans ce correctif.**
+  Aujourd'hui l'IP est déterminée d'une façon valable sur Vercel mais **pas derrière un reverse
+  proxy** : la limitation des tentatives de connexion (5 par quart d'heure) ne jouerait plus son
+  rôle une fois le CRM sur le VPS.
+  - Options à trancher au moment du lot : (a) tenir compte du **nombre de proxys de confiance**
+    entre Internet et l'application ; (b) ne se fier qu'à un **en-tête dédié réécrit par le
+    reverse proxy** (que le client ne peut donc pas imposer) ; (c) définir le **repli** quand
+    l'en-tête attendu est absent ou mal formé — sans retomber sur une clé commune à tout le monde.
+  - Le détail technique et la recommandation sont dans la fiche locale, **pas ici**.
+  - Fonction **pure** déjà isolée + harnais existant (`scripts/harness-login-ratelimit.ts`) :
+    ajouter les cas « en-tête forgé », « proxy unique », « en-tête absent ». **≈ 0,5 j.**
+  - **Part AVEC le lot VPS, avant l'ouverture à l'équipe**, jamais après.
+  - Vérifié le 18/09 : **aucun autre endroit du dépôt ne lit `x-forwarded-for` / `x-real-ip`**.
+    `clientIp()` n'est appelée que par `POST /api/login` ; les journaux d'erreur n'écrivent pas
+    d'IP ; il n'y a pas de journal d'audit. Seule donnée dérivée stockée : la clé de
+    `login_attempts`.
+- [ ] **Sauvegarde pendant la phase « Turso conservé »** : tant que la base reste chez Turso, le
+  CRM n'a rien dans `/opt` et **échappe entièrement à la sauvegarde du parc**. Prévoir **dès le
+  lot VPS** une sauvegarde quotidienne dédiée (`scripts/backup-turso.ts`, lecture seule, lancé
+  par un conteneur outil + minuterie, écrivant sous `/opt/<nom>/sauvegardes/` pour que la copie
+  parte hors du serveur par le chemin déjà en place) avec son **contrôle de restaurabilité**
+  (le script valide déjà le fichier relu du disque ; échec = code de sortie non nul). **≈ ½ j.**
+- [ ] **Secrets déposés dans le coffre AVANT la bascule** : `AZURE_CLIENT_SECRET` (illisible chez
+  Vercel — sinon il faut demander un nouveau secret à Sopitec), jeton Turso, hachage du mot de
+  passe partagé.
+- [ ] **Domaine** : hypothèse `bob-crm.sapulse.fr` ; **question « domaine du client ? » posée à BOB
+  maintenant** — le délai est externe (registrar), et on ne veut qu'un seul changement de nom.
 - [ ] **Bascule VPS OVH** : reprendre `vercel.json` (en-têtes, réécriture `/api`, cache),
-  types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md`).
+  types `@vercel/node`, base Vite selon `VERCEL` (voir `docs/DEPLOIEMENT.md` et
+  `docs/MIGRATION-VPS.md`).
 - [ ] Aligner les noms des **stats mensuelles** d'Acquisition (Le Bon Coin, Site web BOB,
   Annonce du bateau, Boats Wizard) sur les sources des leads.
 - [ ] **BoatsGroup** : source séparée en attente de confirmation client.
