@@ -32,6 +32,7 @@ import {
   restoreBackup,
 } from '../api/_lib/store';
 import type { Lead, Campagne, CampagneLead, AppState } from '../src/data/types';
+import { SAUVEGARDE_ANTERIEURE_SALONS } from '../api/_lib/http';
 
 const DB_FILE = path.resolve('.harness-campagnes.db');
 const DB_URL = `file:${DB_FILE}`;
@@ -414,11 +415,36 @@ async function main() {
     check('après un refus, la base est INTACTE (validation avant toute écriture)',
       apresRefus.campagneLeads?.length === avant.campagneLeads?.length && apresRefus.leads.length === avant.leads.length);
 
-    // Vieille sauvegarde (d'avant le lot) : aucune campagne, et surtout aucune erreur.
-    const vieille = { ...avant };
-    delete (vieille as Partial<AppState>).campagnes;
-    delete (vieille as Partial<AppState>).campagneLeads;
-    await restoreBackup(prisma, envelope(vieille as AppState));
+    // PIÈGE DE LA VIEILLE SAUVEGARDE : tant qu'il reste des participations, une
+    // sauvegarde antérieure au lot doit être REFUSÉE, en chiffrant la perte.
+    {
+      const vieille = { ...avant };
+      delete (vieille as Partial<AppState>).campagnes;
+      delete (vieille as Partial<AppState>).campagneLeads;
+      let refus = '';
+      try { await restoreBackup(prisma, envelope(vieille as AppState)); } catch (e) { refus = (e as Error).message; }
+      check('sauvegarde antérieure au lot + participations en base : REFUSÉE (jamais un succès muet)',
+        refus.startsWith(SAUVEGARDE_ANTERIEURE_SALONS), refus);
+      check('le refus CHIFFRE la perte et NOMME la campagne',
+        /1 participation à la campagne « Grand Pavois 2026 »/.test(refus), refus);
+      const intacte = await getState(prisma);
+      check('après ce refus, les participations sont toujours là',
+        intacte.campagneLeads?.length === avant.campagneLeads?.length);
+      // Confirmation explicite : la restauration passe, la perte est assumée.
+      const rapportForce = await restoreBackup(prisma, envelope(vieille as AppState), { accepterPerteCampagnes: true });
+      check('avec confirmation explicite, la restauration passe et annonce 0 participation',
+        rapportForce.campagneLeads === 0);
+      const apresForce = await getState(prisma);
+      check('la base reflète bien la perte assumée (0 participation)', apresForce.campagneLeads?.length === 0);
+      check('la perte assumée emporte aussi les campagnes (le fichier n\'en portait aucune)',
+        apresForce.campagnes?.length === 0);
+    }
+
+    // Vieille sauvegarde SANS participation en base : aucune erreur, rien à perdre.
+    const vieille2 = { ...avant };
+    delete (vieille2 as Partial<AppState>).campagnes;
+    delete (vieille2 as Partial<AppState>).campagneLeads;
+    await restoreBackup(prisma, envelope(vieille2 as AppState), { accepterPerteCampagnes: true });
     const apres = await getState(prisma);
     check("sauvegarde d'AVANT le lot : restaurée sans erreur, aucune campagne", apres.campagnes?.length === 0 && apres.campagneLeads?.length === 0);
     check("sauvegarde d'AVANT le lot : les leads sont bien là, sources intactes",

@@ -73,6 +73,31 @@ Sauvegarde : `npm run backup:prod`.
 
 ## Lot salons — migration « campagnes » (S1)
 
+> 🛑 **À partir du déploiement de S2, revenir au tag `prod-2026-09-18-lot2a5` n'est PAS un retour
+> arrière sûr.** L'ancien code ignore `campagnes` et `campagne_leads` : le bouton « Restaurer »
+> les efface par cascade, et une sauvegarde prise avec l'ancien code ne les contient pas.
+> **Avant tout retour à un tag antérieur au lot Salons : exporter `campagne_leads` séparément.**
+>
+> ```bash
+> # AVANT de revenir en arrière (lecture seule)
+> npx tsx scripts/export-campagne-leads-turso.ts --target=prod --out=participations-AAAA-MM-JJ.json
+> # APRÈS être revenu à la v4+ du lot salons
+> BOB_CONFIRM_PROD=bob-brestoceanboat \
+>   npx tsx scripts/export-campagne-leads-turso.ts --target=prod --in=participations-AAAA-MM-JJ.json --apply
+> ```
+>
+> Le réimport est idempotent (index unique) et ne crée ni lead, ni commercial, ni campagne : une
+> ligne dont la référence manque est **refusée et annoncée**, jamais écrite à moitié.
+>
+> Le serveur pose un second filet : restaurer une sauvegarde **antérieure au lot** alors que la base
+> contient des participations est **refusé**, avec le nombre et le nom de la campagne concernée.
+> Il faut une confirmation explicite pour passer outre — jamais un succès muet.
+
+> 📅 **Semaine du salon : `npm run backup:prod` CHAQUE MATIN avant l'ouverture.** Le fichier est
+> daté et part dans `<OneDrive>/BOB-backups`. Quatre jours de saisie au stand ne tiennent pas sur
+> une seule copie prise un seul jour sur un seul poste : une sauvegarde par matin, et on vérifie la
+> ligne « Restaurable par « Restaurer » : oui ✅ ».
+
 Migration **ADDITIVE** : deux tables neuves (`campagnes`, `campagne_leads`), quatre index,
 **une** ligne de seed. Aucune table existante n'est touchée. En particulier, **`leads.source`
 n'est jamais écrite** : la source dit d'où vient le lead la première fois, elle est immuable —

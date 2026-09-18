@@ -85,6 +85,15 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
     - création rapide d'un lead sur mobile pendant le salon (nom, téléphone, bateau, source = le
       salon) enchaînée sur le RDV ;
     - stat après salon : nombre de contacts et de RDV par salon (lien avec Acquisition ?).
+### Après le salon
+
+- [ ] **Asymétrie de la boîte de réception dans les sauvegardes** (repérée le 18/09, hors périmètre
+  de la semaine du salon) : une sauvegarde contient bien les emails entrants (clé `inboundEmails`,
+  148 lignes au 18/09), mais ils sont **hors `AppState`** — vérifier si `restoreBackup` les recrée
+  ou si une restauration les perd. Le commentaire du script de sauvegarde dit « conservé pour
+  reprise manuelle, non réinjecté par Restaurer » : si c'est confirmé, soit on les réinjecte, soit
+  on l'écrit noir sur blanc dans l'écran de restauration. Préexistant au lot salons.
+
 ### Bascule VPS
 
 Audit complet du 18/09 : **`docs/MIGRATION-VPS.md`** (le détail d'infrastructure et les points

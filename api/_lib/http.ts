@@ -36,6 +36,15 @@ export const GENERIC_SERVER_ERROR = 'Erreur interne du serveur';
  */
 export const SCHEMA_NOT_MIGRATED = 'SCHEMA_NON_MIGRE';
 
+/**
+ * Marqueur STABLE (lu par le client) d'une sauvegarde PRISE AVANT le lot salons
+ * alors que la base contient des participations à une campagne. La restaurer les
+ * effacerait — sans ce refus, en SILENCE : une vieille sauvegarde n'a pas de clé
+ * `campagnes`, donc rien n'aurait signalé la perte. Le client affiche le nombre
+ * et le nom de la campagne, et ne repasse qu'avec une confirmation explicite.
+ */
+export const SAUVEGARDE_ANTERIEURE_SALONS = 'SAUVEGARDE_ANTERIEURE_LOT_SALONS';
+
 /** Table ou colonne absente (Prisma P2021 / P2022, ou erreur SQLite remontée par l'adaptateur libSQL). */
 export function isMissingSchemaError(e: unknown): boolean {
   const err = e as { code?: unknown; message?: unknown; cause?: unknown } | null;

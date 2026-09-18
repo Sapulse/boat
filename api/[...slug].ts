@@ -140,7 +140,12 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
 
     case 'restore':
       // Restauration d'une sauvegarde : REMPLACEMENT TOTAL atomique, id-préservant.
-      if (!id && m === 'POST') return sendJson(res, 201, await restoreBackup(prisma, body<RestorePayload>(req)));
+      // `?perte-campagnes=acceptee` : l'utilisateur a LU le refus (sauvegarde
+      // antérieure au lot salons) et confirmé la perte des participations.
+      if (!id && m === 'POST') {
+        const accepte = new URL(req.url ?? '', 'http://localhost').searchParams.get('perte-campagnes') === 'acceptee';
+        return sendJson(res, 201, await restoreBackup(prisma, body<RestorePayload>(req), { accepterPerteCampagnes: accepte }));
+      }
       break;
 
     case 'session':

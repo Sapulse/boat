@@ -4,7 +4,7 @@ import type {
   MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory, WeeklyObjective,
   SocialNetwork, SocialStat, Campagne, CampagneLead,
 } from '../../src/data/types.js';
-import { HttpError } from './http.js';
+import { HttpError, SAUVEGARDE_ANTERIEURE_SALONS } from './http.js';
 import { randomUUID } from 'node:crypto';
 import {
   parseLeadCreate, parseLeadPatch, parseActionCreate, parseActionPatch,
@@ -884,7 +884,11 @@ export interface RestoreReport {
   campagneLeads: number;
 }
 
-export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
+export async function restoreBackup(
+  prisma: PrismaClient,
+  payload: RestorePayload,
+  opts: { accepterPerteCampagnes?: boolean } = {},
+): Promise<RestoreReport> {
   // Valide l'enveloppe + toutes les entités (ids inclus) AVANT toute écriture.
   // Les objets renvoyés sont nettoyés (clés inconnues + colonnes d'audit strippées).
   const { data: d } = parseRestorePayload(payload) as unknown as { data: AppState };
@@ -928,6 +932,31 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
   // lisible qu'une participation orpheline.
   const campagnes: Campagne[] = d.campagnes ?? [];
   const campagneLeads: CampagneLead[] = d.campagneLeads ?? [];
+
+  // PIÈGE DE LA SAUVEGARDE ANTÉRIEURE AU LOT (18/09) : un fichier pris avant le
+  // lot salons n'a PAS de clé `campagnes`. Le restaurer effacerait toutes les
+  // participations — et, sans ce refus, sans un mot, puisque le fichier ne parle
+  // pas de campagnes. On s'arrête, on CHIFFRE la perte, et on exige une
+  // confirmation explicite.
+  const sansClefCampagnes = (payload as { data?: { campagnes?: unknown } } | null)?.data?.campagnes === undefined;
+  if (sansClefCampagnes && !opts.accepterPerteCampagnes) {
+    let participations = 0;
+    let nomCampagne = '';
+    try {
+      participations = await prisma.campagneLead.count();
+      if (participations > 0) {
+        const groupes = await prisma.campagneLead.groupBy({ by: ['campagneId'], _count: { _all: true } });
+        const principale = groupes.sort((a, b) => b._count._all - a._count._all)[0];
+        const camp = principale ? await prisma.campagne.findUnique({ where: { id: principale.campagneId } }) : null;
+        nomCampagne = camp?.nom ?? principale?.campagneId ?? '';
+        if (groupes.length > 1) nomCampagne += ` (et ${groupes.length - 1} autre${groupes.length > 2 ? 's' : ''})`;
+      }
+    } catch { participations = 0; } // base pas encore migrée : rien à perdre
+    if (participations > 0) {
+      throw new HttpError(409, `${SAUVEGARDE_ANTERIEURE_SALONS} : Cette sauvegarde est antérieure au lot Salons. `
+        + `La restaurer supprimera ${participations} participation${participations > 1 ? 's' : ''} à la campagne « ${nomCampagne} ».`);
+    }
+  }
   const campagneIds = new Set(campagnes.map(c => c.id));
   const leadIds = new Set(d.leads.map(l => l.id));
   const commercialIds = new Set(d.commercials.map(c => c.id));
