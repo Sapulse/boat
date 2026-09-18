@@ -97,8 +97,26 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
   réécrire. Prévoir aussi : que fait-on d'un doublon trouvé (fusion ? rattachement à la campagne du
   lead existant ? les deux ?).
 
-- [ ] **S2c — édition en ligne** (statut de campagne, priorité, responsable) depuis la liste de
-  travail, enregistrement immédiat. Reporté au **mardi** (décision du 18/09 : S2d passe devant).
+- [ ] **S4 — tableau de bord de campagne par responsable** : reporté au **mercredi** (décision du
+  18/09). Les 4 repères en tête de l'écran Campagnes — participants, contactés, RDV stand, relances
+  en retard — suffisent pour la semaine du salon.
+
+- [x] **S2c — statut DÉDUIT + édition en ligne** : fait le 18/09 au soir, finalement avant le mardi.
+  Le statut de campagne avance tout seul quand un échange est enregistré (depuis la liste OU la
+  fiche) ; l'édition en ligne corrige et pose les statuts de jugement.
+
+### À surveiller
+
+- [ ] **Harnais intermittents (constaté le 18/09 au soir)** : deux exécutions de `npm test` ont
+  échoué sur un harnais DIFFÉRENT à chaque fois (`harness-risks`, puis `harness-inbound-db`), mort
+  en moins d'une seconde, alors que le harnais passe seul (82 assertions) et que la 3e exécution
+  est verte (49/49). Les deux sont des harnais à base SQLite jetable, et les deux échecs ont suivi
+  l'arrêt d'un banc de test local. Le lanceur est **séquentiel** (spawnSync dans une boucle) : ce
+  n'est donc pas une collision entre harnais. Piste retenue : un **verrou de fichier Windows** sur
+  une base `.db` jetable (OneDrive synchronise le dossier du projet, et plusieurs `.db` restent sur
+  place faute de pouvoir être supprimés — EPERM déjà rencontré ce soir). **Une suite qui échoue au hasard finit par être ignorée** : à instruire avant qu'on s'y
+  habitue (capturer la sortie du harnais fautif dans le lanceur, qui n'affiche aujourd'hui que
+  « ÉCHEC »).
 
 ### Après le salon
 

@@ -259,3 +259,128 @@ export function campagneParDefaut(campagnes: Campagne[] | undefined): Campagne |
   const list = campagnes ?? [];
   return list.find(c => c.active) ?? list[0];
 }
+
+// ===========================================================================
+// STATUT DE CAMPAGNE DÉDUIT (S2c)
+//
+// LE PROBLÈME QU'ON ÉVITE : si le statut est un geste manuel séparé, il ne sera
+// pas fait. Tom passe 40 appels lundi, les enregistre, et mardi l'écran affiche
+// « Contactés : 0 » parce que les lignes sont restées à « À contacter ». C'est le
+// tableau de bord faux du fichier Excel, reproduit chez nous.
+//
+// DONC : le statut se DÉDUIT de ce qui a été fait, et l'édition manuelle sert à
+// CORRIGER. Trois règles de sûreté :
+//  1. on ne devine JAMAIS une intention : « Projet reporté », « Injoignable »,
+//     « Pas intéressé », « À relancer après salon » restent strictement manuels
+//     et ne sont jamais écrasés par une déduction ;
+//  2. la déduction ne REGRESSE jamais : un « RDV confirmé » ne redevient pas
+//     « Contacté sans retour » parce qu'on rappelle ;
+//  3. elle s'applique quel que soit le point de saisie (liste de travail OU fiche
+//     lead), parce qu'elle vit dans le reducer, pas dans un écran.
+// ===========================================================================
+
+/** Statuts que la déduction peut poser, DU MOINS AVANCÉ AU PLUS AVANCÉ. */
+export const STATUTS_DEDUITS = [
+  'À contacter',
+  'Contacté sans retour',
+  'Échange en cours',
+  'RDV confirmé',
+] as const;
+
+/** Statuts de JUGEMENT : seul un humain les pose, la déduction n'y touche pas. */
+export const STATUTS_MANUELS = [
+  'À relancer après salon',
+  'Projet reporté',
+  'Injoignable',
+  'Pas intéressé',
+] as const;
+
+const rang = (s: string): number => {
+  const i = (STATUTS_DEDUITS as readonly string[]).indexOf(s);
+  return i === -1 ? -1 : i;
+};
+
+/**
+ * L'action prouve-t-elle qu'on a PARLÉ au client ?
+ *
+ * Mapping sur les puces existantes de la fenêtre d'appel (lib/plannedActions,
+ * CALL_RESULTS), enregistrées dans `result` sous la forme « Appel — Joint » :
+ *   Joint, Rappel demandé          -> OUI, on a eu quelqu'un au téléphone ;
+ *   Message laissé, Pas de réponse,
+ *   Mauvais numéro                 -> NON, l'appel est passé mais sans échange.
+ *
+ * Les autres types : un rendez-vous, une visite, une négociation ou une
+ * conclusion supposent un échange. Un email, un SMS, un WhatsApp, une relance ou
+ * une note ne prouvent RIEN d'un retour du client — envoyer n'est pas parler.
+ */
+const SANS_ECHANGE = ['Message laissé', 'Pas de réponse', 'Mauvais numéro'];
+const TYPES_AVEC_ECHANGE = ['rdv', 'visite', 'negociation', 'conclusion'];
+
+export function actionProuveUnEchange(a: Pick<LeadAction, 'type' | 'result'>): boolean {
+  if (TYPES_AVEC_ECHANGE.includes(a.type)) return true;
+  if (a.type !== 'appel') return false;
+  const r = (a.result ?? '').trim();
+  if (!r) return false;                                   // appel sans résultat : on ne présume pas
+  if (SANS_ECHANGE.some(x => r.includes(x))) return false; // puce « sans réponse »
+  return true;                                            // « Joint », « Rappel demandé », ou un compte rendu libre
+}
+
+/**
+ * Statut déduit d'UNE participation. Renvoie le statut à écrire — qui peut être
+ * celui déjà en place (aucun changement).
+ */
+export function statutDeduitParticipation(
+  p: CampagneLead,
+  campagne: Campagne,
+  actions: LeadAction[],
+  planned: PlannedAction[],
+  aujourdhui: string,
+): CampagneLead['statutCampagne'] {
+  // Règle 1 : un statut de jugement n'est jamais touché.
+  if ((STATUTS_MANUELS as readonly string[]).includes(p.statutCampagne)) return p.statutCampagne;
+
+  const fAct = fenetreActivite(campagne, aujourdhui);
+  const fSalon = fenetreSalon(campagne, aujourdhui);
+  let cible = 'À contacter';
+
+  for (const a of actions) {
+    if (a.leadId !== p.leadId) continue;
+    if ((a.kind ?? 'realisee') !== 'realisee') continue;
+    if (!dans(a.date, fAct)) continue;
+    if (rang('Contacté sans retour') > rang(cible)) cible = 'Contacté sans retour';
+    if (actionProuveUnEchange(a) && rang('Échange en cours') > rang(cible)) cible = 'Échange en cours';
+  }
+
+  // Un RDV programmé dans la fenêtre du salon : c'est l'objectif de la campagne.
+  if (rdvStand(planned, p.leadId, fSalon)) cible = 'RDV confirmé';
+
+  // Règle 2 : jamais de régression — on garde le plus avancé des deux.
+  return (rang(cible) > rang(p.statutCampagne) ? cible : p.statutCampagne) as CampagneLead['statutCampagne'];
+}
+
+/**
+ * Applique la déduction à TOUTES les participations des campagnes ACTIVES.
+ * Idempotente : rappelée à chaque écriture, elle ne fait rien s'il n'y a rien à
+ * faire — et renvoie alors le tableau d'origine (même référence), pour ne pas
+ * provoquer de rendu inutile.
+ */
+export function appliquerDeductions(
+  campagnes: Campagne[] | undefined,
+  participations: CampagneLead[] | undefined,
+  actions: LeadAction[],
+  planned: PlannedAction[],
+  aujourdhui: string,
+): CampagneLead[] | undefined {
+  if (!participations?.length || !campagnes?.length) return participations;
+  const parId = new Map(campagnes.map(c => [c.id, c]));
+  let change = false;
+  const suivant = participations.map(p => {
+    const campagne = parId.get(p.campagneId);
+    if (!campagne || !campagne.active) return p;
+    const statut = statutDeduitParticipation(p, campagne, actions, planned, aujourdhui);
+    if (statut === p.statutCampagne) return p;
+    change = true;
+    return { ...p, statutCampagne: statut };
+  });
+  return change ? suivant : participations;
+}

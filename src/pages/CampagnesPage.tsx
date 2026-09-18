@@ -32,7 +32,7 @@ import { formatDateShort, toISODate, cn, getLeadFullName } from '../lib/utils';
  *    jamais sa liste d'appels en consultant un dossier.
  */
 export default function CampagnesPage() {
-  const { state, getCommercialName, addAction, updateLead } = useApp();
+  const { state, getCommercialName, addAction, updateLead, updateCampagneLead } = useApp();
   // Lot 2 : après TOUTE action, la fenêtre « Prochaine action » s'ouvre. Elle vit
   // au-dessus des routes, donc elle fonctionne depuis cet écran comme depuis la fiche.
   const flow = useNextActionFlow();
@@ -216,7 +216,13 @@ export default function CampagnesPage() {
       <div className="card overflow-hidden sm:hidden">
         <div className="divide-y divide-gray-100">
           {visibles.map(l => (
-            <CarteParticipant key={l.participation.id} ligne={l} nomCommercial={getCommercialName} onEchange={setEchangeLeadId} />
+            <CarteParticipant
+              key={l.participation.id}
+              ligne={l}
+              nomCommercial={getCommercialName}
+              onEchange={setEchangeLeadId}
+              onStatut={(id, statut) => updateCampagneLead(id, { statutCampagne: statut as LigneCampagne['participation']['statutCampagne'] })}
+            />
           ))}
           {visibles.length === 0 && <p className="px-4 py-10 text-center text-gray-400">Aucun participant</p>}
         </div>
@@ -260,10 +266,49 @@ export default function CampagnesPage() {
                       ? <a href={`mailto:${l.lead.email}`} className="text-gray-600 hover:underline block truncate max-w-[180px]">{l.lead.email}</a>
                       : <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-gray-700">{getCommercialName(l.participation.responsableId)}</td>
+                  <td className="px-3 py-2.5">
+                    {/* Édition EN LIGNE : enregistrement immédiat, même file
+                        optimiste que le reste de l'app — l'écran ne bouge pas,
+                        la ligne reste à sa place. */}
+                    <select
+                      className="select select-inline text-xs"
+                      value={l.participation.responsableId}
+                      onChange={e => updateCampagneLead(l.participation.id, { responsableId: e.target.value })}
+                      aria-label={`Responsable de ${getLeadFullName(l.lead)}`}
+                      data-testid={`resp-${l.lead.id}`}
+                    >
+                      {responsables.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {!responsables.some(c => c.id === l.participation.responsableId) && (
+                        <option value={l.participation.responsableId}>{getCommercialName(l.participation.responsableId)}</option>
+                      )}
+                    </select>
+                  </td>
                   <td className="px-3 py-2.5 text-xs text-gray-600">{l.participation.segment || '—'}</td>
-                  <td className="px-3 py-2.5"><BadgePriorite priorite={l.participation.priorite} /></td>
-                  <td className="px-3 py-2.5 text-xs text-gray-800">{l.participation.statutCampagne}</td>
+                  <td className="px-3 py-2.5">
+                    <select
+                      className="select select-inline text-xs"
+                      value={l.participation.priorite}
+                      onChange={e => updateCampagneLead(l.participation.id, { priorite: e.target.value as LigneCampagne['participation']['priorite'] })}
+                      aria-label={`Priorité de ${getLeadFullName(l.lead)}`}
+                      data-testid={`prio-${l.lead.id}`}
+                    >
+                      {CAMPAGNE_PRIORITES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {/* Le statut est POSÉ PAR LA DÉDUCTION (un échange enregistré
+                        le fait avancer tout seul) ; ce menu sert à CORRIGER, et
+                        à poser les statuts de jugement que l'on ne devine pas. */}
+                    <select
+                      className="select select-inline text-xs"
+                      value={l.participation.statutCampagne}
+                      onChange={e => updateCampagneLead(l.participation.id, { statutCampagne: e.target.value as LigneCampagne['participation']['statutCampagne'] })}
+                      aria-label={`Statut de campagne de ${getLeadFullName(l.lead)}`}
+                      data-testid={`statut-${l.lead.id}`}
+                    >
+                      {CAMPAGNE_STATUTS.map(st => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </td>
                   <td className="px-3 py-2.5"><TemperatureBadge temperature={l.lead.temperature} /></td>
                   <td className="px-3 py-2.5 text-center text-xs whitespace-nowrap" title="Appels · emails, sur la période de campagne">
                     <span className="inline-flex items-center gap-1 text-gray-700"><Phone className="w-3 h-3" />{l.compteurs.appels}</span>
@@ -343,6 +388,9 @@ export default function CampagnesPage() {
       <p className="text-xs text-gray-500">
         Appels et emails sont <strong>comptés depuis l'historique</strong> sur la période de la campagne : aucun compteur
         n'est saisi à la main. La prochaine action et son retard sont ceux de la fiche du lead — une seule vérité.
+        Le <strong>statut de campagne avance tout seul</strong> quand un échange est enregistré (ici ou depuis la fiche) :
+        contacté, échange en cours, RDV confirmé. Les menus servent à <strong>corriger</strong>, et à poser ce qui relève
+        du jugement — « Pas intéressé », « Injoignable », « Projet reporté », « À relancer après salon » — que rien ne devine.
       </p>
     </div>
   );
@@ -366,7 +414,12 @@ function BadgePriorite({ priorite }: { priorite: string }) {
 }
 
 /** Carte mobile : le téléphone et le statut d'abord, sans défilement latéral. */
-function CarteParticipant({ ligne: l, nomCommercial, onEchange }: { ligne: LigneCampagne; nomCommercial: (id: string) => string; onEchange: (leadId: string) => void }) {
+function CarteParticipant({ ligne: l, nomCommercial, onEchange, onStatut }: {
+  ligne: LigneCampagne;
+  nomCommercial: (id: string) => string;
+  onEchange: (leadId: string) => void;
+  onStatut: (participationId: string, statut: string) => void;
+}) {
   return (
     <div className="px-4 py-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -378,7 +431,14 @@ function CarteParticipant({ ligne: l, nomCommercial, onEchange }: { ligne: Ligne
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">{l.participation.statutCampagne}</span>
+        <select
+          className="select select-inline text-xs py-1"
+          value={l.participation.statutCampagne}
+          onChange={e => onStatut(l.participation.id, e.target.value)}
+          aria-label={`Statut de campagne de ${getLeadFullName(l.lead)}`}
+        >
+          {CAMPAGNE_STATUTS.map(st => <option key={st} value={st}>{st}</option>)}
+        </select>
         <StatusBadge status={l.lead.status} />
         <TemperatureBadge temperature={l.lead.temperature} />
       </div>

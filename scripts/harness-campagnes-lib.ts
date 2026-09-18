@@ -10,6 +10,7 @@
 import {
   fenetreActivite, fenetreSalon, datesSalonARenseigner, compteurs, estContacte, rdvStand,
   lignesCampagne, filtrerLignes, preparerAjout, leadsSansCommercial, campagneParDefaut,
+  statutDeduitParticipation, appliquerDeductions, actionProuveUnEchange,
 } from '../src/lib/campagnes';
 import type { AppState, Campagne, CampagneLead, Lead, LeadAction, PlannedAction, Commercial } from '../src/data/types';
 
@@ -206,6 +207,101 @@ section('Leads sans commercial : annoncés avant l\'ajout');
   const sans = leadsSansCommercial(s, ['l1', 'l2', 'l3'], estNonAttribue);
   check('« Non attribué » et commercial inconnu comptent comme sans commercial', sans.length === 2 && sans.includes('l2') && sans.includes('l3'));
   check('lead avec un vrai commercial : pas dans la liste', !sans.includes('l1'));
+}
+
+section('S2c — le statut de campagne se DÉDUIT de ce qui a été fait');
+{
+  const camp = campagne({ dateDebut: '2026-09-18', dateFin: '2026-09-27', dateSalonDebut: '2026-09-22', dateSalonFin: '2026-09-27' });
+  const deduire = (p: CampagneLead, actions: LeadAction[], planned: PlannedAction[] = []) =>
+    statutDeduitParticipation(p, camp, actions, planned, AUJ);
+
+  // — Le scénario demandé, pas à pas —
+  const aContacter = part({ statutCampagne: 'À contacter' });
+  check('« À contacter » + UN APPEL (sans réponse) -> « Contacté sans retour »',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })]) === 'Contacté sans retour');
+  check('… + un appel où on a eu le client -> « Échange en cours »',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })]) === 'Échange en cours');
+  check('… + un RDV programmé dans la fenêtre du SALON -> « RDV confirmé »',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })], [planned({ date: '2026-09-23' })]) === 'RDV confirmé');
+  check('« Pas intéressé » + un appel -> reste « Pas intéressé » (on ne devine pas une intention)',
+    deduire(part({ statutCampagne: 'Pas intéressé' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })]) === 'Pas intéressé');
+
+  // — Mapping des puces d'appel, une par une —
+  for (const [puce, attendu] of [
+    ['Appel — Joint', 'Échange en cours'],
+    ['Appel — Rappel demandé', 'Échange en cours'],
+    ['Appel — Message laissé', 'Contacté sans retour'],
+    ['Appel — Pas de réponse', 'Contacté sans retour'],
+    ['Appel — Mauvais numéro', 'Contacté sans retour'],
+  ] as const) {
+    check(`puce « ${puce} » -> ${attendu}`, deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: puce })]) === attendu);
+  }
+  check('appel SANS résultat -> « Contacté sans retour » (on ne présume pas un échange)',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: '' })]) === 'Contacté sans retour');
+  check('compte rendu libre depuis la liste (« Intéressé, rappeler ») -> « Échange en cours »',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Intéressé, rappeler en octobre' })]) === 'Échange en cours');
+  check("un EMAIL envoyé -> « Contacté sans retour » (envoyer n'est pas parler)",
+    deduire(aContacter, [action({ type: 'email', date: '2026-09-19', result: '' })]) === 'Contacté sans retour');
+  check('une VISITE -> « Échange en cours »',
+    deduire(aContacter, [action({ type: 'visite', date: '2026-09-19' })]) === 'Échange en cours');
+
+  // — Les garde-fous —
+  check('aucune action -> le statut ne bouge pas', deduire(aContacter, []) === 'À contacter');
+  check("action HORS de la fenêtre d'activité -> ignorée",
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-01', result: 'Appel — Joint' })]) === 'À contacter');
+  check('action « report » (kind) -> ne compte pas comme un échange',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint', kind: 'report' })]) === 'À contacter');
+  check('PAS DE RÉGRESSION : « RDV confirmé » + un simple appel -> reste « RDV confirmé »',
+    deduire(part({ statutCampagne: 'RDV confirmé' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })]) === 'RDV confirmé');
+  check('« Échange en cours » + un appel sans réponse -> reste « Échange en cours »',
+    deduire(part({ statutCampagne: 'Échange en cours' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })]) === 'Échange en cours');
+  for (const manuel of ['Projet reporté', 'Injoignable', 'À relancer après salon'] as const) {
+    check(`« ${manuel} » n'est jamais écrasé par la déduction`,
+      deduire(part({ statutCampagne: manuel }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })], [planned({ date: '2026-09-23' })]) === manuel);
+  }
+  check('RDV programmé HORS de la fenêtre du salon -> pas « RDV confirmé »',
+    deduire(aContacter, [], [planned({ date: '2026-09-19' })]) === 'À contacter');
+  check('RDV annulé -> pas « RDV confirmé »',
+    deduire(aContacter, [], [planned({ date: '2026-09-23', status: 'annulee' })]) === 'À contacter');
+
+  // — MÊME RÉSULTAT depuis la fiche lead ou depuis la liste de travail —
+  // La déduction ne lit QUE l'état (actions + actions programmées) : elle ne sait
+  // pas d'où vient la saisie, donc elle ne peut pas diverger. On le prouve en
+  // comparant deux actions identiques au point de saisie près.
+  const depuisListe = action({ id: 'depuis-liste', type: 'appel', date: '2026-09-19', result: 'Appel — Joint', authorId: 'nicolas' });
+  const depuisFiche = action({ id: 'depuis-fiche', type: 'appel', date: '2026-09-19', result: 'Appel — Joint', authorId: 'fred' });
+  check('action saisie depuis la FICHE = même statut que depuis la LISTE',
+    deduire(aContacter, [depuisListe]) === deduire(aContacter, [depuisFiche]));
+  check('actionProuveUnEchange : la règle est lisible seule',
+    actionProuveUnEchange({ type: 'appel', result: 'Appel — Joint' }) === true
+    && actionProuveUnEchange({ type: 'appel', result: 'Appel — Message laissé' }) === false
+    && actionProuveUnEchange({ type: 'email', result: '' }) === false
+    && actionProuveUnEchange({ type: 'rdv', result: '' }) === true);
+
+  // — appliquerDeductions : le passage à l'échelle de l'état —
+  const etatCampagne = etat({
+    campagnes: [camp],
+    leads: [lead({ id: 'l1' }), lead({ id: 'l2' }), lead({ id: 'l3' })],
+    campagneLeads: [
+      part({ id: 'p1', leadId: 'l1', statutCampagne: 'À contacter' }),
+      part({ id: 'p2', leadId: 'l2', statutCampagne: 'Pas intéressé' }),
+      part({ id: 'p3', leadId: 'l3', statutCampagne: 'À contacter' }),
+    ],
+    actions: [
+      action({ id: 'a1', leadId: 'l1', type: 'appel', date: '2026-09-19', result: 'Appel — Joint' }),
+      action({ id: 'a2', leadId: 'l2', type: 'appel', date: '2026-09-19', result: 'Appel — Joint' }),
+    ],
+  });
+  const apres = appliquerDeductions(etatCampagne.campagnes, etatCampagne.campagneLeads, etatCampagne.actions, [], AUJ)!;
+  check('l1 avance, l2 (jugement) ne bouge pas, l3 sans action reste en place',
+    apres.find(p => p.id === 'p1')!.statutCampagne === 'Échange en cours'
+    && apres.find(p => p.id === 'p2')!.statutCampagne === 'Pas intéressé'
+    && apres.find(p => p.id === 'p3')!.statutCampagne === 'À contacter');
+  const rejeu = appliquerDeductions(etatCampagne.campagnes, apres, etatCampagne.actions, [], AUJ);
+  check('IDEMPOTENTE : rejouée, elle ne change rien ET renvoie la MÊME référence (aucun rendu inutile)', rejeu === apres);
+  const campArchivee = appliquerDeductions([{ ...camp, active: false }], etatCampagne.campagneLeads, etatCampagne.actions, [], AUJ);
+  check('campagne archivée : aucune déduction', campArchivee === etatCampagne.campagneLeads);
+  check('aucune participation : aucun plantage', appliquerDeductions([camp], [], etatCampagne.actions, [], AUJ)?.length === 0);
 }
 
 section('Campagne par défaut');

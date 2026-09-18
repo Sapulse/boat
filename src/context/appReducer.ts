@@ -4,6 +4,7 @@ import { applyObjectivePatch, carryOverObjective, newObjective, validateObjectiv
 import { defaultSocialNetworks, mergeStats, newNetwork, statErrors, validateNetworkName } from '../lib/social';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
+import { appliquerDeductions } from '../lib/campagnes';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
 import { mergeAcquisition, type LegacyAcquisitionVolume } from '../lib/acquisition';
 import {
@@ -277,7 +278,7 @@ function planFromLegacy(
   };
 }
 
-export function reducer(state: AppState, action: Action): AppState {
+function reducerBase(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
       // Serveur d'avant le lot 2 (ou sauvegarde) : tableau absent -> [].
@@ -652,4 +653,40 @@ export function reducer(state: AppState, action: Action): AppState {
     default:
       return state;
   }
+}
+
+// ---------------------------------------------------------------------------
+// LOT SALONS (S2c) — LE STATUT DE CAMPAGNE SE DÉDUIT DE CE QUI A ÉTÉ FAIT.
+//
+// Le geste manuel séparé ne serait pas fait : quarante appels enregistrés lundi,
+// et mardi l'écran afficherait « Contactés : 0 » parce que les lignes seraient
+// restées à « À contacter ». On déduit donc, et l'édition manuelle CORRIGE.
+//
+// La déduction vit ICI, dans le reducer, et non dans un écran : elle s'applique
+// donc quel que soit le point de saisie — la liste de travail d'une campagne
+// COMME la fiche lead. Un commercial qui travaille depuis la fiche ne produit
+// pas un tableau de bord faux.
+//
+// Elle est idempotente (elle ne fait rien s'il n'y a rien à faire) et ne
+// régresse jamais un statut ; les statuts de jugement ne sont jamais touchés
+// (voir lib/campagnes).
+// ---------------------------------------------------------------------------
+const DECLENCHE_DEDUCTION = new Set<Action['type']>([
+  'ADD_ACTION',                 // un échange enregistré (fiche OU liste)
+  'UPDATE_ACTION',              // son résultat corrigé (« Pas de réponse » -> « Joint »)
+  'DELETE_ACTION',              // une action retirée de l'historique
+  'PLAN_NEXT_ACTION',           // un RDV programmé -> RDV confirmé
+  'RESCHEDULE_PLANNED_ACTION',  // un RDV déplacé (dans ou hors de la fenêtre du salon)
+  'COMPLETE_PLANNED_ACTION',    // une action programmée réalisée
+  'ADD_CAMPAGNE_LEADS',         // à l'ajout : on tient compte de ce qui a déjà été fait
+]);
+
+export function reducer(state: AppState, action: Action): AppState {
+  const suivant = reducerBase(state, action);
+  if (!DECLENCHE_DEDUCTION.has(action.type)) return suivant;
+  const campagneLeads = appliquerDeductions(
+    suivant.campagnes, suivant.campagneLeads, suivant.actions, suivant.plannedActions ?? [], toISODate(new Date()),
+  );
+  // Même référence = rien n'a changé : on ne provoque pas de rendu inutile.
+  return campagneLeads === suivant.campagneLeads ? suivant : { ...suivant, campagneLeads };
 }

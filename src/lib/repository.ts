@@ -330,7 +330,13 @@ type Intent =
   // silence les leads déjà participants) ; l'édition en ligne part en PATCH.
   | { kind: 'campagne-leads-add'; entity: 'campagne-leads'; ids: string[] }
   | { kind: 'campagne-lead-update'; entity: 'campagne-leads'; id: string }
-  | { kind: 'campagne-upsert'; entity: 'campagnes'; id: string };
+  | { kind: 'campagne-upsert'; entity: 'campagnes'; id: string }
+  // S2c : le statut de campagne DÉDUIT par le reducer doit suivre côté serveur.
+  // On ne sait pas ici s'il a bougé (l'état d'avant n'est plus en main) : on
+  // renvoie la participation telle qu'elle est APRÈS le reducer. Un PATCH qui
+  // réécrit la même valeur est sans effet — mieux vaut une requête inutile
+  // qu'un statut qui ne part jamais.
+  | { kind: 'campagne-deduction'; entity: 'campagne-leads'; leadId: string };
 
 const COLLECTION: Record<EntityName, (s: AppState) => ReadonlyArray<{ id: string }>> = {
   leads: s => s.leads,
@@ -453,6 +459,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
   // Fige une intention en opération concrète depuis l'état POST-REDUCER.
   function resolveIntent(intent: Intent, state: AppState): { op: Parameters<typeof box.enqueue>[0] } | null {
     if (intent.kind === 'lead-planned') return null; // traité dans persist (plusieurs ops)
+    if (intent.kind === 'campagne-deduction') return null; // idem : une op par participation du lead
     if (intent.kind === 'weekly-objective') {
       const o = (state.weeklyObjectives ?? []).find(x => x.id === intent.id);
       if (!o) return null;
@@ -509,6 +516,15 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     intents = [];
     try {
       for (const intent of merged) {
+        if (intent.kind === 'campagne-deduction') {
+          for (const p of (state.campagneLeads ?? []).filter(x => x.leadId === intent.leadId)) {
+            box.enqueue({
+              method: 'PATCH', path: `/campagne-leads/${p.id}`, body: p, entity: 'campagne-leads', entityId: p.id,
+              label: `Campagne — statut « ${p.statutCampagne} »`,
+            });
+          }
+          continue;
+        }
         if (intent.kind === 'lead-planned') {
           for (const pa of (state.plannedActions ?? []).filter(p => p.leadId === intent.leadId)) {
             box.enqueue({
@@ -806,6 +822,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       dispatch({ type: 'ADD_ACTION', payload: { ...action, id }, plan });
       remember({ kind: 'create', entity: 'actions', id });
       remember({ kind: 'update', entity: 'leads', id: action.leadId });
+      remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId: action.leadId });
       if (action.nextActionDate) rememberPlanning(action.leadId, plan);
     },
 
@@ -814,6 +831,7 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       const ids = newPlanIds();
       dispatch({ type: 'PLAN_NEXT_ACTION', payload: { leadId, input, authorId, today: toISODate(new Date()), ids } });
       remember({ kind: 'update', entity: 'leads', id: leadId });
+      remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId });
       rememberPlanning(leadId, ids);
       return ids.plannedId;
     },
@@ -821,13 +839,18 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       const reportEntryId = generateId();
       const leadId = leadOfPlanned(plannedId);
       dispatch({ type: 'RESCHEDULE_PLANNED_ACTION', payload: { plannedId, ...when, authorId, today: toISODate(new Date()), reportEntryId } });
-      if (leadId) { remember({ kind: 'update', entity: 'leads', id: leadId }); rememberPlanning(leadId, { reportEntryId }); }
+      if (leadId) {
+        remember({ kind: 'update', entity: 'leads', id: leadId });
+        remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId });
+        rememberPlanning(leadId, { reportEntryId });
+      }
     },
     completePlannedAction: (plannedId, action) => {
       const id = generateId();
       dispatch({ type: 'COMPLETE_PLANNED_ACTION', payload: { plannedId, action: { ...action, id }, doneAt: new Date().toISOString() } });
       remember({ kind: 'create', entity: 'actions', id });
       remember({ kind: 'update', entity: 'leads', id: action.leadId });
+      remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId: action.leadId });
       remember({ kind: 'lead-planned', entity: 'planned-actions', leadId: action.leadId });
       return id;
     },
@@ -864,6 +887,8 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
     addCampagneLeads: (participations) => {
       base.addCampagneLeads(participations);
       remember({ kind: 'campagne-leads-add', entity: 'campagne-leads', ids: participations.map(p => p.id) });
+      // Les participations partent avec le statut DÉJÀ déduit par le reducer
+      // (un lead appelé hier n'entre pas dans la campagne en « À contacter »).
     },
     updateCampagneLead: (id, data) => { base.updateCampagneLead(id, data); remember({ kind: 'campagne-lead-update', entity: 'campagne-leads', id }); },
     upsertCampagne: (campagne) => { base.upsertCampagne(campagne); remember({ kind: 'campagne-upsert', entity: 'campagnes', id: campagne.id }); },
