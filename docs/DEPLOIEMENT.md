@@ -71,6 +71,43 @@ Sauvegarde : `npm run backup:prod`.
 
 ---
 
+## Lot salons — migration « campagnes » (S1)
+
+Migration **ADDITIVE** : deux tables neuves (`campagnes`, `campagne_leads`), quatre index,
+**une** ligne de seed. Aucune table existante n'est touchée. En particulier, **`leads.source`
+n'est jamais écrite** : la source dit d'où vient le lead la première fois, elle est immuable —
+la preuve du script compare l'empreinte des sources avant / après.
+
+| # | Script | Nature |
+|---|---|---|
+| 1 | `scripts/apply-campagnes-turso.ts` | 2 tables + 4 index + 1 campagne de seed (« Grand Pavois 2026 », salon, La Rochelle, active) |
+
+```bash
+npm run backup:prod                                                   # 1. sauvegarde
+npx tsx scripts/apply-campagnes-turso.ts --target=prod                 # 2. à blanc, relu
+BOB_CONFIRM_PROD=bob-brestoceanboat \
+  npx tsx scripts/apply-campagnes-turso.ts --target=prod --apply       # 3. écriture, sur GO
+npx tsx scripts/apply-campagnes-turso.ts --target=prod --apply         # 4. rejeu : 0 table, 0 campagne
+```
+
+**Découplage voulu (décision du 18/09)** : la migration part **le soir**, tables vides, sans
+utilisateur et sans code qui les lise — impact nul. Le **code** qui les lit part **le lendemain**,
+séparément. Si le déploiement du lendemain échoue, la prod reste un CRM v4 complet, simplement
+sans onglet Campagnes — jamais un CRM cassé.
+
+**TODO assumé dans le seed** : `dateFin`, `dateSalonDebut`, `dateSalonFin` et `objectifRdv`
+restent vides tant que les dates du Grand Pavois ne sont pas confirmées. C'est un `UPDATE` d'une
+ligne (modèle dans `prisma/migrations/20260918190000_lot_salons_campagnes/migration.sql`). Tant
+que les dates du salon sont vides, l'écran l'affiche et la détection des RDV retombe sur la
+fenêtre d'activité — **jamais un chiffre silencieusement faux**.
+
+**Deux paires de dates, à ne pas confondre** : `dateDebut`/`dateFin` bornent l'**activité** de la
+campagne (préparation comprise) et donc les compteurs dérivés ; `dateSalonDebut`/`dateSalonFin`
+bornent les **RDV du stand**. Les confondre remettrait les compteurs à zéro le matin de
+l'ouverture du salon.
+
+---
+
 ## Mise en production des lots 2 à 5 — v4.0.0 (plan — RIEN n'est exécuté sans GO)
 
 Répétition du 2026-09-16 (lot 2 seul) sur une copie fraîche des données réelles (437 leads,

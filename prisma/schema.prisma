@@ -53,6 +53,7 @@ model Commercial {
   calendarEvents CalendarEvent[]
   plannedActionPeople PlannedActionPerson[]
   weeklyObjectives    WeeklyObjective[]
+  campagneLeads       CampagneLead[]
 
   @@map("commercials")
 }
@@ -110,6 +111,7 @@ model Lead {
 
   actions        LeadAction[]
   plannedActions PlannedAction[]
+  campagneLeads  CampagneLead[]
 
   @@index([commercialId])
   @@index([status])
@@ -455,4 +457,89 @@ model SocialStat {
 
   @@unique([networkId, year, month])
   @@map("social_stats")
+}
+
+// ============================================================
+// LOT SALONS (S1) — Campagne : opération commerciale dans laquelle on EMBARQUE
+// des leads (salon, emailing, phoning…). À ne jamais confondre avec
+// `leads.source`, qui dit d'où vient le lead la PREMIÈRE fois : la source est
+// immuable, aucune écriture de ce lot ne la touche.
+//
+// DEUX PAIRES DE DATES, volontairement distinctes (décision du 18/09) :
+//  - dateDebut / dateFin       : période d'ACTIVITÉ de la campagne (préparation
+//    comprise). Borne les compteurs dérivés (appels, emails, dernier contact).
+//  - dateSalonDebut / dateSalonFin : jours du SALON. Bornent la détection des
+//    RDV sur le stand. Vides pour une campagne non-salon (emailing, phoning).
+// Sans cette séparation, saisir les vraies dates du salon sortirait toute la
+// préparation du périmètre et remettrait les compteurs à zéro le matin de
+// l'ouverture.
+//
+// Dates : String "YYYY-MM-DD", '' = non renseignée (idiome du projet, cf.
+// leads.nextActionDate) — comparables en chaîne, jamais de fuseau.
+// ============================================================
+model Campagne {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nom  String
+  type String // salon | emailing | phoning | autre
+  lieu String @default("")
+
+  dateDebut      String @default("")
+  dateFin        String @default("")
+  dateSalonDebut String @default("")
+  dateSalonFin   String @default("")
+
+  objectifRdv Int?    // nullable : pas d'objectif fixé
+  active      Boolean @default(true)
+
+  participants CampagneLead[]
+
+  @@map("campagnes")
+}
+
+// ============================================================
+// CampagneLead — participation d'un lead à une campagne. Un lead peut
+// participer à plusieurs campagnes dans le temps (unicité par campagne).
+//
+// CE QUI N'EST PAS ICI, ET POURQUOI :
+//  - niveau d'intérêt : doublon de `leads.temperature`, on lit la température ;
+//  - date / heure de RDV : un RDV du stand est une ACTION PROGRAMMÉE de la v4
+//    (planned_actions, qui portent déjà `time` et `endTime`) — le stocker ici
+//    créerait deux vérités, exactement la divergence mesurée le 17/09 ;
+//  - nb d'appels / d'emails, dernier contact : DÉRIVÉS de lead_actions sur la
+//    fenêtre de campagne, jamais stockés, jamais saisis.
+// ============================================================
+model CampagneLead {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campagneId String
+  campagne   Campagne @relation(fields: [campagneId], references: [id], onDelete: Cascade)
+
+  // Cascade comme lead_actions : supprimer un lead retire ses participations.
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  // Responsable DE LA CAMPAGNE (peut différer du commercial assigné au lead).
+  // Restrict comme lead_actions.authorId : un commercial ne disparaît pas sous
+  // les pieds d'une participation.
+  responsableId String
+  responsable   Commercial @relation(fields: [responsableId], references: [id], onDelete: Restrict)
+
+  // Segment = « Origine » du fichier Excel (Emailing Grand Pavois, Client en
+  // portefeuille…). C'est une donnée DE LA PARTICIPATION, jamais une source.
+  segment        String @default("")
+  priorite       String @default("Moyenne") // Haute | Moyenne | Basse
+  statutCampagne String @default("À contacter")
+  bateauxAVoir   String @default("")
+  notes          String @default("")
+
+  @@unique([campagneId, leadId])
+  @@index([campagneId])
+  @@index([leadId])
+  @@index([responsableId])
+  @@map("campagne_leads")
 }

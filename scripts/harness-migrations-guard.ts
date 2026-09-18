@@ -17,6 +17,7 @@ import { TEMPLATE_LAYOUT_COLUMNS, TEMPLATE_LAYOUT_TABLES_DDL, TEMPLATE_LAYOUT_IN
 import { WEEKLY_OBJECTIVES_TABLES_DDL, WEEKLY_OBJECTIVES_INDEX_DDL } from './apply-weekly-objectives-turso';
 import { SOCIAL_TABLES_DDL, SOCIAL_INDEX_DDL, SOCIAL_DEFAULTS_SQL } from './apply-social-turso';
 import { REALIGN_SQL } from './realign-planned-actions-turso';
+import { CAMPAGNES_TABLES_DDL, CAMPAGNES_INDEX_DDL, CAMPAGNES_SEED_SQL } from './apply-campagnes-turso';
 
 let passed = 0;
 let failed = 0;
@@ -115,15 +116,60 @@ section('Migrations du dépôt : ajouts uniquement');
   }
 }
 
+section('Lot salons : campagnes et participations, sans toucher aux leads');
+{
+  const dir = path.resolve('prisma/migrations');
+  const subs = readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort();
+  const salonsDir = subs.find(s => s.endsWith('_lot_salons_campagnes'));
+  check('lot salons : migration « campagnes » présente', !!salonsDir);
+  if (salonsDir) {
+    const sql = readFileSync(path.join(dir, salonsDir, 'migration.sql'), 'utf-8');
+    const clean = stripSqlComments(sql).replace(/\s+/g, ' ');
+    check('lot salons : la migration porte la note « écrite à la main »', /écrite à la main/i.test(sql));
+    check("lot salons : aucune table existante modifiée (pas d'ALTER TABLE)", !/ALTER\s+TABLE/i.test(clean));
+    check('lot salons : deux tables créées, campagnes et campagne_leads',
+      (clean.match(/CREATE\s+TABLE/gi) ?? []).length === 2 && /CREATE TABLE "campagnes"/.test(clean) && /CREATE TABLE "campagne_leads"/.test(clean));
+    // LA règle du lot : la source d'un lead dit d'où il vient la PREMIÈRE fois, elle est immuable.
+    check("lot salons : la table leads n'est JAMAIS écrite (aucun INSERT/UPDATE/DELETE dessus)",
+      !/(UPDATE|INSERT\s+(OR\s+\w+\s+)?INTO|DELETE\s+FROM)\s+"?leads"?/i.test(clean));
+    check("lot salons : le mot « source » n'apparaît dans aucune écriture", !/\bsource\b/i.test(clean));
+    check('lot salons : unicité (campagne, lead) — un lead jamais dupliqué',
+      /CREATE UNIQUE INDEX "campagne_leads_campagneId_leadId_key" ON "campagne_leads"\("campagneId", "leadId"\)/.test(clean));
+    check("lot salons : les DEUX paires de dates existent (activité et salon)",
+      /"dateDebut"/.test(clean) && /"dateFin"/.test(clean) && /"dateSalonDebut"/.test(clean) && /"dateSalonFin"/.test(clean));
+    check('lot salons : aucune date ni heure de RDV stockée (le RDV est une action programmée)',
+      !/"dateRdv"|"heureRdv"|"rdvPrevu"/i.test(clean));
+    check('lot salons : aucun compteur dénormalisé (appels et emails restent dérivés)',
+      !/"nbAppels"|"nbEmails"|"dernierAppel"|"dernierEmail"/i.test(clean));
+    check('lot salons : seule écriture de données = 1 INSERT OR IGNORE dans campagnes',
+      (clean.match(/\bINSERT\b/gi) ?? []).length === 1 && (clean.match(/INSERT OR IGNORE INTO "campagnes"/g) ?? []).length === 1);
+    const noIfNotExists = (d: string) => d.replace(/\s+IF NOT EXISTS/i, '').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')');
+    const norm = clean.replace(/\( /g, '(').replace(/ \)/g, ')');
+    for (const d of [...CAMPAGNES_TABLES_DDL, ...CAMPAGNES_INDEX_DDL, ...CAMPAGNES_SEED_SQL]) {
+      check(`lot salons : même SQL dans la migration et dans le script Turso (${d.match(/"(\w+)"/)?.[1]})`, norm.includes(noIfNotExists(d)));
+    }
+  }
+  const src = readFileSync(path.resolve('scripts/apply-campagnes-turso.ts'), 'utf-8');
+  check('lot salons : verrou de cible en écriture (guardDbTarget, write: true)',
+    /guardDbTarget\(\{\s*scriptName: 'apply-campagnes-turso', write: true \}\)/.test(src));
+  check('lot salons : lecture seule sans --apply (retour avant toute écriture)',
+    /if \(!apply\) \{[\s\S]*?return;\s*\}[\s\S]*applyCampagnesSchema\(db/.test(src));
+  check("lot salons : le script n'écrit jamais dans leads",
+    !/(UPDATE|INSERT\s+(OR\s+\w+\s+)?INTO|DELETE\s+FROM)\s+"?leads"?/i.test(src));
+  check("lot salons : la preuve compare l'empreinte des SOURCES avant / après", /leadSources/.test(src));
+}
+
 section('DDL des scripts Turso : ajouts uniquement');
 {
   const all = [...PLANNED_ACTIONS_COLUMNS.map(c => c.ddl), ...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL,
     ...TEMPLATE_LAYOUT_COLUMNS.map(c => c.ddl), ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL,
-    ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL, ...SOCIAL_DEFAULTS_SQL];
+    ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL, ...SOCIAL_DEFAULTS_SQL,
+    ...CAMPAGNES_TABLES_DDL, ...CAMPAGNES_INDEX_DDL, ...CAMPAGNES_SEED_SQL];
   const bad = all.filter(d => forbiddenIn(d).length > 0);
   check('scripts Turso (lots 2 à 5, boîte de réception) : aucun motif interdit', bad.length === 0, bad.join('\n'));
-  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
+  check('créations idempotentes (IF NOT EXISTS)', [...PLANNED_ACTIONS_TABLES_DDL, ...INBOUND_EMAILS_DDL, ...TEMPLATE_LAYOUT_TABLES_DDL, ...TEMPLATE_LAYOUT_INDEX_DDL, ...WEEKLY_OBJECTIVES_TABLES_DDL, ...WEEKLY_OBJECTIVES_INDEX_DDL, ...SOCIAL_TABLES_DDL, ...SOCIAL_INDEX_DDL, ...CAMPAGNES_TABLES_DDL, ...CAMPAGNES_INDEX_DDL].every(d => /IF NOT EXISTS/i.test(d)));
   check('réseaux par défaut rejouables (INSERT OR IGNORE)', SOCIAL_DEFAULTS_SQL.every(d => /^INSERT OR IGNORE INTO/i.test(d)));
+  check('campagne de seed rejouable (INSERT OR IGNORE)', CAMPAGNES_SEED_SQL.every(d => /^INSERT OR IGNORE INTO/i.test(d)));
 }
 
 section('Script de réalignement : données seulement, au verrou');
