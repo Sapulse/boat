@@ -232,7 +232,7 @@ section('S2c — le statut de campagne se DÉDUIT de ce qui a été fait');
     ['Appel — Rappel demandé', 'Échange en cours'],
     ['Appel — Message laissé', 'Contacté sans retour'],
     ['Appel — Pas de réponse', 'Contacté sans retour'],
-    ['Appel — Mauvais numéro', 'Contacté sans retour'],
+    ['Appel — Mauvais numéro', 'À contacter'],   // ne déduit RIEN : un numéro mort n'est pas un contact
   ] as const) {
     check(`puce « ${puce} » -> ${attendu}`, deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: puce })]) === attendu);
   }
@@ -259,6 +259,17 @@ section('S2c — le statut de campagne se DÉDUIT de ce qui a été fait');
     check(`« ${manuel} » n'est jamais écrasé par la déduction`,
       deduire(part({ statutCampagne: manuel }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })], [planned({ date: '2026-09-23' })]) === manuel);
   }
+  check('« Mauvais numéro » ne fait PAS sortir le lead de la file : il reste « À contacter »',
+    deduire(aContacter, [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Mauvais numéro' })]) === 'À contacter');
+  check("… et il n'écrase pas non plus un statut déjà avancé",
+    deduire(part({ statutCampagne: 'Échange en cours' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Mauvais numéro' })]) === 'Échange en cours');
+  check("… mais l'appel reste COMPTÉ comme appel (il a bien été passé)",
+    compteurs([action({ type: 'appel', date: '2026-09-19', result: 'Appel — Mauvais numéro' })], 'l1', { debut: '2026-09-18', fin: '2026-09-27' }).appels === 1);
+  check("un « Mauvais numéro » SUIVI d'un vrai appel : le vrai appel déduit normalement",
+    deduire(aContacter, [
+      action({ id: 'x1', type: 'appel', date: '2026-09-19', result: 'Appel — Mauvais numéro' }),
+      action({ id: 'x2', type: 'appel', date: '2026-09-20', result: 'Appel — Joint' }),
+    ]) === 'Échange en cours');
   check('RDV programmé HORS de la fenêtre du salon -> pas « RDV confirmé »',
     deduire(aContacter, [], [planned({ date: '2026-09-19' })]) === 'À contacter');
   check('RDV annulé -> pas « RDV confirmé »',

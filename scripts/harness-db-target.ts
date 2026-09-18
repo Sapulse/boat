@@ -108,6 +108,8 @@ section('Environnement : .env lu sans les variables de base');
   check('cible locale posée : TURSO_* RETIRÉES de l\'environnement', penv.TURSO_DATABASE_URL === undefined && penv.DATABASE_URL === `file:${localDb}`);
 }
 
+const TSX = path.join('node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+
 section('Vrais scripts, .env FACTICE, hôte injoignable : refus en code 1, aucune connexion');
 {
   const fakeEnv = path.join(tmp, '.env.factice');
@@ -117,7 +119,11 @@ section('Vrais scripts, .env FACTICE, hôte injoignable : refus en code 1, aucun
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(TURSO_|BOB_CONFIRM_PROD$|DATABASE_URL$)/.test(k)) base[k] = v;
   const run = (script: string, args: string[], extra: Record<string, string> = {}) => {
     const t0 = Date.now();
-    const res = spawnSync('npx', ['tsx', `scripts/${script}`, ...args], { env: { ...base, BOB_ENV_FILE: fakeEnv, ...extra }, encoding: 'utf8', shell: true, timeout: 60_000 });
+    // Binaire tsx APPELÉ DIRECTEMENT, et non via `npx` : ce harnais lance une
+    // dizaine de sous-processus, et chaque `npx` refait sa résolution de paquet.
+    // Un échec isolé observé le 18/09 (harnais mort à 10 s alors qu'il passe
+    // seul) pointait vers ce coût ; c'est aussi ce que fait déjà le lanceur.
+    const res = spawnSync(TSX, [`scripts/${script}`, ...args], { env: { ...base, BOB_ENV_FILE: fakeEnv, ...extra }, encoding: 'utf8', shell: true, timeout: 60_000 });
     return { code: res.status, out: `${res.stdout}\n${res.stderr}`, ms: Date.now() - t0 };
   };
   const NETWORK = /ECONNREFUSED|fetch failed|getaddrinfo|ENOTFOUND|SQLITE_|LibsqlError|Leads en base|Leads : \d/;

@@ -31,8 +31,9 @@ import {
 import { hashPassword, signSession } from '../api/_lib/auth';
 import type { Lead, LeadAction, CommercialGoal, AppState } from '../src/data/types';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-api.db');
+const DB_FILE = dbJetable('harness-api');
 const DB_URL = `file:${DB_FILE}`;
 
 let passed = 0;

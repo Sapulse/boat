@@ -21,9 +21,10 @@ import { getState, detectSchema, saveSocialNetworks, saveSocialStats, restoreBac
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError, toHttpError } from '../api/_lib/http';
 import type { AppState, SocialNetwork, SocialStat } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-social-db.db');
-const PRISMA_DB_FILE = path.resolve('.harness-social-prisma.db');
+const DB_FILE = dbJetable('harness-social-db');
+const PRISMA_DB_FILE = dbJetable('harness-social-prisma');
 
 let passed = 0;
 let failed = 0;

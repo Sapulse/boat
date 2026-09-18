@@ -23,9 +23,10 @@ import { getState, detectSchema, upsertWeeklyObjective, restoreBackup } from '..
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError } from '../api/_lib/http';
 import type { AppState, WeeklyObjective } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-weekly-objectives-db.db');
-const PRISMA_DB_FILE = path.resolve('.harness-weekly-objectives-prisma.db');
+const DB_FILE = dbJetable('harness-weekly-objectives-db');
+const PRISMA_DB_FILE = dbJetable('harness-weekly-objectives-prisma');
 
 let passed = 0;
 let failed = 0;

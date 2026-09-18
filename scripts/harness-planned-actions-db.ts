@@ -34,9 +34,10 @@ import { getState, upsertPlannedAction, restoreBackup, hasLot2Schema, updateLead
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError, toHttpError, SCHEMA_NOT_MIGRATED } from '../api/_lib/http';
 import type { AppState, PlannedAction } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-planned-actions-db.db');
-const PRISMA_DB_FILE = path.resolve('.harness-planned-actions-prisma.db');
+const DB_FILE = dbJetable('harness-planned-actions-db');
+const PRISMA_DB_FILE = dbJetable('harness-planned-actions-prisma');
 
 let passed = 0;
 let failed = 0;

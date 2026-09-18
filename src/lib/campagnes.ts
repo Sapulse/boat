@@ -313,8 +313,26 @@ const rang = (s: string): number => {
  * conclusion supposent un échange. Un email, un SMS, un WhatsApp, une relance ou
  * une note ne prouvent RIEN d'un retour du client — envoyer n'est pas parler.
  */
-const SANS_ECHANGE = ['Message laissé', 'Pas de réponse', 'Mauvais numéro'];
+const SANS_ECHANGE = ['Message laissé', 'Pas de réponse'];
 const TYPES_AVEC_ECHANGE = ['rdv', 'visite', 'negociation', 'conclusion'];
+
+/**
+ * « Mauvais numéro » ne déduit RIEN : le statut reste ce qu'il était.
+ *
+ * Un numéro mort n'est pas un contact. Le compter comme « Contacté sans retour »
+ * ferait deux dégâts : le « Contactés » que lit la direction gonflerait de
+ * non-événements, et ces leads sortiraient de la file des urgents alors qu'ils
+ * réclament justement une action — retrouver le bon numéro. Si le commercial
+ * abandonne, il pose « Injoignable » À LA MAIN : c'est un jugement.
+ *
+ * NB : l'appel reste compté comme appel dans les compteurs et dans les objectifs
+ * (il a bien été passé) ; seule la DÉDUCTION du statut l'ignore.
+ */
+const SANS_DEDUCTION = ['Mauvais numéro'];
+
+export function actionSansDeduction(a: Pick<LeadAction, 'type' | 'result'>): boolean {
+  return a.type === 'appel' && SANS_DEDUCTION.some(x => (a.result ?? '').includes(x));
+}
 
 export function actionProuveUnEchange(a: Pick<LeadAction, 'type' | 'result'>): boolean {
   if (TYPES_AVEC_ECHANGE.includes(a.type)) return true;
@@ -347,6 +365,7 @@ export function statutDeduitParticipation(
     if (a.leadId !== p.leadId) continue;
     if ((a.kind ?? 'realisee') !== 'realisee') continue;
     if (!dans(a.date, fAct)) continue;
+    if (actionSansDeduction(a)) continue; // « Mauvais numéro » : ni contact, ni jugement
     if (rang('Contacté sans retour') > rang(cible)) cible = 'Contacté sans retour';
     if (actionProuveUnEchange(a) && rang('Échange en cours') > rang(cible)) cible = 'Échange en cours';
   }

@@ -28,6 +28,7 @@ import { getState, createLead, createCommercial, restoreBackup } from '../api/_l
 import { parseRestorePayload } from '../api/_lib/validate';
 import { buildEnvelope, backupFileName, selectPurgeable, FILE_RE, KEEP_MIN } from './backupCore';
 import type { AppState, Lead } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
 // --- garde-fou : aucun identifiant de prod dans cet environnement ------------
 if (process.env.TURSO_DATABASE_URL || process.env.TURSO_AUTH_TOKEN) {
@@ -35,8 +36,8 @@ if (process.env.TURSO_DATABASE_URL || process.env.TURSO_AUTH_TOKEN) {
   process.exit(1);
 }
 
-const DB_SRC = path.resolve('.harness-backup-src.db');
-const DB_DST = path.resolve('.harness-backup-dst.db');
+const DB_SRC = dbJetable('harness-backup-src');
+const DB_DST = dbJetable('harness-backup-dst');
 
 let passed = 0;
 let failed = 0;

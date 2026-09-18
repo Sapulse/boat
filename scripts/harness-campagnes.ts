@@ -33,10 +33,11 @@ import {
 } from '../api/_lib/store';
 import type { Lead, Campagne, CampagneLead, AppState } from '../src/data/types';
 import { SAUVEGARDE_ANTERIEURE_SALONS } from '../api/_lib/http';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-campagnes.db');
+const DB_FILE = dbJetable('harness-campagnes');
 const DB_URL = `file:${DB_FILE}`;
-const DB_FILE_LEGACY = path.resolve('.harness-campagnes-legacy.db');
+const DB_FILE_LEGACY = dbJetable('harness-campagnes-legacy');
 const DB_URL_LEGACY = `file:${DB_FILE_LEGACY}`;
 
 let passed = 0;
@@ -154,8 +155,8 @@ async function ancienCodeSurBaseMigree(): Promise<void> {
 
   // Deux bases, MÊMES données : l'une v4, l'autre v4 + lot salons.
   const bases: Record<string, { file: string; url: string }> = {
-    v4: { file: path.resolve('.harness-vieux-v4.db'), url: '' },
-    migree: { file: path.resolve('.harness-vieux-migree.db'), url: '' },
+    v4: { file: dbJetable('harness-vieux-v4'), url: '' },
+    migree: { file: dbJetable('harness-vieux-migree'), url: '' },
   };
   const etats: Record<string, AppState> = {};
   for (const [nom, b] of Object.entries(bases)) {

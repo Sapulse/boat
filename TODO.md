@@ -107,7 +107,12 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
 
 ### À surveiller
 
-- [ ] **Harnais intermittents (constaté le 18/09 au soir)** : deux exécutions de `npm test` ont
+- [ ] **SORTIR LE DÉPÔT DE ONEDRIVE** — le vrai correctif, à faire après le salon. Le projet est sur
+  le Bureau, donc synchronisé en continu : c'est ce qui a produit les verrous aléatoires sur les
+  bases SQLite jetables des harnais (corrigé le 18/09 en les déplaçant dans le dossier temporaire
+  du système, mais le dépôt lui-même reste exposé — builds, `node_modules`, `.git`).
+
+- [x] **Harnais intermittents — corrigé le 18/09 au soir** (garder pour mémoire) : deux exécutions de `npm test` ont
   échoué sur un harnais DIFFÉRENT à chaque fois (`harness-risks`, puis `harness-inbound-db`), mort
   en moins d'une seconde, alors que le harnais passe seul (82 assertions) et que la 3e exécution
   est verte (49/49). Les deux sont des harnais à base SQLite jetable, et les deux échecs ont suivi

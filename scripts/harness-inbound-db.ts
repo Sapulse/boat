@@ -17,8 +17,9 @@ import { createClient, type Client } from '@libsql/client';
 import { readFileSync, rmSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-inbound.db');
+const DB_FILE = dbJetable('harness-inbound');
 
 let passed = 0;
 let failed = 0;

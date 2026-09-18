@@ -27,9 +27,10 @@ import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError } from '../api/_lib/http';
 import { orderedTemplates } from '../src/lib/templateLayout';
 import type { AppState } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-template-layout-db.db');
-const PRISMA_DB_FILE = path.resolve('.harness-template-layout-prisma.db');
+const DB_FILE = dbJetable('harness-template-layout-db');
+const PRISMA_DB_FILE = dbJetable('harness-template-layout-prisma');
 
 let passed = 0;
 let failed = 0;

@@ -32,8 +32,9 @@ import { createLead, createCommercial } from '../api/_lib/store';
 import { INBOUND_EMAILS_DDL } from './apply-inbound-emails-turso';
 import type { GraphEnv } from '../api/_lib/graph';
 import { HttpError } from '../api/_lib/http';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-inbound-store.db');
+const DB_FILE = dbJetable('harness-inbound-store');
 const DB_URL = `file:${DB_FILE}`;
 
 let passed = 0;

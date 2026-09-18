@@ -9,6 +9,7 @@ import { createClient } from '@libsql/client';
 import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { SOURCES } from '../src/data/constants';
+import { dbJetable } from './lib/dbJetable';
 
 let passed = 0;
 let failed = 0;
@@ -66,7 +67,7 @@ check('plan rejoué sur la répartition d\'après : rien à faire', planSourceFu
 
 console.log('\n— Script de fusion sur base SQLite jetable (jamais Turso)');
 {
-  const file = path.resolve('.harness-sources-fusion.db');
+  const file = dbJetable('harness-sources-fusion');
   rmSync(file, { force: true });
   const db = createClient({ url: `file:${file}` });
   await db.executeMultiple(readFileSync(path.join('prisma/migrations', readdirSync('prisma/migrations').find(d => d.endsWith('_init_crm_schema'))!, 'migration.sql'), 'utf-8'));

@@ -19,10 +19,11 @@ import path from 'node:path';
 import { addCampagneLeads, getState, createCommercial } from '../api/_lib/store';
 import { preparerAjout } from '../src/lib/campagnes';
 import type { AppState } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
 const COMBIEN = Number(process.argv[2] ?? 250);
 const LEADS = Math.max(443, COMBIEN);
-const DB_FILE = path.resolve('.mesure-campagne.db');
+const DB_FILE = dbJetable('mesure-campagne');
 const DB_URL = `file:${DB_FILE}`;
 
 function migrationSql(): string {

@@ -21,8 +21,9 @@ import {
 } from './realign-planned-actions-turso';
 import { pendingActionOf, summarizeNextAction } from '../src/lib/plannedActions';
 import type { PlannedAction } from '../src/data/types';
+import { dbJetable } from './lib/dbJetable';
 
-const DB_FILE = path.resolve('.harness-realign-db.db');
+const DB_FILE = dbJetable('harness-realign-db');
 
 let passed = 0;
 let failed = 0;
