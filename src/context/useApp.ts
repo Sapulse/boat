@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory, SocialStat } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory, SocialStat, Campagne, CampagneLead } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
 import type { ObjectivePatch } from '../lib/weeklyObjectives';
 import type { SyncInfo } from '../lib/repository';
@@ -59,6 +59,11 @@ export interface AppContextType {
   renameSocialNetwork: (id: string, name: string) => void;
   setSocialNetworkArchived: (id: string, archived: boolean) => void;
   saveSocialStats: (rows: SocialStat[]) => void;
+  // Lot salons — campagnes (voir CrmRepository). Aucune n'écrit dans un lead :
+  // sa source dit d'où il vient la première fois et reste immuable.
+  addCampagneLeads: (participations: CampagneLead[]) => void;
+  updateCampagneLead: (id: string, data: Partial<CampagneLead>) => void;
+  upsertCampagne: (campagne: Campagne) => void;
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => string;
   updateCalendarEvent: (id: string, data: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;
@@ -67,7 +72,7 @@ export interface AppContextType {
   importBulk?: (payload: ImportPayload) => Promise<ImportReport>;
   // Restauration d'une sauvegarde (mode API uniquement, Étape 5). REMPLACE tout
   // PUIS ré-hydrate. Undefined en flag off -> UI désactivée.
-  restoreBackup?: (payload: BackupEnvelope) => Promise<RestoreReport>;
+  restoreBackup?: (payload: BackupEnvelope, opts?: { accepterPerteCampagnes?: boolean }) => Promise<RestoreReport>;
   // Lecture SEULE de l'état serveur, SANS l'appliquer à l'écran (aucun
   // SET_STATE) : sert au contrôle de conflit multi-postes au moment
   // d'enregistrer un lead. Undefined en flag off (rien à comparer sans serveur).

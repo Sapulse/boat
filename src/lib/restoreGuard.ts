@@ -31,7 +31,15 @@ export interface RestorePreview {
   leadsAdded: number;
   /** Leads communs aux deux (conservés, mais écrasés par la version du fichier). */
   leadsKept: number;
-  /** Vrai dès qu'au moins un lead disparaît. */
+  /**
+   * LOT SALONS : participations à une campagne présentes aujourd'hui et ABSENTES
+   * du fichier. Une sauvegarde d'AVANT le lot n'en porte aucune : sans ce
+   * compte, la campagne du salon disparaîtrait sans un mot.
+   */
+  participationsPerdues: number;
+  /** Nom de la campagne la plus touchée (pour l'écrire en clair). */
+  campagneTouchee: string;
+  /** Vrai dès qu'au moins un lead OU une participation disparaît. */
   destructive: boolean;
   /** Ce que l'utilisateur doit taper : escalade si des leads disparaissent. */
   confirmWord: string;
@@ -73,7 +81,19 @@ export function restorePreview(
     { label: 'Stats mensuelles', before: current.monthlyStats.length, after: incoming.monthlyStats.length },
     // Lot 5 : sauvegarde d'avant le lot 5 -> aucune stat de réseau social.
     { label: 'Stats réseaux sociaux', before: current.socialStats?.length ?? 0, after: incoming.socialStats?.length ?? 0 },
+    // Lot salons : idem, une sauvegarde d'avant le lot n'en porte aucune.
+    { label: 'Participations aux campagnes', before: current.campagneLeads?.length ?? 0, after: incoming.campagneLeads?.length ?? 0 },
   ];
+
+  // Participations réellement perdues : celles d'aujourd'hui absentes du fichier.
+  const participationsFichier = new Set((incoming.campagneLeads ?? []).map(p => p.id));
+  const perdues = (current.campagneLeads ?? []).filter(p => !participationsFichier.has(p.id));
+  const participationsPerdues = perdues.length;
+  // Campagne la plus touchée, nommée en clair dans l'avertissement.
+  const parCampagne = new Map<string, number>();
+  for (const p of perdues) parCampagne.set(p.campagneId, (parCampagne.get(p.campagneId) ?? 0) + 1);
+  const pire = [...parCampagne.entries()].sort((a, b) => b[1] - a[1])[0];
+  const campagneTouchee = pire ? ((current.campagnes ?? []).find(c => c.id === pire[0])?.nom ?? pire[0]) : '';
 
   // Âge en jours PLEINS écoulés. Une date illisible ou future -> âge inconnu
   // (une date future signale une horloge fausse : on ne prétend pas savoir).
@@ -86,20 +106,31 @@ export function restorePreview(
     }
   }
 
-  const destructive = leadsRemoved > 0;
+  // Destructif = des leads OU des participations disparaissent. Le second cas
+  // est celui de la sauvegarde antérieure au lot salons : les leads sont tous
+  // là, et pourtant le travail du salon part.
+  const destructive = leadsRemoved > 0 || participationsPerdues > 0;
   return {
     rows,
     leadsRemoved,
     leadsAdded,
     leadsKept,
+    participationsPerdues,
+    campagneTouchee,
     destructive,
     // Escalade : quand des leads disparaissent, on fait TAPER LEUR NOMBRE. Le mot
     // fixe se tape de mémoire sans lire ; un nombre oblige à regarder l'ampleur
     // exacte des dégâts. C'est le seul but de cette friction.
-    confirmWord: destructive ? String(leadsRemoved) : CONFIRM_WORD_SAFE,
-    confirmHint: destructive
+    // On fait TAPER LE NOMBRE de ce qui disparaît : un mot fixe se tape de
+    // mémoire sans lire, un nombre oblige à regarder l'ampleur exacte.
+    confirmWord: leadsRemoved > 0 ? String(leadsRemoved)
+      : participationsPerdues > 0 ? String(participationsPerdues)
+        : CONFIRM_WORD_SAFE,
+    confirmHint: leadsRemoved > 0
       ? `le nombre de leads qui seront supprimés (${leadsRemoved})`
-      : CONFIRM_WORD_SAFE,
+      : participationsPerdues > 0
+        ? `le nombre de participations à la campagne qui seront supprimées (${participationsPerdues})`
+        : CONFIRM_WORD_SAFE,
     ageDays,
     stale: ageDays === null || ageDays > STALE_DAYS,
   };

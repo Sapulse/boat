@@ -1,4 +1,4 @@
-import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory, SocialStat } from '../data/types';
+import type { AppState, Lead, LeadAction, LeadStatus, MonthlyStat, Commercial, MessageTemplate, ActionType, CalendarEvent, CommercialGoal, GoalMetric, DefaultGoal, TemplateCategory, SocialStat, Campagne, CampagneLead } from '../data/types';
 import type { TemplatePlacement } from '../lib/templateLayout';
 import { applyObjectivePatch, carryOverObjective, newObjective, validateObjective, type ObjectivePatch } from '../lib/weeklyObjectives';
 import { defaultSocialNetworks, mergeStats, newNetwork, statErrors, validateNetworkName } from '../lib/social';
@@ -60,6 +60,12 @@ export type Action =
   | { type: 'RENAME_SOCIAL_NETWORK'; payload: { id: string; name: string } }
   | { type: 'SET_SOCIAL_NETWORK_ARCHIVED'; payload: { id: string; archived: boolean } }
   | { type: 'SAVE_SOCIAL_STATS'; payload: SocialStat[] }
+  // Lot salons. AJOUT EN MASSE : les participations sont préparées par
+  // lib/campagnes.preparerAjout (déjà dédoublonnées) ; le reducer refuse malgré
+  // tout un lead déjà participant — l'index unique en base dit la même chose.
+  | { type: 'ADD_CAMPAGNE_LEADS'; payload: CampagneLead[] }
+  | { type: 'UPDATE_CAMPAGNE_LEAD'; payload: { id: string; data: Partial<CampagneLead> } }
+  | { type: 'UPSERT_CAMPAGNE'; payload: Campagne }
   | { type: 'ADD_CALENDAR_EVENT'; payload: CalendarEvent }
   | { type: 'UPDATE_CALENDAR_EVENT'; payload: { id: string; data: Partial<CalendarEvent> } }
   | { type: 'DELETE_CALENDAR_EVENT'; payload: string }
@@ -167,6 +173,9 @@ export function getInitialState(): AppState {
       // Lot 5 : absent des anciens states -> 3 réseaux par défaut, aucune stat.
       socialNetworks: stored.socialNetworks ?? defaultSocialNetworks(),
       socialStats: stored.socialStats ?? [],
+      // Lot salons : absent des anciens states -> aucune campagne.
+      campagnes: stored.campagnes ?? [],
+      campagneLeads: stored.campagneLeads ?? [],
     };
   }
 
@@ -187,6 +196,8 @@ export function getInitialState(): AppState {
     weeklyObjectives: [],
     socialNetworks: defaultSocialNetworks(),
     socialStats: [],
+    campagnes: [],
+    campagneLeads: [],
   };
 }
 
@@ -270,7 +281,16 @@ export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_STATE':
       // Serveur d'avant le lot 2 (ou sauvegarde) : tableau absent -> [].
-      return { ...action.payload, plannedActions: action.payload.plannedActions ?? [], weeklyObjectives: action.payload.weeklyObjectives ?? [], socialNetworks: action.payload.socialNetworks ?? [], socialStats: action.payload.socialStats ?? [] };
+      return {
+        ...action.payload,
+        plannedActions: action.payload.plannedActions ?? [],
+        weeklyObjectives: action.payload.weeklyObjectives ?? [],
+        socialNetworks: action.payload.socialNetworks ?? [],
+        socialStats: action.payload.socialStats ?? [],
+        // Serveur d'avant le lot salons (ou base non migrée) : tableaux absents -> [].
+        campagnes: action.payload.campagnes ?? [],
+        campagneLeads: action.payload.campagneLeads ?? [],
+      };
 
     case 'ADD_LEAD': {
       // Un lead cree directement dans un statut avance (ex. "Signe" en mode
@@ -545,6 +565,41 @@ export function reducer(state: AppState, action: Action): AppState {
 
     // Lot 5 : réseaux sociaux. Règles (nom unique, stats valides) vérifiées ICI
     // comme au serveur : une règle violée laisse l'état inchangé.
+    // --- Lot salons ---------------------------------------------------------
+    // RIEN ICI N'ÉCRIT DANS UN LEAD. Embarquer un lead dans une campagne est une
+    // opération commerciale ; sa source dit d'où il vient la première fois et
+    // reste intacte.
+    case 'ADD_CAMPAGNE_LEADS': {
+      const list = state.campagneLeads ?? [];
+      const dejaLa = new Set(list.map(p => `${p.campagneId}|${p.leadId}`));
+      const nouvelles = action.payload.filter(p => {
+        const cle = `${p.campagneId}|${p.leadId}`;
+        if (dejaLa.has(cle)) return false; // ignoré EN SILENCE, jamais dupliqué
+        dejaLa.add(cle);
+        return true;
+      });
+      if (!nouvelles.length) return state;
+      return { ...state, campagneLeads: [...list, ...nouvelles] };
+    }
+
+    case 'UPDATE_CAMPAGNE_LEAD': {
+      const list = state.campagneLeads ?? [];
+      if (!list.some(p => p.id === action.payload.id)) return state;
+      return {
+        ...state,
+        campagneLeads: list.map(p => (p.id === action.payload.id ? { ...p, ...action.payload.data } : p)),
+      };
+    }
+
+    case 'UPSERT_CAMPAGNE': {
+      const list = state.campagnes ?? [];
+      const existe = list.some(c => c.id === action.payload.id);
+      return {
+        ...state,
+        campagnes: existe ? list.map(c => (c.id === action.payload.id ? { ...c, ...action.payload } : c)) : [...list, action.payload],
+      };
+    }
+
     case 'ADD_SOCIAL_NETWORK': {
       const list = state.socialNetworks ?? [];
       const { id, name } = action.payload;

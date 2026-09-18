@@ -301,6 +301,21 @@ export const DEFAULT_TEMPLATES: MessageTemplate[] = [
   },
 ];
 
+// LOT SALONS — segments de participation à une campagne. C'est la colonne
+// « Origine » du fichier de suivi du salon : elle dit COMMENT le lead entre dans
+// l'opération, et n'a rien à voir avec `lead.source` (d'où il vient la première
+// fois, immuable). Liste OUVERTE : le champ accepte une autre valeur.
+export const SEGMENTS_CAMPAGNE = [
+  'Emailing Grand Pavois',
+  'Lead site BENETEAU',
+  'Client en portefeuille',
+  'Prospect ancien salon',
+  'Stand-by / devis ancien',
+  'Client atelier / magasin',
+  'Recommandation',
+  'Autre',
+] as const;
+
 export function getStatusLabel(status: LeadStatus): string {
   return LEAD_STATUSES.find(s => s.value === status)?.label ?? status;
 }

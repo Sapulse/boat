@@ -5,6 +5,9 @@ import { USE_API } from '../../lib/flags';
 import Modal from '../ui/Modal';
 import { parseBackupFile, downloadBackup, type BackupEnvelope, type RestoreReport } from '../../lib/backup';
 import { restorePreview, formatAge } from '../../lib/restoreGuard';
+// Marqueur STABLE renvoyé par l'API (api/_lib/http.ts) quand la sauvegarde est
+// antérieure au lot salons : dupliqué ici car src/ n'importe rien de api/.
+const MARQUEUR_SAUVEGARDE_ANTERIEURE = 'SAUVEGARDE_ANTERIEURE_LOT_SALONS';
 
 // Panneau de RESTAURATION d'une sauvegarde JSON (chantier import/export, Étape 5).
 // DESTRUCTIF : remplace TOUTE la base. Mode API uniquement (restoreBackup absent
@@ -34,6 +37,9 @@ export default function RestorePanel() {
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [report, setReport] = useState<RestoreReport | null>(null);
+  // Refus serveur « sauvegarde antérieure au lot salons » : le message porte le
+  // nombre de participations et le nom de la campagne.
+  const [refusCampagnes, setRefusCampagnes] = useState<string | null>(null);
   // Trace PERSISTANTE de l'export de sécurité : pendant toute la manœuvre,
   // l'utilisateur doit pouvoir vérifier d'un coup d'œil qu'il est couvert.
   const [safetyExportAt, setSafetyExportAt] = useState<Date | null>(null);
@@ -66,18 +72,27 @@ export default function RestorePanel() {
     setSafetyExportAt(new Date());
   };
 
-  const runRestore = async () => {
+  const runRestore = async (accepterPerteCampagnes = false) => {
     if (!envelope || !restoreBackup) return;
     setRestoring(true);
     setRestoreError(null);
+    setRefusCampagnes(null);
     try {
-      const rep = await restoreBackup(envelope);
+      const rep = await restoreBackup(envelope, accepterPerteCampagnes ? { accepterPerteCampagnes } : undefined);
       setReport(rep);
       setEnvelope(null);
       setFileName(null);
       setConfirmOpen(false);
     } catch (e) {
-      setRestoreError((e as Error).message);
+      const message = (e as Error).message;
+      // Refus SERVEUR « sauvegarde antérieure au lot salons » : ce n'est pas une
+      // panne, c'est une question. On montre le décompte et on demande un OUI
+      // explicite — jamais de perte silencieuse.
+      if (message.startsWith(MARQUEUR_SAUVEGARDE_ANTERIEURE)) {
+        setRefusCampagnes(message.slice(MARQUEUR_SAUVEGARDE_ANTERIEURE.length).replace(/^\s*:\s*/, ''));
+      } else {
+        setRestoreError(message);
+      }
       setConfirmOpen(false);
     } finally {
       setRestoring(false);
@@ -102,6 +117,39 @@ export default function RestorePanel() {
           </p>
         </div>
       </div>
+
+      {/* LOT SALONS — refus serveur : la sauvegarde est antérieure au lot et la
+          base contient du travail de campagne. On affiche le décompte exact et
+          on exige un OUI explicite ; sinon on en reste là. */}
+      {refusCampagnes && (
+        <div className="rounded-lg bg-red-50 border border-red-300 px-4 py-3 space-y-3" data-testid="restore-refus-campagnes">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-semibold">Restauration interrompue</p>
+              <p className="mt-1">{refusCampagnes}</p>
+              <p className="mt-1 text-xs">
+                Ce fichier ne contient pas le travail de la campagne. Si vous continuez, il sera perdu.
+                Pour le garder : exportez d'abord les participations (voir docs/DEPLOIEMENT.md).
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => setRefusCampagnes(null)}>
+              Annuler (garder la campagne)
+            </button>
+            <button
+              type="button"
+              className="btn-primary btn-sm bg-red-600 hover:bg-red-700"
+              disabled={restoring}
+              onClick={() => runRestore(true)}
+              data-testid="restore-confirmer-perte"
+            >
+              Restaurer quand même et perdre la campagne
+            </button>
+          </div>
+        </div>
+      )}
 
       {report && (
         <div className="rounded-lg bg-green-50 border border-green-300 px-4 py-3 flex items-start gap-3">
@@ -277,6 +325,21 @@ export default function RestorePanel() {
               </p>
             </div>
 
+            {/* 5 bis. LOT SALONS : le travail du salon qui disparaîtrait. Une
+                sauvegarde prise avant le lot ne porte AUCUNE participation :
+                sans cet encart, la campagne partirait sans un mot. */}
+            {preview.participationsPerdues > 0 && (
+              <p className="text-sm text-red-800 bg-red-50 border border-red-300 rounded p-3 flex items-start gap-2" data-testid="restore-perte-campagne">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  <strong>{preview.participationsPerdues} participation{preview.participationsPerdues > 1 ? 's' : ''}</strong> à la campagne
+                  {preview.campagneTouchee ? <> « <strong>{preview.campagneTouchee}</strong> »</> : null} {preview.participationsPerdues > 1 ? 'seront supprimées' : 'sera supprimée'}.
+                  Cette sauvegarde est <strong>antérieure au lot Salons</strong> : elle ne contient pas le travail de la campagne
+                  (appels passés, RDV pris, statuts de relance).
+                </span>
+              </p>
+            )}
+
             {/* 6. Ce que la restauration ne couvre PAS. */}
             <p className="text-xs text-gray-500 inline-flex items-start gap-1.5">
               <Inbox className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -302,7 +365,7 @@ export default function RestorePanel() {
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setConfirmOpen(false)} disabled={restoring} className="btn-secondary btn-sm">Annuler</button>
               <button
-                onClick={runRestore}
+                onClick={() => runRestore()}
                 disabled={restoring || confirmText.trim() !== preview.confirmWord}
                 className="btn-primary btn-sm bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >

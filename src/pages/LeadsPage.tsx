@@ -2,10 +2,12 @@ import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeadClickProps } from '../hooks/useOpenLead';
 import LeadLink from '../components/leads/LeadLink';
-import { Search, Plus, Download, Check, Eye, Phone, Bookmark, Upload } from 'lucide-react';
+import { Search, Plus, Download, Check, Eye, Phone, Bookmark, Upload, Megaphone } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { useNextActionFlow } from '../context/useNextActionFlow';
 import { needsPlanning } from '../lib/plannedActions';
+import { campagneParDefaut } from '../lib/campagnes';
+import AjouterALaCampagne from '../components/campagnes/AjouterALaCampagne';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import Modal from '../components/ui/Modal';
@@ -44,6 +46,15 @@ export default function LeadsPage() {
   // Rattachement des contacts importés (obligatoire) : commercial cible + source.
   const [importCommercialId, setImportCommercialId] = useState(() => state.commercials.find(c => c.active)?.id ?? '');
   const [importSource, setImportSource] = useState('Recommandation');
+
+  // LOT SALONS (S2a) — sélection multiple pour l'ajout en masse à une campagne.
+  // La sélection porte sur des IDS : elle survit au tri, aux filtres et à la
+  // pagination progressive (on ne coche pas « ce qui est affiché », on coche des
+  // leads). « Tout sélectionner » agit sur le RÉSULTAT FILTRÉ COURANT, pas sur
+  // les 50 premières lignes affichées.
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [ajoutCampagneOuvert, setAjoutCampagneOuvert] = useState(false);
+  const campagneActive = useMemo(() => campagneParDefaut(state.campagnes), [state.campagnes]);
 
   const [search, setSearch] = useState('');
   // Filtres initialisables par l'URL : les liens KPI du Dashboard propagent
@@ -154,6 +165,16 @@ export default function LeadsPage() {
     setVisibleCount(PAGE_SIZE);
   }
   const visible = filtered.length > visibleCount ? filtered.slice(0, visibleCount) : filtered;
+
+  // Sélection : bascule d'un lead, tout le résultat filtré, ou rien.
+  const basculerSelection = (id: string) => setSelection(prev => {
+    const suivant = new Set(prev);
+    if (suivant.has(id)) suivant.delete(id); else suivant.add(id);
+    return suivant;
+  });
+  const toutSelectionner = () => setSelection(new Set(filtered.map(l => l.id)));
+  const viderSelection = () => setSelection(new Set());
+  const toutEstSelectionne = filtered.length > 0 && filtered.every(l => selection.has(l.id));
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -291,6 +312,34 @@ export default function LeadsPage() {
         {filtered.length} lead(s){filtered.length > visible.length ? ` — ${visible.length} affichés` : ''}
       </div>
 
+      {/* LOT SALONS : barre d'ajout en masse. Elle n'apparaît QUE s'il existe une
+          campagne (sinon elle n'aurait nulle part où envoyer) et dès qu'un lead
+          est coché. Sur mobile, elle reste en bas d'écran, à portée de pouce. */}
+      {campagneActive && selection.size > 0 && (
+        <div
+          className="sticky bottom-0 sm:static z-10 card p-3 flex flex-wrap items-center gap-2 border-primary-200 bg-primary-50"
+          data-testid="barre-selection"
+        >
+          <span className="text-sm font-medium text-gray-800">
+            {selection.size} sélectionné{selection.size > 1 ? 's' : ''}
+          </span>
+          {!toutEstSelectionne && (
+            <button type="button" className="btn-secondary btn-sm" onClick={toutSelectionner}>
+              Tout sélectionner ({filtered.length})
+            </button>
+          )}
+          <button type="button" className="btn-secondary btn-sm" onClick={viderSelection}>Vider</button>
+          <button
+            type="button"
+            className="btn-primary btn-sm ml-auto"
+            onClick={() => setAjoutCampagneOuvert(true)}
+            data-testid="ouvrir-ajout-campagne"
+          >
+            <Megaphone className="w-4 h-4" /> Ajouter à la campagne
+          </button>
+        </div>
+      )}
+
       {/* MOBILE (< 640px) : CARTES — le tableau à 12 colonnes (~1120px)
           imposait un long défilement latéral au doigt (audit mobile). Mêmes
           données, mêmes actions (tap -> fiche, tél avec confirmation de
@@ -302,11 +351,22 @@ export default function LeadsPage() {
             const days = daysSince(lead.lastActionDate || lead.createdAt);
             const nextAction = ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label;
             return (
+              <div key={lead.id} className="flex items-start gap-2 px-2 active:bg-gray-50">
+                {campagneActive && (
+                  <label className="pt-4 pl-2 shrink-0" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="w-5 h-5 cursor-pointer"
+                      checked={selection.has(lead.id)}
+                      onChange={() => basculerSelection(lead.id)}
+                      aria-label={`Sélectionner ${getLeadFullName(lead)}`}
+                    />
+                  </label>
+                )}
               <div
-                key={lead.id}
                 tabIndex={0}
                 {...leadClick(lead.id)}
-                className="px-4 py-3 active:bg-gray-50 cursor-pointer"
+                className="flex-1 min-w-0 px-2 py-3 cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <AlertDot level={alert} />
@@ -348,6 +408,7 @@ export default function LeadsPage() {
                   </span>
                 </div>
               </div>
+              </div>
             );
           })}
           {filtered.length === 0 && (
@@ -362,6 +423,18 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
+                {campagneActive && (
+                  <th className="px-3 py-3 text-left font-medium text-gray-600 w-8">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 cursor-pointer"
+                      checked={toutEstSelectionne}
+                      onChange={() => (toutEstSelectionne ? viderSelection() : toutSelectionner())}
+                      aria-label={`Tout sélectionner (${filtered.length} leads du résultat filtré)`}
+                      title={`Tout sélectionner (${filtered.length})`}
+                    />
+                  </th>
+                )}
                 <th className="px-3 py-3 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort('name')}>
                   <span className="inline-flex items-center gap-1">Nom <SortIcon field="name" sortField={sortField} sortDir={sortDir} /></span>
@@ -399,6 +472,17 @@ export default function LeadsPage() {
                 const nextAction = ACTION_TYPES.find(a => a.value === lead.nextActionType)?.label;
                 return (
                   <tr key={lead.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
+                    {campagneActive && (
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 cursor-pointer"
+                          checked={selection.has(lead.id)}
+                          onChange={() => basculerSelection(lead.id)}
+                          aria-label={`Sélectionner ${getLeadFullName(lead)}`}
+                        />
+                      </td>
+                    )}
                     <td className="px-3 py-2.5"><AlertDot level={alert} /></td>
                     <td tabIndex={0} className="px-3 py-2.5 cursor-pointer" {...leadClick(lead.id)}>
                       <div className="font-medium text-gray-900">{getLeadFullName(lead)}</div>
@@ -555,6 +639,17 @@ export default function LeadsPage() {
           </div>
         )}
       </Modal>
+
+      {/* LOT SALONS : ajout en masse. La sélection est vidée après un ajout
+          réussi — on ne laisse pas 200 cases cochées derrière soi. */}
+      {campagneActive && (
+        <AjouterALaCampagne
+          open={ajoutCampagneOuvert}
+          onClose={() => setAjoutCampagneOuvert(false)}
+          leadIds={[...selection]}
+          onAjoute={() => viderSelection()}
+        />
+      )}
     </div>
   );
 }

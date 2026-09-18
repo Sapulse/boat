@@ -2,6 +2,7 @@ import type { Dispatch } from 'react';
 import type {
   AppState, Lead, LeadAction, LeadStatus, MonthlyStat, MessageTemplate,
   ActionType, CalendarEvent, CommercialGoal, DefaultGoal, Commercial, TemplateCategory, SocialStat,
+  Campagne, CampagneLead,
 } from '../data/types';
 import type { Action } from '../context/appReducer';
 import type { TemplatePlacement } from './templateLayout';
@@ -64,7 +65,7 @@ export interface CrmRepository {
   bulkImport?(payload: ImportPayload): Promise<ImportReport>;
   // Restauration d'une sauvegarde (impl API uniquement, Étape 5) : POST
   // /api/restore, REMPLACEMENT TOTAL atomique HORS OUTBOX. Absent en localStorage.
-  restore?(payload: BackupEnvelope): Promise<RestoreReport>;
+  restore?(payload: BackupEnvelope, opts?: { accepterPerteCampagnes?: boolean }): Promise<RestoreReport>;
   // Auth compte unique partagé (impl API uniquement, Lot 7 allégé). Absent en
   // localStorage (aucun login en flag off).
   checkSession?(): Promise<boolean>;
@@ -123,6 +124,15 @@ export interface CrmRepository {
   setSocialNetworkArchived(id: string, archived: boolean): void;
   /** Lignes nouvelles ou modifiées (lib/social.buildSave), upsert par (réseau, année, mois). */
   saveSocialStats(rows: SocialStat[]): void;
+
+  // — Campagnes (lot salons) —
+  // AUCUNE de ces méthodes n'écrit dans un lead : la source reste immuable.
+  /** Ajout EN MASSE de participations (déjà préparées par lib/campagnes). */
+  addCampagneLeads(participations: CampagneLead[]): void;
+  /** Édition en ligne d'une participation (statut, priorité, responsable…). */
+  updateCampagneLead(id: string, data: Partial<CampagneLead>): void;
+  /** Création / mise à jour d'une campagne (dates du salon, objectif). */
+  upsertCampagne(campagne: Campagne): void;
 
   // — Événements d'agenda libres —
   addCalendarEvent(event: Omit<CalendarEvent, 'id'>): string;
@@ -219,6 +229,10 @@ export function createLocalStorageRepository(dispatch: Dispatch<Action>): CrmRep
     setSocialNetworkArchived: (id, archived) => dispatch({ type: 'SET_SOCIAL_NETWORK_ARCHIVED', payload: { id, archived } }),
     saveSocialStats: (rows) => dispatch({ type: 'SAVE_SOCIAL_STATS', payload: rows }),
 
+    addCampagneLeads: (participations) => dispatch({ type: 'ADD_CAMPAGNE_LEADS', payload: participations }),
+    updateCampagneLead: (id, data) => dispatch({ type: 'UPDATE_CAMPAGNE_LEAD', payload: { id, data } }),
+    upsertCampagne: (campagne) => dispatch({ type: 'UPSERT_CAMPAGNE', payload: campagne }),
+
     addCalendarEvent: (event) => {
       const id = generateId();
       dispatch({ type: 'ADD_CALENDAR_EVENT', payload: { ...event, id } });
@@ -266,6 +280,7 @@ export function getEmptyState(): AppState {
     templates: [], calendarEvents: [], goals: [], defaultGoal: EMPTY_DEFAULT_GOAL,
     plannedActions: [],
     socialNetworks: [], socialStats: [],
+    campagnes: [], campagneLeads: [],
   };
 }
 
@@ -310,7 +325,12 @@ type Intent =
   // Lot 5 : stats des réseaux sociaux — SEULES les lignes enregistrées (clés
   // réseau|année|mois), relues post-reducer : un poste en retard ne réécrit
   // jamais les autres mois. Résolu à null si le reducer a refusé.
-  | { kind: 'social-stats'; entity: 'social-stats'; keys: string[] };
+  | { kind: 'social-stats'; entity: 'social-stats'; keys: string[] }
+  // Lot salons : l'ajout en masse part en UN seul POST (le serveur ignore en
+  // silence les leads déjà participants) ; l'édition en ligne part en PATCH.
+  | { kind: 'campagne-leads-add'; entity: 'campagne-leads'; ids: string[] }
+  | { kind: 'campagne-lead-update'; entity: 'campagne-leads'; id: string }
+  | { kind: 'campagne-upsert'; entity: 'campagnes'; id: string };
 
 const COLLECTION: Record<EntityName, (s: AppState) => ReadonlyArray<{ id: string }>> = {
   leads: s => s.leads,
@@ -443,6 +463,22 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       const rows = (state.socialStats ?? []).filter(s => keys.has(statKey(s)));
       if (rows.length === 0) return null;
       return { op: { method: 'PUT', path: '/social-stats', body: rows, entity: 'social-stats', label: `Réseaux sociaux — ${rows.length} mois enregistré${rows.length > 1 ? 's' : ''}` } };
+    }
+    if (intent.kind === 'campagne-leads-add') {
+      const ids = new Set(intent.ids);
+      const rows = (state.campagneLeads ?? []).filter(p => ids.has(p.id));
+      if (rows.length === 0) return null; // le reducer a tout écarté (déjà participants)
+      return { op: { method: 'POST', path: '/campagne-leads', body: rows, entity: 'campagne-leads', label: `Campagne — ${rows.length} participant${rows.length > 1 ? 's' : ''} ajouté${rows.length > 1 ? 's' : ''}` } };
+    }
+    if (intent.kind === 'campagne-lead-update') {
+      const row = (state.campagneLeads ?? []).find(p => p.id === intent.id);
+      if (!row) return null;
+      return { op: { method: 'PATCH', path: `/campagne-leads/${row.id}`, body: row, entity: 'campagne-leads', entityId: row.id, label: 'Campagne — participant mis à jour' } };
+    }
+    if (intent.kind === 'campagne-upsert') {
+      const c = (state.campagnes ?? []).find(x => x.id === intent.id);
+      if (!c) return null;
+      return { op: { method: 'PUT', path: `/campagnes/${c.id}`, body: c, entity: 'campagnes', entityId: c.id, label: `Campagne « ${c.nom} » — enregistrement` } };
     }
     if (intent.kind === 'batch') {
       const body = intent.entity === 'goals' ? state.goals
@@ -642,11 +678,15 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
 
   // Restauration : appel DIRECT (hors outbox), REMPLACEMENT TOTAL atomique côté
   // serveur. Timeout large ; message d'erreur clair (transaction -> « rien à moitié »).
-  const restore = async (payload: BackupEnvelope): Promise<RestoreReport> => {
+  const restore = async (payload: BackupEnvelope, opts: { accepterPerteCampagnes?: boolean } = {}): Promise<RestoreReport> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 60_000);
     try {
-      const res = await fetchImpl(`${baseUrl}/restore`, {
+      // Lot salons : le serveur REFUSE une sauvegarde antérieure au lot tant que
+      // la base contient des participations. L'écran affiche le refus (nombre +
+      // campagne) et ne repasse ici qu'avec la confirmation explicite.
+      const suffixe = opts.accepterPerteCampagnes ? '?perte-campagnes=acceptee' : '';
+      const res = await fetchImpl(`${baseUrl}/restore${suffixe}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: CREDS,
@@ -821,6 +861,12 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       return newId;
     },
 
+    addCampagneLeads: (participations) => {
+      base.addCampagneLeads(participations);
+      remember({ kind: 'campagne-leads-add', entity: 'campagne-leads', ids: participations.map(p => p.id) });
+    },
+    updateCampagneLead: (id, data) => { base.updateCampagneLead(id, data); remember({ kind: 'campagne-lead-update', entity: 'campagne-leads', id }); },
+    upsertCampagne: (campagne) => { base.upsertCampagne(campagne); remember({ kind: 'campagne-upsert', entity: 'campagnes', id: campagne.id }); },
     addSocialNetwork: (name) => { const id = base.addSocialNetwork(name); remember({ kind: 'batch', entity: 'social-networks' }); return id; },
     renameSocialNetwork: (id, name) => { base.renameSocialNetwork(id, name); remember({ kind: 'batch', entity: 'social-networks' }); },
     setSocialNetworkArchived: (id, archived) => { base.setSocialNetworkArchived(id, archived); remember({ kind: 'batch', entity: 'social-networks' }); },

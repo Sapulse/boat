@@ -112,6 +112,31 @@ section('Âge du fichier');
   check('date FUTURE (horloge fausse) -> âge inconnu, pas de négatif affiché', future.ageDays === null && future.stale);
 }
 
+section('Lot salons : une sauvegarde antérieure fait DISPARAÎTRE la campagne');
+{
+  // Mêmes leads des deux côtés : rien ne disparaît… sauf le travail du salon.
+  const cur = {
+    ...state(['a', 'b']),
+    campagnes: [{ id: 'camp', nom: 'Grand Pavois 2026', type: 'salon' as const, lieu: 'La Rochelle', dateDebut: '2026-09-18', dateFin: '', dateSalonDebut: '', dateSalonFin: '', objectifRdv: null, active: true }],
+    campagneLeads: [
+      { id: 'p1', campagneId: 'camp', leadId: 'a', responsableId: 'n', segment: '', priorite: 'Haute' as const, statutCampagne: 'À contacter' as const, bateauxAVoir: '', notes: '' },
+      { id: 'p2', campagneId: 'camp', leadId: 'b', responsableId: 'n', segment: '', priorite: 'Basse' as const, statutCampagne: 'RDV confirmé' as const, bateauxAVoir: '', notes: '' },
+    ],
+  };
+  const vieilleSauvegarde = state(['a', 'b']); // pas de clé campagnes : fichier d'avant le lot
+  const p = restorePreview(cur, vieilleSauvegarde, NOW.toISOString(), NOW);
+  check('aucun lead perdu, et pourtant la restauration est DESTRUCTIVE', p.leadsRemoved === 0 && p.destructive === true);
+  check('les participations perdues sont comptées', p.participationsPerdues === 2);
+  check('la campagne touchée est nommée', p.campagneTouchee === 'Grand Pavois 2026');
+  check('il faut taper le NOMBRE de participations perdues (pas un mot appris par cœur)', p.confirmWord === '2');
+  check("l'étiquette du champ dit ce qu'on détruit", /participations/i.test(p.confirmHint), p.confirmHint);
+
+  // Même fichier, mais qui porte les participations : rien ne se perd.
+  const memeContenu = { ...vieilleSauvegarde, campagnes: cur.campagnes, campagneLeads: cur.campagneLeads };
+  const q = restorePreview(cur, memeContenu, NOW.toISOString(), NOW);
+  check('sauvegarde À JOUR : aucune participation perdue, confirmation normale', q.participationsPerdues === 0 && q.destructive === false);
+}
+
 section('Tableau récapitulatif avant/après');
 {
   const cur = state(['a', 'b', 'c']);
@@ -119,7 +144,9 @@ section('Tableau récapitulatif avant/après');
   const p = restorePreview(cur, inc, NOW.toISOString(), NOW);
   const leads = p.rows.find(r => r.label === 'Leads');
   check('ligne Leads : 3 -> 1', leads?.before === 3 && leads?.after === 1);
-  check('toutes les entités de AppState sont couvertes (lot 5 : stats réseaux sociaux)', p.rows.length === 8 && p.rows.some(r => r.label === 'Stats réseaux sociaux'), `${p.rows.length} lignes`);
+  check('toutes les entités de AppState sont couvertes (lot 5 : stats réseaux sociaux ; lot salons : participations)',
+    p.rows.length === 9 && p.rows.some(r => r.label === 'Stats réseaux sociaux') && p.rows.some(r => r.label === 'Participations aux campagnes'),
+    `${p.rows.length} lignes`);
   check('aucune ligne sans libellé', p.rows.every(r => r.label.length > 0));
 }
 

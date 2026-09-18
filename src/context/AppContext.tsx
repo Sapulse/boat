@@ -206,9 +206,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     // Restauration (mode API) : REMPLACE tout en base PUIS ré-hydrate l'écran.
-    async function runRestore(payload: BackupEnvelope): Promise<RestoreReport> {
+    async function runRestore(payload: BackupEnvelope, opts?: { accepterPerteCampagnes?: boolean }): Promise<RestoreReport> {
       if (!repository.restore) throw new Error('Restauration indisponible en mode local.');
-      const report = await repository.restore(payload);
+      const report = await repository.restore(payload, opts);
       if (repository.hydrate) dispatch({ type: 'SET_STATE', payload: await repository.hydrate() });
       return report;
     }
@@ -250,6 +250,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       renameSocialNetwork: repository.renameSocialNetwork,
       setSocialNetworkArchived: repository.setSocialNetworkArchived,
       saveSocialStats: repository.saveSocialStats,
+      // Lot salons : aucune de ces trois ne touche à un lead.
+      addCampagneLeads: repository.addCampagneLeads,
+      updateCampagneLead: repository.updateCampagneLead,
+      upsertCampagne: repository.upsertCampagne,
       addCalendarEvent: repository.addCalendarEvent,
       updateCalendarEvent: repository.updateCalendarEvent,
       deleteCalendarEvent: repository.deleteCalendarEvent,
