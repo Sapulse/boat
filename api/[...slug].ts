@@ -14,6 +14,7 @@ import {
   bulkImport, type ImportPayload,
   restoreBackup, type RestorePayload,
   bumpLoginAttempt, clearLoginAttempt, purgeOldLoginAttempts,
+  upsertCampagne, updateCampagne, addCampagneLeads, updateCampagneLead, deleteCampagneLead,
 } from './_lib/store.js';
 import {
   clientIp, windowBucket, windowStartSec, attemptKey, isRateLimited,
@@ -24,7 +25,7 @@ import { collectInbound, listInbound, listProcessedInbound, patchInbound, comput
 import { parseProcessedQuery } from '../src/lib/inbound.js';
 import type {
   Lead, LeadAction, Commercial, MessageTemplate,
-  CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal,
+  CalendarEvent, CommercialGoal, MonthlyStat, DefaultGoal, CampagneLead,
 } from '../src/data/types.js';
 
 // Fonction API UNIQUE (chantier migration, Lot 4 — regroupement). Vercel route
@@ -66,6 +67,20 @@ async function dispatch(req: VercelRequest, res: VercelResponse, resource: strin
     case 'commercials':
       if (!id && m === 'POST') return sendJson(res, 201, await createCommercial(prisma, body<Commercial>(req)));
       if (id && m === 'PATCH') return sendJson(res, 200, await updateCommercial(prisma, id, body<Partial<Commercial>>(req)));
+      break;
+
+    // Lot salons. `campagne-leads` en POST = ajout EN MASSE idempotent (un lead
+    // déjà participant est ignoré en silence). Aucune de ces routes n'écrit
+    // dans un lead : la source est immuable.
+    case 'campagnes':
+      if (id && m === 'PUT') return sendJson(res, 200, await upsertCampagne(prisma, id, body(req)));
+      if (id && m === 'PATCH') return sendJson(res, 200, await updateCampagne(prisma, id, body(req)));
+      break;
+
+    case 'campagne-leads':
+      if (!id && m === 'POST') return sendJson(res, 201, await addCampagneLeads(prisma, body(req)));
+      if (id && m === 'PATCH') return sendJson(res, 200, await updateCampagneLead(prisma, id, body<Partial<CampagneLead>>(req)));
+      if (id && m === 'DELETE') { await deleteCampagneLead(prisma, id); return sendEmpty(res, 204); }
       break;
 
     case 'template-layout':

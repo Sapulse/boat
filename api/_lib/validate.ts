@@ -314,6 +314,56 @@ export const parseWeeklyObjectiveUpsert = (d: unknown) => parse(WeeklyObjectiveS
 export const parseSocialNetworksBatch = (d: unknown) => parse(SocialNetworksBatch, d, 'réseaux sociaux');
 export const parseSocialStatsBatch = (d: unknown) => parse(SocialStatsBatch, d, 'stats des réseaux sociaux');
 
+// --- Lot salons : campagnes et participations -------------------------------
+// Enums dupliqués ici comme partout dans ce fichier (api/ n'importe rien de src/
+// au runtime). Source de vérité : src/data/types.ts.
+const CAMPAGNE_TYPES = ['salon', 'emailing', 'phoning', 'autre'] as const;
+const CAMPAGNE_PRIORITES = ['Haute', 'Moyenne', 'Basse'] as const;
+const CAMPAGNE_STATUTS = [
+  'À contacter', 'Contacté sans retour', 'Échange en cours', 'RDV confirmé',
+  'À relancer après salon', 'Projet reporté', 'Injoignable', 'Pas intéressé',
+] as const;
+// Dates : `dateOrEmpty` (déjà défini plus haut) — '' = non renseignée, même
+// idiome que les dates du lead.
+const campagneShape = {
+  id,
+  nom: z.string().trim().min(1, 'nom requis').max(SHORT_MAX),
+  type: z.enum(CAMPAGNE_TYPES),
+  lieu: shortStr,
+  dateDebut: dateOrEmpty,
+  dateFin: dateOrEmpty,
+  dateSalonDebut: dateOrEmpty,
+  dateSalonFin: dateOrEmpty,
+  objectifRdv: z.number().int().min(0).max(100_000).nullable(),
+  active: z.boolean(),
+};
+const CampagneSchema = z.object(campagneShape);
+const CampagnePatch = z.object(campagneShape).omit({ id: true }).partial();
+
+const campagneLeadShape = {
+  id,
+  campagneId: id,
+  leadId: id,
+  responsableId: id,
+  segment: shortStr,
+  priorite: z.enum(CAMPAGNE_PRIORITES),
+  statutCampagne: z.enum(CAMPAGNE_STATUTS),
+  bateauxAVoir: shortStr,
+  notes: z.string().max(5_000, 'notes trop longues (max 5000)'),
+};
+const CampagneLeadSchema = z.object(campagneLeadShape);
+/** Ajout EN MASSE : le champ `source` d'un lead n'est jamais transporté ici — il n'est pas dans le schéma. */
+const CampagneLeadsBatch = z.array(CampagneLeadSchema).max(BATCH_MAX).superRefine((list, ctx) => {
+  const seen = new Set<string>();
+  for (const p of list) {
+    const key = `${p.campagneId}|${p.leadId}`;
+    if (seen.has(key)) ctx.addIssue({ code: 'custom', message: `doublon (campagne, lead) : ${key}` });
+    seen.add(key);
+  }
+});
+/** Édition en ligne : statut, priorité, responsable, segment, bateaux, notes. Jamais campagneId/leadId. */
+const CampagneLeadPatch = z.object(campagneLeadShape).omit({ id: true, campagneId: true, leadId: true }).partial();
+
 // Restauration d'une sauvegarde complète (chantier import/export, Étape 5).
 // Enveloppe versionnée { format, version, data: AppState } : format/version stricts
 // (rejet clair si non reconnu) + CHAQUE entité validée par son schéma (ids inclus,
@@ -341,6 +391,13 @@ const RestoreEnvelopeSchema = z.object({
     // Lot 5 : absents des sauvegardes d'avant le lot 5 -> réseaux par défaut (restauration), aucune stat.
     socialNetworks: SocialNetworksBatch.optional(),
     socialStats: z.array(SocialStatSchema).max(RESTORE_MAX).optional().default([]),
+    // Lot salons : absents des sauvegardes d'avant le lot -> aucune campagne.
+    campagnes: z.array(CampagneSchema).max(RESTORE_MAX).optional().default([]),
+    campagneLeads: z.array(CampagneLeadSchema).max(RESTORE_MAX).optional().default([]),
   }),
 });
 export const parseRestorePayload = (d: unknown) => parse(RestoreEnvelopeSchema, d, 'sauvegarde');
+export const parseCampagneUpsert = (d: unknown) => parse(CampagneSchema, d, 'campagne');
+export const parseCampagnePatch = (d: unknown) => parse(CampagnePatch, d, 'campagne');
+export const parseCampagneLeadsBatch = (d: unknown) => parse(CampagneLeadsBatch, d, 'participations');
+export const parseCampagneLeadPatch = (d: unknown) => parse(CampagneLeadPatch, d, 'participation');

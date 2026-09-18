@@ -274,6 +274,81 @@ export interface SocialStat {
   comment: string;
 }
 
+// ---------------------------------------------------------------------------
+// LOT SALONS — campagnes.
+//
+// SOURCE ≠ CAMPAGNE. `Lead.source` dit d'où vient le lead la PREMIÈRE fois :
+// immuable, une seule valeur, aucune opération de campagne ne l'écrit.
+// Une campagne est une OPÉRATION COMMERCIALE dans laquelle on embarque des
+// leads ; un lead peut participer à plusieurs campagnes dans le temps.
+// ---------------------------------------------------------------------------
+
+export type CampagneType = 'salon' | 'emailing' | 'phoning' | 'autre';
+
+/**
+ * Campagne. DEUX PAIRES DE DATES, volontairement distinctes :
+ *  - dateDebut / dateFin : période d'ACTIVITÉ (préparation comprise) — borne les
+ *    compteurs dérivés (appels, emails, dernier contact) ;
+ *  - dateSalonDebut / dateSalonFin : jours du SALON — bornent les RDV du stand.
+ * Les confondre remettrait les compteurs à zéro le matin de l'ouverture.
+ * '' = date non renseignée (idiome du projet, comparable en chaîne).
+ */
+export interface Campagne {
+  id: string;
+  nom: string;
+  type: CampagneType;
+  lieu: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSalonDebut: string;
+  dateSalonFin: string;
+  /** null = aucun objectif fixé. */
+  objectifRdv: number | null;
+  active: boolean;
+}
+
+export const CAMPAGNE_PRIORITES = ['Haute', 'Moyenne', 'Basse'] as const;
+export type CampagnePriorite = (typeof CAMPAGNE_PRIORITES)[number];
+
+/** Statuts de relance (liste FERMÉE, alignée sur le fichier de suivi du salon). */
+export const CAMPAGNE_STATUTS = [
+  'À contacter',
+  'Contacté sans retour',
+  'Échange en cours',
+  'RDV confirmé',
+  'À relancer après salon',
+  'Projet reporté',
+  'Injoignable',
+  'Pas intéressé',
+] as const;
+export type CampagneStatut = (typeof CAMPAGNE_STATUTS)[number];
+export const CAMPAGNE_STATUT_DEFAUT: CampagneStatut = 'À contacter';
+
+/**
+ * Participation d'un lead à une campagne (unique par campagne + lead).
+ *
+ * CE QUI N'EST PAS ICI, ET POURQUOI :
+ *  - niveau d'intérêt : doublon de `Lead.temperature`, on lit la température ;
+ *  - date / heure de RDV : un RDV du stand est une action programmée de la v4
+ *    (PlannedAction porte déjà time / endTime) — le stocker ici créerait deux
+ *    vérités ;
+ *  - nb d'appels / d'emails, dernier contact : DÉRIVÉS de l'historique sur la
+ *    fenêtre de campagne (lib/campagnes), jamais stockés, jamais saisis.
+ */
+export interface CampagneLead {
+  id: string;
+  campagneId: string;
+  leadId: string;
+  /** Responsable DE LA CAMPAGNE : peut différer du commercial assigné au lead. */
+  responsableId: string;
+  /** « Origine » du fichier de suivi (Emailing, Client en portefeuille…) : donnée de la PARTICIPATION, jamais une source. */
+  segment: string;
+  priorite: CampagnePriorite;
+  statutCampagne: CampagneStatut;
+  bateauxAVoir: string;
+  notes: string;
+}
+
 export type CalendarEventCategory ='reunion' | 'conge' | 'deplacement' | 'perso' | 'autre';
 
 /**
@@ -430,4 +505,8 @@ export interface AppState {
   // d'avant le lot 5 -> 3 réseaux par défaut, aucune stat.
   socialNetworks?: SocialNetwork[];
   socialStats?: SocialStat[];
+  // Campagnes et participations (lot salons). Absent des anciens states et des
+  // sauvegardes d'avant le lot -> [] (aucune campagne).
+  campagnes?: Campagne[];
+  campagneLeads?: CampagneLead[];
 }

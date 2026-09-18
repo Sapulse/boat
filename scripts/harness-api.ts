@@ -45,8 +45,8 @@ function section(title: string) { console.log(`\n— ${title}`); }
 
 function migrationSql(): string {
   const dir = path.resolve('prisma/migrations');
-  // Schéma métier = init + lot 2 (actions programmées) + lot 3 (rangement des modèles) + lot 4 (objectifs de la semaine) + lot 5 (réseaux sociaux).
-  return ['_init_crm_schema', '_lot2_planned_actions', '_lot3_template_layout', '_lot4_weekly_objectives', '_lot5_social'].map(suffix => {
+  // Schéma métier = init + lots 2 à 5 + lot salons (campagnes) : le store courant les lit tous.
+  return ['_init_crm_schema', '_lot2_planned_actions', '_lot3_template_layout', '_lot4_weekly_objectives', '_lot5_social', '_lot_salons_campagnes'].map(suffix => {
     const sub = readdirSync(dir).find(d => d.endsWith(suffix));
     if (!sub) throw new Error(`migration ${suffix} introuvable`);
     return readFileSync(path.join(dir, sub, 'migration.sql'), 'utf-8');

@@ -20,6 +20,7 @@ import {
 } from './apply-template-layout-turso';
 import { applyWeeklyObjectivesSchema } from './apply-weekly-objectives-turso';
 import { applySocialSchema } from './apply-social-turso';
+import { applyCampagnesSchema } from './apply-campagnes-turso';
 import { fingerprint } from './apply-planned-actions-turso';
 import { getState, detectSchema, saveTemplateLayout, createTemplate, updateTemplate, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
@@ -122,6 +123,7 @@ async function main() {
   // Le lot 4 passe juste après (script 4) ; le code courant lit sa table.
   await applyWeeklyObjectivesSchema(db);
   await applySocialSchema(db);
+  await applyCampagnesSchema(db); // lot salons : le store courant lit campagnes/campagne_leads
   db.close();
 
   section('API (store) sur la base migrée');

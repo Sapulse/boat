@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type {
   AppState, Lead, LeadAction, Commercial, MessageTemplate,
   MonthlyStat, CalendarEvent, CommercialGoal, DefaultGoal, GoalMetric, PlannedAction, TemplateCategory, WeeklyObjective,
-  SocialNetwork, SocialStat,
+  SocialNetwork, SocialStat, Campagne, CampagneLead,
 } from '../../src/data/types.js';
 import { HttpError } from './http.js';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +13,7 @@ import {
   parseGoalsBatch, parseMonthlyStatsBatch, parseDefaultGoal, parseImportPayload, parseRestorePayload,
   parsePlannedActionUpsert, parseTemplateLayout, parseWeeklyObjectiveUpsert,
   parseSocialNetworksBatch, parseSocialStatsBatch,
+  parseCampagneUpsert, parseCampagnePatch, parseCampagneLeadsBatch, parseCampagneLeadPatch,
 } from './validate.js';
 // Logique PURE partagée (même patron qu'inboundStore -> lib/inbound) : la reprise
 // des prochaines actions doit être IDENTIQUE côté app, script Turso et restauration.
@@ -195,6 +196,25 @@ function toSocialStat(r: Record<string, unknown>): SocialStat {
   };
 }
 
+/** Lot salons : lignes -> entités. Aucune conversion de date (String ISO de bout en bout). */
+function toCampagne(r: Record<string, unknown>): Campagne {
+  return {
+    id: r.id as string, nom: r.nom as string, type: r.type as Campagne['type'], lieu: (r.lieu as string | null) ?? '',
+    dateDebut: (r.dateDebut as string | null) ?? '', dateFin: (r.dateFin as string | null) ?? '',
+    dateSalonDebut: (r.dateSalonDebut as string | null) ?? '', dateSalonFin: (r.dateSalonFin as string | null) ?? '',
+    objectifRdv: (r.objectifRdv as number | null) ?? null, active: !!r.active,
+  };
+}
+
+function toCampagneLead(r: Record<string, unknown>): CampagneLead {
+  return {
+    id: r.id as string, campagneId: r.campagneId as string, leadId: r.leadId as string,
+    responsableId: r.responsableId as string, segment: (r.segment as string | null) ?? '',
+    priorite: r.priorite as CampagneLead['priorite'], statutCampagne: r.statutCampagne as CampagneLead['statutCampagne'],
+    bateauxAVoir: (r.bateauxAVoir as string | null) ?? '', notes: (r.notes as string | null) ?? '',
+  };
+}
+
 function toWeeklyObjective(r: Record<string, unknown>): WeeklyObjective {
   return {
     id: r.id as string,
@@ -313,13 +333,20 @@ export interface SchemaFeatures {
   templateLayout: boolean;  // lot 3 : catégories + ordre des modèles
   weeklyObjectives: boolean; // lot 4 : objectifs de la semaine
   social: boolean;          // lot 5 : réseaux sociaux
+  campagnes: boolean;       // lot salons : campagnes + participations
 }
-export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true, weeklyObjectives: true, social: true };
+export const ALL_FEATURES: SchemaFeatures = { lot2: true, templateLayout: true, weeklyObjectives: true, social: true, campagnes: true };
 
 export async function detectSchema(prisma: PrismaClient): Promise<SchemaFeatures> {
   const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table'`);
   const has = (t: string) => tables.some(r => r.name === t);
-  return { lot2: has('planned_actions'), templateLayout: has('template_categories'), weeklyObjectives: has('weekly_objectives'), social: has('social_networks') && has('social_stats') };
+  return {
+    lot2: has('planned_actions'),
+    templateLayout: has('template_categories'),
+    weeklyObjectives: has('weekly_objectives'),
+    social: has('social_networks') && has('social_stats'),
+    campagnes: has('campagnes') && has('campagne_leads'),
+  };
 }
 
 /** Colonnes des modèles AVANT le lot 3. */
@@ -332,7 +359,7 @@ const LEGACY_TEMPLATE_SELECT = { id: true, createdAt: true, type: true, title: t
  * `features` (plus fin) : lot par lot ; `schema: 'avant-lot2'` = aucune évolution.
  */
 export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' | 'avant-lot2'; features?: SchemaFeatures } = {}): Promise<AppState> {
-  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false, weeklyObjectives: false, social: false } : ALL_FEATURES);
+  const f: SchemaFeatures = opts.features ?? (opts.schema === 'avant-lot2' ? { lot2: false, templateLayout: false, weeklyObjectives: false, social: false, campagnes: false } : ALL_FEATURES);
   const legacy = !f.lot2;
   const [leads, actions, commercials, monthlyStats, templates, calendarEvents, goals, dg, planned] = await Promise.all([
     legacy ? prisma.lead.findMany({ select: LEGACY_LEAD_SELECT }) : prisma.lead.findMany(),
@@ -354,12 +381,16 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
   const objectives = f.weeklyObjectives ? (await prisma.weeklyObjective.findMany({ orderBy: [{ weekStart: 'asc' }, { position: 'asc' }] })).map(r => toWeeklyObjective(r as unknown as Record<string, unknown>)) : undefined;
   const socialNetworks = f.social ? (await prisma.socialNetwork.findMany({ orderBy: [{ position: 'asc' }, { name: 'asc' }] })).map(r => toSocialNetwork(r as unknown as Record<string, unknown>)) : undefined;
   const socialStats = f.social ? (await prisma.socialStat.findMany({ orderBy: [{ year: 'asc' }, { month: 'asc' }] })).map(r => toSocialStat(r as unknown as Record<string, unknown>)) : undefined;
-  // Évolutions des lots 3 à 5 : présentes seulement si la base les a (sauvegarde d'une base en cours de migration).
+  // Lot salons : campagnes + participations, seulement si la base les a.
+  const campagnes = f.campagnes ? (await prisma.campagne.findMany({ orderBy: [{ dateDebut: 'desc' }, { nom: 'asc' }] })).map(r => toCampagne(r as unknown as Record<string, unknown>)) : undefined;
+  const campagneLeads = f.campagnes ? (await prisma.campagneLead.findMany({ orderBy: { createdAt: 'asc' } })).map(r => toCampagneLead(r as unknown as Record<string, unknown>)) : undefined;
+  // Évolutions des lots 3 à 5 et salons : présentes seulement si la base les a (sauvegarde d'une base en cours de migration).
   const withLayout = <T extends object>(st: T): T => ({
     ...st,
     ...(categories ? { templateCategories: categories } : {}),
     ...(objectives ? { weeklyObjectives: objectives } : {}),
     ...(socialNetworks ? { socialNetworks, socialStats } : {}),
+    ...(campagnes ? { campagnes, campagneLeads } : {}),
   });
   if (legacy) {
     const state = {
@@ -385,6 +416,84 @@ export async function getState(prisma: PrismaClient, opts: { schema?: 'courant' 
     defaultGoal: dg ? toDefaultGoal(dg as Record<string, unknown>) : EMPTY_DEFAULT_GOAL,
     plannedActions: planned.map(p => toPlannedAction(p as unknown as PlannedRow)),
   });
+}
+
+// ---------------------------------------------------------------------------
+// LOT SALONS — campagnes et participations.
+//
+// RÈGLE ABSOLUE DU LOT : aucune de ces fonctions n'écrit dans `leads`. La source
+// d'un lead dit d'où il vient la PREMIÈRE fois ; embarquer un lead dans une
+// campagne est une opération commerciale, pas un changement d'origine.
+// ---------------------------------------------------------------------------
+
+/** Upsert d'une campagne (PUT). Sert au seed et à la saisie des dates du salon. */
+export async function upsertCampagne(prisma: PrismaClient, id: string, body: unknown): Promise<Campagne> {
+  const p = parseCampagneUpsert(body) as Campagne;
+  if (p.id !== id) throw new HttpError(400, 'campagne invalide — id du corps différent de celui du chemin');
+  const cols = {
+    nom: p.nom, type: p.type, lieu: p.lieu, dateDebut: p.dateDebut, dateFin: p.dateFin,
+    dateSalonDebut: p.dateSalonDebut, dateSalonFin: p.dateSalonFin, objectifRdv: p.objectifRdv, active: p.active,
+  };
+  const row = await prisma.campagne.upsert({ where: { id }, create: { id, ...cols }, update: cols });
+  return toCampagne(row as unknown as Record<string, unknown>);
+}
+
+/** PATCH d'une campagne (dates du salon, objectif, archivage). */
+export async function updateCampagne(prisma: PrismaClient, id: string, body: unknown): Promise<Campagne> {
+  const patch = parseCampagnePatch(body);
+  const row = await prisma.campagne.update({ where: { id }, data: patch });
+  return toCampagne(row as unknown as Record<string, unknown>);
+}
+
+/**
+ * AJOUT EN MASSE de participants (POST). Idempotent par (campagne, lead) :
+ * un lead DÉJÀ participant est ignoré EN SILENCE, jamais dupliqué, et sa
+ * participation existante n'est pas réécrite (on ne change pas le segment ni le
+ * responsable d'un travail déjà commencé). Renvoie ce qui a été réellement ajouté
+ * et ce qui a été ignoré, pour que l'écran puisse le dire.
+ */
+export async function addCampagneLeads(prisma: PrismaClient, body: unknown): Promise<{ ajoutes: CampagneLead[]; ignores: string[] }> {
+  const list = parseCampagneLeadsBatch(body) as CampagneLead[];
+  if (!list.length) return { ajoutes: [], ignores: [] };
+  return prisma.$transaction(async (tx) => {
+    const campagneIds = new Set(list.map(p => p.campagneId));
+    const connues = new Set((await tx.campagne.findMany({ where: { id: { in: [...campagneIds] } }, select: { id: true } })).map(r => r.id));
+    const inconnue = [...campagneIds].find(c => !connues.has(c));
+    if (inconnue) throw new HttpError(400, `campagne inconnue : ${inconnue}`);
+
+    const existantes = new Set(
+      (await tx.campagneLead.findMany({
+        where: { campagneId: { in: [...campagneIds] }, leadId: { in: list.map(p => p.leadId) } },
+        select: { campagneId: true, leadId: true },
+      })).map(r => `${r.campagneId}|${r.leadId}`),
+    );
+    const aAjouter = list.filter(p => !existantes.has(`${p.campagneId}|${p.leadId}`));
+    const ignores = list.filter(p => existantes.has(`${p.campagneId}|${p.leadId}`)).map(p => p.leadId);
+    const ajoutes: CampagneLead[] = [];
+    for (const p of aAjouter) {
+      const row = await tx.campagneLead.create({
+        data: {
+          id: p.id, campagneId: p.campagneId, leadId: p.leadId, responsableId: p.responsableId,
+          segment: p.segment, priorite: p.priorite, statutCampagne: p.statutCampagne,
+          bateauxAVoir: p.bateauxAVoir, notes: p.notes,
+        },
+      });
+      ajoutes.push(toCampagneLead(row as unknown as Record<string, unknown>));
+    }
+    return { ajoutes, ignores };
+  });
+}
+
+/** Édition EN LIGNE d'une participation (statut, priorité, responsable, segment, bateaux, notes). */
+export async function updateCampagneLead(prisma: PrismaClient, id: string, body: unknown): Promise<CampagneLead> {
+  const patch = parseCampagneLeadPatch(body);
+  const row = await prisma.campagneLead.update({ where: { id }, data: patch });
+  return toCampagneLead(row as unknown as Record<string, unknown>);
+}
+
+/** Retrait d'un participant (erreur d'ajout). Ne touche NI le lead NI son historique. */
+export async function deleteCampagneLead(prisma: PrismaClient, id: string): Promise<void> {
+  await prisma.campagneLead.delete({ where: { id } });
 }
 
 // ---------------------------------------------------------------------------
@@ -771,6 +880,8 @@ export interface RestoreReport {
   weeklyObjectives: number;
   socialNetworks: number;
   socialStats: number;
+  campagnes: number;
+  campagneLeads: number;
 }
 
 export async function restoreBackup(prisma: PrismaClient, payload: RestorePayload): Promise<RestoreReport> {
@@ -810,8 +921,29 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
   if (orphan) throw new HttpError(400, `sauvegarde invalide — stat d'un réseau absent : ${orphan.networkId}`);
   if (new Set(socialStats.map(statKey)).size !== socialStats.length) throw new HttpError(400, 'sauvegarde invalide — deux stats pour le même réseau et le même mois');
 
+  // LOT SALONS : campagnes et participations. Une sauvegarde d'AVANT le lot n'en
+  // a pas -> aucune campagne après restauration (la restauration REMPLACE toute
+  // la base, c'est la règle existante). Les participations dont le lead ou le
+  // responsable n'est pas dans la sauvegarde sont REFUSÉES : mieux vaut un refus
+  // lisible qu'une participation orpheline.
+  const campagnes: Campagne[] = d.campagnes ?? [];
+  const campagneLeads: CampagneLead[] = d.campagneLeads ?? [];
+  const campagneIds = new Set(campagnes.map(c => c.id));
+  const leadIds = new Set(d.leads.map(l => l.id));
+  const commercialIds = new Set(d.commercials.map(c => c.id));
+  for (const p of campagneLeads) {
+    if (!campagneIds.has(p.campagneId)) throw new HttpError(400, `sauvegarde invalide — participation d'une campagne absente : ${p.campagneId}`);
+    if (!leadIds.has(p.leadId)) throw new HttpError(400, `sauvegarde invalide — participation d'un lead absent : ${p.leadId}`);
+    if (!commercialIds.has(p.responsableId)) throw new HttpError(400, `sauvegarde invalide — participation d'un responsable absent : ${p.responsableId}`);
+  }
+  if (new Set(campagneLeads.map(p => `${p.campagneId}:${p.leadId}`)).size !== campagneLeads.length) {
+    throw new HttpError(400, 'sauvegarde invalide — deux participations du même lead à la même campagne');
+  }
+
   await prisma.$transaction([
     // (2) Purge FK-safe : enfants d'abord.
+    prisma.campagneLead.deleteMany(),
+    prisma.campagne.deleteMany(),
     prisma.socialStat.deleteMany(),
     prisma.socialNetwork.deleteMany(),
     prisma.weeklyObjective.deleteMany(),
@@ -842,6 +974,14 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     ...(socialStats.length ? [prisma.socialStat.createMany({ data: socialStats.map(x => ({
       id: x.id, networkId: x.networkId, year: x.year, month: x.month, followers: x.followers, posts: x.posts, reach: x.reach, comment: x.comment,
     })) })] : []),
+    ...(campagnes.length ? [prisma.campagne.createMany({ data: campagnes.map(c => ({
+      id: c.id, nom: c.nom, type: c.type, lieu: c.lieu, dateDebut: c.dateDebut, dateFin: c.dateFin,
+      dateSalonDebut: c.dateSalonDebut, dateSalonFin: c.dateSalonFin, objectifRdv: c.objectifRdv, active: c.active,
+    })) })] : []),
+    ...(campagneLeads.length ? [prisma.campagneLead.createMany({ data: campagneLeads.map(p => ({
+      id: p.id, campagneId: p.campagneId, leadId: p.leadId, responsableId: p.responsableId, segment: p.segment,
+      priorite: p.priorite, statutCampagne: p.statutCampagne, bateauxAVoir: p.bateauxAVoir, notes: p.notes,
+    })) })] : []),
     ...(d.calendarEvents.length ? [prisma.calendarEvent.createMany({ data: d.calendarEvents })] : []),
     ...(d.goals.length ? [prisma.commercialGoal.createMany({ data: d.goals.map(fromGoal) })] : []),
     ...(d.monthlyStats.length ? [prisma.monthlyStat.createMany({ data: d.monthlyStats })] : []),
@@ -857,6 +997,8 @@ export async function restoreBackup(prisma: PrismaClient, payload: RestorePayloa
     weeklyObjectives: objectives.length,
     socialNetworks: socialNetworks.length,
     socialStats: socialStats.length,
+    campagnes: campagnes.length,
+    campagneLeads: campagneLeads.length,
   };
 }
 

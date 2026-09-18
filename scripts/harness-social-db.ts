@@ -16,6 +16,7 @@ import { applyPlannedActionsSchema } from './apply-planned-actions-turso';
 import { applyTemplateLayoutSchema } from './apply-template-layout-turso';
 import { applyWeeklyObjectivesSchema } from './apply-weekly-objectives-turso';
 import { applySocialSchema, socialTodo, socialBefore, proveSocial, DEFAULT_NETWORK_IDS } from './apply-social-turso';
+import { applyCampagnesSchema } from './apply-campagnes-turso';
 import { getState, detectSchema, saveSocialNetworks, saveSocialStats, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError, toHttpError } from '../api/_lib/http';
@@ -96,6 +97,7 @@ async function main() {
   const todo = await socialTodo(db);
   check('à blanc : 2 tables et 3 réseaux par défaut à créer', todo.tables.join() === 'social_networks,social_stats' && todo.defaultNetworks.join() === DEFAULT_NETWORK_IDS.join());
   check('à blanc : rien écrit', (await socialTodo(db)).tables.length === 2);
+  await applyCampagnesSchema(db); // lot salons : le store courant lit campagnes/campagne_leads
   const s1 = await applySocialSchema(db);
   check('application : 2 tables, 3 réseaux', s1.createdTables.length === 2 && s1.insertedNetworks.length === 3);
   for (const c of await proveSocial(db, before, true)) check(`preuve : ${c.label}`, c.ok, c.detail);

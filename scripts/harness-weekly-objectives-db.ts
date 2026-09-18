@@ -18,6 +18,7 @@ import {
   applyWeeklyObjectivesSchema, weeklyObjectivesTodo, weeklyObjectivesBefore, proveWeeklyObjectives,
 } from './apply-weekly-objectives-turso';
 import { applySocialSchema } from './apply-social-turso';
+import { applyCampagnesSchema } from './apply-campagnes-turso';
 import { getState, detectSchema, upsertWeeklyObjective, restoreBackup } from '../api/_lib/store';
 import { parseRestorePayload } from '../api/_lib/validate';
 import { HttpError } from '../api/_lib/http';
@@ -119,6 +120,7 @@ async function main() {
   }
   // Le lot 5 passe juste après (script 5) ; le code courant lit ses tables.
   await applySocialSchema(db);
+  await applyCampagnesSchema(db); // lot salons : le store courant lit campagnes/campagne_leads
   db.close();
 
   section('API (store) : upsert, règles, trace serveur');
