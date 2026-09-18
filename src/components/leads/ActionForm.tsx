@@ -12,13 +12,19 @@ interface ActionFormProps {
   // qui l'écrit sur le lead — le formulaire ne dispatch rien lui-même.
   onSave: (action: Omit<LeadAction, 'id'>, extras?: { quoteAmount?: number; lossReason?: string }) => void;
   onCancel: () => void;
+  // Auteur pré-sélectionné (lot salons) : depuis la liste de travail d'une
+  // campagne, c'est le RESPONSABLE de la participation qui vient d'appeler — le
+  // pré-remplir évite une sélection à chaque saisie, et évite surtout d'attribuer
+  // l'appel au premier commercial de la liste par inadvertance. Absent : on garde
+  // le comportement d'origine (premier commercial).
+  defaultAuthorId?: string;
   // Si fournie -> mode edition : le formulaire est pre-rempli et le bloc
   // "Changer statut / Prochaine action" (declencheurs d'effets de bord propres a
   // l'ajout) est masque. On n'edite que les champs de l'action elle-meme.
   action?: LeadAction;
 }
 
-export default function ActionForm({ leadId, onSave, onCancel, action }: ActionFormProps) {
+export default function ActionForm({ leadId, onSave, onCancel, action, defaultAuthorId }: ActionFormProps) {
   const { state } = useApp();
   const isEdit = !!action;
   const lead = state.leads.find(l => l.id === leadId);
@@ -27,7 +33,7 @@ export default function ActionForm({ leadId, onSave, onCancel, action }: ActionF
     date: action?.date ?? toISODate(new Date()),
     result: action?.result ?? '',
     notes: action?.notes ?? '',
-    authorId: action?.authorId ?? state.commercials[0]?.id ?? '',
+    authorId: action?.authorId ?? defaultAuthorId ?? state.commercials[0]?.id ?? '',
     newStatus: (action?.newStatus ?? '') as LeadStatus | '',
   });
   // Montant de la vente (B1) : requis seulement si newStatus === 'signe'.

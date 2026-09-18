@@ -85,7 +85,30 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
     - création rapide d'un lead sur mobile pendant le salon (nom, téléphone, bateau, source = le
       salon) enchaînée sur le RDV ;
     - stat après salon : nombre de contacts et de RDV par salon (lien avec Acquisition ?).
+### Lot salons — suite
+
+- [ ] **Import CSV du fichier clients** (lundi, si Nicolas fournit l'export). Le CRM ne contient
+  **que le flux entrant depuis octobre 2025** (443 leads, le plus ancien au 05/10/2025) : les
+  segments « Client en portefeuille » et « Client atelier / magasin » du fichier de suivi n'ont
+  aucun équivalent en base. **Contrainte à intégrer À LA CONCEPTION, pas après** : déduplication
+  sur **email ET téléphone** contre les leads existants — sans elle, un client déjà présent comme
+  lead entrant serait appelé deux fois par deux commerciaux pendant le salon. L'app a déjà de quoi
+  s'appuyer dessus (`src/lib/duplicateLeads.ts`, `src/lib/importLeads.ts`) : à reprendre, pas à
+  réécrire. Prévoir aussi : que fait-on d'un doublon trouvé (fusion ? rattachement à la campagne du
+  lead existant ? les deux ?).
+
+- [ ] **S2c — édition en ligne** (statut de campagne, priorité, responsable) depuis la liste de
+  travail, enregistrement immédiat. Reporté au **mardi** (décision du 18/09 : S2d passe devant).
+
 ### Après le salon
+
+- [ ] **Sous-enregistrement des appels — constat chiffré du 18/09** : sur 11 mois et 443 leads,
+  l'historique ne porte que **30 appels pour 99 emails** (145 actions au total). Quatre commerciaux
+  qui vendent des bateaux en passent davantage en une semaine. **Tout l'écran Campagnes repose sur
+  ces enregistrements** (nombre d'appels, dernier contact, taux de contact) : les compteurs ne
+  vaudront que ce que l'équipe saisit. C'est d'abord un sujet d'usage, mais le code peut aider —
+  réduire la friction de saisie (bouton d'échange au plus près de l'appel, valeurs par défaut,
+  moins de champs obligatoires). À reprendre après le salon, avec les chiffres de la semaine.
 
 - [ ] **Capture mobile automatisée dans le harnais** (demandé le 18/09) : un script réutilisable à
   chaque lot qui ouvre l'app dans un **viewport émulé 375 px** et enregistre des captures, pour ne

@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Megaphone, Phone, Mail, AlertTriangle, CalendarCheck, Search } from 'lucide-react';
+import { Megaphone, Phone, Mail, AlertTriangle, CalendarCheck, Search, PhoneCall } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { useNextActionFlow } from '../context/useNextActionFlow';
+import { useToast } from '../context/useToast';
+import Modal from '../components/ui/Modal';
+import ActionForm from '../components/leads/ActionForm';
+import { formatCurrency } from '../lib/utils';
 import LeadLink from '../components/leads/LeadLink';
 import { StatusBadge, TemperatureBadge } from '../components/ui/StatusBadge';
 import {
@@ -27,12 +32,39 @@ import { formatDateShort, toISODate, cn, getLeadFullName } from '../lib/utils';
  *    jamais sa liste d'appels en consultant un dossier.
  */
 export default function CampagnesPage() {
-  const { state, getCommercialName } = useApp();
+  const { state, getCommercialName, addAction, updateLead } = useApp();
+  // Lot 2 : après TOUTE action, la fenêtre « Prochaine action » s'ouvre. Elle vit
+  // au-dessus des routes, donc elle fonctionne depuis cet écran comme depuis la fiche.
+  const flow = useNextActionFlow();
+  const toast = useToast();
   const aujourdhui = toISODate(new Date());
+
+  // S2d — ENREGISTRER UN ÉCHANGE SANS QUITTER LA LISTE.
+  //
+  // Constat qui a fait passer cette étape devant l'édition en ligne : sur 11 mois
+  // et 443 leads, l'historique ne porte que 30 appels pour 99 emails. Or TOUS les
+  // compteurs de cet écran sont dérivés de ces enregistrements. Moins il y a de
+  // friction entre « je raccroche » et « c'est noté », plus les chiffres valent
+  // quelque chose. D'où : un bouton par ligne, la MÊME saisie que la fiche
+  // (ActionForm, aucun second formulaire), et l'écran ne bouge pas sous les yeux.
+  //
+  // L'action est rattachée au LEAD, comme partout. Son appartenance à la campagne
+  // est DÉRIVÉE : elle tombe dans la fenêtre d'activité, donc elle compte. Rien
+  // n'est stocké en double.
+  const [echangeLeadId, setEchangeLeadId] = useState<string | null>(null);
 
   const campagnes = state.campagnes ?? [];
   const [campagneId, setCampagneId] = useState(() => campagneParDefaut(campagnes)?.id ?? '');
   const campagne = campagnes.find(c => c.id === campagneId) ?? campagneParDefaut(campagnes);
+
+  // Lead dont on saisit l'échange, et responsable de SA participation : calculés
+  // APRÈS `campagne` — sinon on lirait `campagneId` avant son initialisation
+  // (plantage de rendu attrapé au test réel du 18/09, invisible au typecheck
+  // parce que la lecture se fait dans une callback).
+  const leadEnCours = echangeLeadId ? state.leads.find(l => l.id === echangeLeadId) : undefined;
+  const responsableDuLead = echangeLeadId && campagne
+    ? (state.campagneLeads ?? []).find(p => p.leadId === echangeLeadId && p.campagneId === campagne.id)?.responsableId
+    : undefined;
 
   const [filtres, setFiltres] = useState<FiltresCampagne>({});
   // Changer un filtre repart de la première page (sinon on garde un « 200
@@ -183,7 +215,9 @@ export default function CampagnesPage() {
           atteignables sans défilement latéral (375 px). */}
       <div className="card overflow-hidden sm:hidden">
         <div className="divide-y divide-gray-100">
-          {visibles.map(l => <CarteParticipant key={l.participation.id} ligne={l} nomCommercial={getCommercialName} />)}
+          {visibles.map(l => (
+            <CarteParticipant key={l.participation.id} ligne={l} nomCommercial={getCommercialName} onEchange={setEchangeLeadId} />
+          ))}
           {visibles.length === 0 && <p className="px-4 py-10 text-center text-gray-400">Aucun participant</p>}
         </div>
       </div>
@@ -205,6 +239,7 @@ export default function CampagnesPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Dernier contact</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-600">Prochaine action</th>
                 <th className="px-3 py-3 text-center font-medium text-gray-600">RDV stand</th>
+                <th className="px-3 py-3 text-center font-medium text-gray-600 w-28">Échange</th>
               </tr>
             </thead>
             <tbody>
@@ -247,10 +282,21 @@ export default function CampagnesPage() {
                       ? <span className="inline-flex items-center gap-1 text-xs text-green-700"><CalendarCheck className="w-3.5 h-3.5" />{formatDateShort(l.rdv.date)}{l.rdv.time ? ` ${l.rdv.time}` : ''}</span>
                       : <span className="text-xs text-gray-400">—</span>}
                   </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm whitespace-nowrap"
+                      onClick={() => setEchangeLeadId(l.lead.id)}
+                      title="Enregistrer un appel, un email ou une visite — sans quitter la liste"
+                      data-testid={`echange-${l.lead.id}`}
+                    >
+                      <PhoneCall className="w-3.5 h-3.5" /> Échange
+                    </button>
+                  </td>
                 </tr>
               ))}
               {visibles.length === 0 && (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">Aucun participant</td></tr>
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400">Aucun participant</td></tr>
               )}
             </tbody>
           </table>
@@ -265,6 +311,34 @@ export default function CampagnesPage() {
           </button>
         </div>
       )}
+
+      {/* Saisie d'un échange : le composant de la fiche, tel quel, en modale. */}
+      <Modal
+        open={!!leadEnCours}
+        onClose={() => setEchangeLeadId(null)}
+        title={leadEnCours ? `Échange — ${getLeadFullName(leadEnCours)}` : 'Échange'}
+        size="lg"
+      >
+        {leadEnCours && (
+          <ActionForm
+            leadId={leadEnCours.id}
+            defaultAuthorId={responsableDuLead}
+            onSave={(action, extras) => {
+              addAction(action);
+              // Exactement l'enchaînement de la fiche lead : l'action, puis la
+              // fenêtre « Prochaine action » (obligatoire selon le statut).
+              flow.decide(leadEnCours.id, { kind: 'action_enregistree', newStatus: action.newStatus, currentStatus: leadEnCours.status });
+              if (extras?.quoteAmount !== undefined) updateLead(leadEnCours.id, { quoteAmount: extras.quoteAmount });
+              if (extras?.lossReason) updateLead(leadEnCours.id, { lossReason: extras.lossReason });
+              setEchangeLeadId(null);
+              if (extras?.quoteAmount !== undefined) toast.success(`Vente enregistrée — ${formatCurrency(extras.quoteAmount)}`);
+              else if (extras?.lossReason) toast.info(`Lead marqué perdu — ${extras.lossReason}`);
+              else toast.success('Échange enregistré');
+            }}
+            onCancel={() => setEchangeLeadId(null)}
+          />
+        )}
+      </Modal>
 
       <p className="text-xs text-gray-500">
         Appels et emails sont <strong>comptés depuis l'historique</strong> sur la période de la campagne : aucun compteur
@@ -292,7 +366,7 @@ function BadgePriorite({ priorite }: { priorite: string }) {
 }
 
 /** Carte mobile : le téléphone et le statut d'abord, sans défilement latéral. */
-function CarteParticipant({ ligne: l, nomCommercial }: { ligne: LigneCampagne; nomCommercial: (id: string) => string }) {
+function CarteParticipant({ ligne: l, nomCommercial, onEchange }: { ligne: LigneCampagne; nomCommercial: (id: string) => string; onEchange: (leadId: string) => void }) {
   return (
     <div className="px-4 py-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -326,6 +400,16 @@ function CarteParticipant({ ligne: l, nomCommercial }: { ligne: LigneCampagne; n
             <Phone className="w-4 h-4" /> Appeler
           </a>
         )}
+        {/* Le bouton d'échange est à portée de pouce, juste après « Appeler » :
+            on raccroche, on note, sans changer d'écran. */}
+        <button
+          type="button"
+          className="btn-primary btn-sm flex-1 justify-center"
+          onClick={() => onEchange(l.lead.id)}
+          data-testid={`echange-mobile-${l.lead.id}`}
+        >
+          <PhoneCall className="w-4 h-4" /> Échange
+        </button>
         {l.rdv && (
           <span className="inline-flex items-center gap-1 text-xs text-green-700 whitespace-nowrap">
             <CalendarCheck className="w-3.5 h-3.5" /> {formatDateShort(l.rdv.date)}{l.rdv.time ? ` ${l.rdv.time}` : ''}
