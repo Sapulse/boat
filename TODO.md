@@ -87,6 +87,11 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
     - stat après salon : nombre de contacts et de RDV par salon (lien avec Acquisition ?).
 ### Après le salon
 
+- [ ] **Capture mobile automatisée dans le harnais** (demandé le 18/09) : un script réutilisable à
+  chaque lot qui ouvre l'app dans un **viewport émulé 375 px** et enregistre des captures, pour ne
+  plus dépendre du redimensionnement de la fenêtre Chrome (qui reste sans effet quand la fenêtre est
+  maximisée — constaté ce soir). À brancher sur le banc de test local.
+
 - [ ] **Asymétrie de la boîte de réception dans les sauvegardes** (repérée le 18/09, hors périmètre
   de la semaine du salon) : une sauvegarde contient bien les emails entrants (clé `inboundEmails`,
   148 lignes au 18/09), mais ils sont **hors `AppState`** — vérifier si `restoreBackup` les recrée

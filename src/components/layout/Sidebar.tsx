@@ -60,6 +60,8 @@ const sections: NavSection[] = [
       { name: 'Clients', href: '/clients', icon: UserCheck },
       { name: 'Pipeline', href: '/pipeline', icon: Kanban },
       { name: 'À relancer', href: '/relances', icon: CalendarClock },
+      // Lot salons : la liste de travail de la campagne en cours.
+      { name: 'Campagnes', href: '/campagnes', icon: Megaphone },
     ],
   },
   {

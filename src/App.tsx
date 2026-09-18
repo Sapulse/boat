@@ -29,6 +29,7 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
 const RelancesPage = lazy(() => import('./pages/RelancesPage'));
 const InboxProspectsPage = lazy(() => import('./pages/InboxProspectsPage'));
 const AgendaPage = lazy(() => import('./pages/AgendaPage'));
+const CampagnesPage = lazy(() => import('./pages/CampagnesPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 export default function App() {
@@ -55,6 +56,8 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/relances" element={<RelancesPage />} />
+            {/* Lot salons : la liste de travail d'une campagne (salon, emailing…). */}
+            <Route path="/campagnes" element={<CampagnesPage />} />
             <Route path="/boite-reception" element={<InboxProspectsPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/performance" element={<PerformancePage />} />

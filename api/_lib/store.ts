@@ -469,17 +469,28 @@ export async function addCampagneLeads(prisma: PrismaClient, body: unknown): Pro
     );
     const aAjouter = list.filter(p => !existantes.has(`${p.campagneId}|${p.leadId}`));
     const ignores = list.filter(p => existantes.has(`${p.campagneId}|${p.leadId}`)).map(p => p.leadId);
-    const ajoutes: CampagneLead[] = [];
-    for (const p of aAjouter) {
-      const row = await tx.campagneLead.create({
-        data: {
+    // ÉCRITURE GROUPÉE, et non ligne à ligne : la démonstration de demain coche
+    // 150 à 250 leads d'un coup. Un `create` par ligne, c'est un aller-retour
+    // réseau par ligne vers Turso — quelques dizaines de millisecondes chacun,
+    // soit une dizaine de secondes devant l'équipe. `createMany` envoie un seul
+    // INSERT par lot. Lots de 200 : au-delà, l'instruction SQL devient énorme
+    // pour un gain nul (SQLite plafonne aussi le nombre de variables liées).
+    const LOT = 200;
+    for (let i = 0; i < aAjouter.length; i += LOT) {
+      await tx.campagneLead.createMany({
+        data: aAjouter.slice(i, i + LOT).map(p => ({
           id: p.id, campagneId: p.campagneId, leadId: p.leadId, responsableId: p.responsableId,
           segment: p.segment, priorite: p.priorite, statutCampagne: p.statutCampagne,
           bateauxAVoir: p.bateauxAVoir, notes: p.notes,
-        },
+        })),
       });
-      ajoutes.push(toCampagneLead(row as unknown as Record<string, unknown>));
     }
+    // On relit ce qui vient d'être écrit (une seule requête) plutôt que de faire
+    // confiance à l'objet envoyé : les valeurs par défaut des colonnes font foi.
+    const ajoutes = aAjouter.length
+      ? (await tx.campagneLead.findMany({ where: { id: { in: aAjouter.map(p => p.id) } } }))
+        .map(r => toCampagneLead(r as unknown as Record<string, unknown>))
+      : [];
     return { ajoutes, ignores };
   });
 }
