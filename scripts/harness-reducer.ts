@@ -938,6 +938,104 @@ section('WhatsApp — toWaNumber : conversion au format international wa.me');
 }
 
 // ---------------------------------------------------------------------------
+// LE STATUT DU LEAD PILOTE LE STATUT DE CAMPAGNE (19/09) — CÂBLAGE DU REDUCER.
+//
+// Le module pur est prouvé ailleurs (harness-campagnes-lib). Ici on prouve le
+// BRANCHEMENT, c'est-à-dire exactement ce qui manquait hier : la déduction se
+// déclenchait sur l'enregistrement d'une ACTION, jamais sur le changement de
+// STATUT — le seul chemin que l'équipe emprunte vraiment.
+// ---------------------------------------------------------------------------
+{
+  console.log('\n— Statut du lead -> statut de campagne (reducer)');
+
+  const campagne = {
+    id: 'camp', nom: 'Grand Pavois 2026', type: 'salon', lieu: 'La Rochelle',
+    dateDebut: '2026-09-18', dateFin: '', dateSalonDebut: '', dateSalonFin: '',
+    objectifRdv: null, active: true,
+  } as const;
+  const participation = {
+    id: 'p1', campagneId: 'camp', leadId: 'lead-1', responsableId: 'fred',
+    segment: '', priorite: 'Moyenne', statutCampagne: 'À contacter',
+    bateauxAVoir: '', notes: '',
+  } as const;
+  const avecCampagne = (over: Partial<AppState> = {}) => makeState({
+    leads: [makeLead({ status: 'a_contacter' })],
+    actions: [],
+    campagnes: [{ ...campagne }],
+    campagneLeads: [{ ...participation }],
+    ...over,
+  });
+  const statutDe = (s: AppState) => s.campagneLeads![0].statutCampagne;
+
+  // LE CAS D'AURÉLIEN BILLECOQ : « Passer à : Contacté » depuis la fiche, aucune
+  // action enregistrée. Hier, la participation restait à « À contacter ».
+  const contacte = reducer(avecCampagne(), { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'contacte' } });
+  check('« Passer à : Contacté » depuis la fiche -> campagne « Contacté sans retour »',
+    statutDe(contacte) === 'Contacté sans retour', statutDe(contacte));
+
+  const qualifie = reducer(avecCampagne(), { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'qualifie' } });
+  check('« Passer à : Qualifié » -> campagne « Échange en cours »',
+    statutDe(qualifie) === 'Échange en cours', statutDe(qualifie));
+
+  // Le pipeline (glisser-déposer) et la boîte prospects passent par la MÊME
+  // action de reducer : prouver l'une prouve les trois.
+  const perdu = reducer(avecCampagne({ campagneLeads: [{ ...participation, statutCampagne: 'Échange en cours' }] }),
+    { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'perdu' } });
+  check('lead passé « Perdu » -> statut de campagne INCHANGÉ',
+    statutDe(perdu) === 'Échange en cours', statutDe(perdu));
+  check('… et le lead est bien Perdu (la participation ne l\'a pas retenu)',
+    perdu.leads[0].status === 'perdu');
+
+  // Le formulaire de lead (UPDATE_LEAD) change aussi le statut.
+  const parFormulaire = reducer(avecCampagne(), { type: 'UPDATE_LEAD', payload: { id: 'lead-1', data: { status: 'negociation' } } });
+  check('statut changé depuis le FORMULAIRE de lead -> campagne « Échange en cours »',
+    statutDe(parFormulaire) === 'Échange en cours', statutDe(parFormulaire));
+
+  // Une action qui porte un nouveau statut (fenêtre d'appel) : les deux
+  // déductions se cumulent sans se contredire.
+  const parAction = reducer(avecCampagne(), {
+    type: 'ADD_ACTION',
+    payload: makeAction({ id: 'a-new', date: '2026-09-19', type: 'appel', result: 'Appel — Message laissé', newStatus: 'qualifie' }),
+  });
+  check('action « Message laissé » qui fait passer le lead en Qualifié -> « Échange en cours » (le statut du lead prime)',
+    statutDe(parAction) === 'Échange en cours', statutDe(parAction));
+
+  // LA FRONTIÈRE : un lead DÉJÀ avancé qu'on ajoute à la campagne entre à
+  // « À contacter ». Sans cela, l'écran s'ouvrirait sur « Contactés : 132 ».
+  const ajout = reducer(
+    makeState({ leads: [makeLead({ status: 'qualifie' })], actions: [], campagnes: [{ ...campagne }], campagneLeads: [] }),
+    { type: 'ADD_CAMPAGNE_LEADS', payload: [{ ...participation }] },
+  );
+  check('un lead DÉJÀ Qualifié ajouté à la campagne entre à « À contacter » (frontière d\'entrée)',
+    statutDe(ajout) === 'À contacter', statutDe(ajout));
+
+  // SET_STATE : l'état du serveur n'est pas un geste.
+  const charge = reducer(avecCampagne(), {
+    type: 'SET_STATE',
+    payload: makeState({ leads: [makeLead({ status: 'qualifie' })], actions: [], campagnes: [{ ...campagne }], campagneLeads: [{ ...participation }] }),
+  });
+  check('SET_STATE (chargement / synchronisation) ne déduit rien',
+    statutDe(charge) === 'À contacter', statutDe(charge));
+
+  // RÈGLE D'OR, SENS UNIQUE : éditer le statut de CAMPAGNE ne touche pas le lead.
+  const editionEnLigne = reducer(avecCampagne(), { type: 'UPDATE_CAMPAGNE_LEAD', payload: { id: 'p1', data: { statutCampagne: 'Injoignable' } } });
+  check('AUCUNE RÉTRO-PROPAGATION : éditer le statut de campagne laisse le statut du lead intact',
+    editionEnLigne.leads[0].status === 'a_contacter' && statutDe(editionEnLigne) === 'Injoignable');
+
+  // Un jugement manuel survit à un changement de statut du lead.
+  const jugement = reducer(avecCampagne({ campagneLeads: [{ ...participation, statutCampagne: 'À relancer après salon' }] }),
+    { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'qualifie' } });
+  check('« À relancer après salon » (cercle 2) n\'est pas ramené dans la file par un changement de statut',
+    statutDe(jugement) === 'À relancer après salon', statutDe(jugement));
+
+  // Aucune campagne : le reducer ne doit pas broncher (cas de tous les écrans
+  // hors salon, et de la prod tant que la migration n'est pas passée).
+  const sansCampagne = reducer(makeState(), { type: 'UPDATE_LEAD_STATUS', payload: { id: 'lead-1', status: 'qualifie' } });
+  check('aucune campagne en base : aucun plantage, le lead change normalement',
+    sansCampagne.leads[0].status === 'qualifie' && sansCampagne.campagneLeads === undefined);
+}
+
+// ---------------------------------------------------------------------------
 // Bilan
 // ---------------------------------------------------------------------------
 

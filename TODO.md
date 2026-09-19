@@ -105,6 +105,38 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
   Le statut de campagne avance tout seul quand un échange est enregistré (depuis la liste OU la
   fiche) ; l'édition en ligne corrige et pose les statuts de jugement.
 
+- [x] **S3 — le statut du LEAD pilote le statut de campagne** (19/09, deux retours de l'équipe BOB) :
+  - la déduction de S2c ne se déclenchait que sur l'enregistrement d'une **action**. L'équipe ne
+    journalise pas ses actions (30 appels en 11 mois) : elle fait avancer les **statuts** depuis la
+    fiche. Cas vérifié : Aurélien BILLECOQ, lead « Contacté », campagne « À contacter », 0 appel
+    0 email. La déduction était câblée sur le chemin que personne n'emprunte ;
+  - **règle d'or** : le statut du lead est la vérité, le statut de campagne en dérive. Jamais
+    l'inverse — aucune rétro-propagation campagne → lead (prouvé au harnais) ;
+  - **frontière d'entrée** : la déduction est un ÉVÉNEMENT (le reducer compare le statut d'avant à
+    celui d'après), pas un calcul d'état. Seuls les changements survenus APRÈS l'entrée du lead dans
+    la campagne comptent. Sans cela, 132 des 208 prospects actifs étant déjà « Contacté », l'écran
+    se serait ouvert sur « Contactés : 132 sur 157 » avant le premier appel ;
+  - « Projet reporté » quitte les statuts de jugement et rejoint l'échelle déduite au niveau de
+    « Contacté sans retour » : un projet reporté qu'on rappelle et qui se réveille doit pouvoir
+    progresser tout seul ;
+  - Signé / Perdu : statut de campagne **inchangé** (pas de « Pas intéressé », ce serait un
+    jugement) ; ces participations sortent de la liste de travail par défaut, case « Inclure les
+    leads fermés » pour les revoir ;
+  - nouvelle source **« Concessionnaire »** (apporteur d'affaires) dans SOURCES et
+    PROSPECTION_SOURCES, avec ses alias. Pas de migration.
+
+- [ ] **Rattrapage des participations existantes** — `scripts/rattrapage-statut-campagne-turso.ts`,
+  à passer **après** le déploiement et la sauvegarde : à blanc d'abord (compte + échantillon montrés
+  à César), `--apply` sur son GO seulement. Critère conservateur : participation encore à
+  « À contacter », campagne active, statut du lead parlant, et `leads.updatedAt >
+  campagne_leads.createdAt`. Si l'échantillon remonte des lignes manifestement fausses, on ne
+  rattrape rien et l'équipe corrige à la main.
+
+- [ ] **Lead créé sur le stand** (exception assumée du 19/09, pas encore codée) : un lead créé
+  pendant le salon et rattaché automatiquement à la campagne doit entrer en « Échange en cours » —
+  on vient de lui parler en face à face. `preparerAjout` porte déjà le paramètre `statutParDefaut`
+  qu'il suffira de passer ; il n'existe aujourd'hui aucun rattachement automatique à la création.
+
 ### À surveiller
 
 - [ ] **SORTIR LE DÉPÔT DE ONEDRIVE** — le vrai correctif, à faire après le salon. Le projet est sur
@@ -122,6 +154,14 @@ jetable (ordinateur + 375 px) → push en fin de lot → STOP bilan. Migrations 
   place faute de pouvoir être supprimés — EPERM déjà rencontré ce soir). **Une suite qui échoue au hasard finit par être ignorée** : à instruire avant qu'on s'y
   habitue (capturer la sortie du harnais fautif dans le lanceur, qui n'affiche aujourd'hui que
   « ÉCHEC »).
+  **Nouvelle observation du 19/09** : un échec isolé de `harness-campagnes` (mort avant sa première
+  section, sortie vide dans le rapport), survenu sur l'exécution qui suivait **l'arrêt d'un banc de
+  test local** — le même déclencheur que les deux échecs du 18/09. Le harnais passe seul
+  (54 assertions) et les **quatre** exécutions suivantes de `npm test` sont vertes (50/50). Les bases
+  jetables vivent pourtant déjà hors du dépôt depuis le 18/09 : la piste n'est donc pas OneDrive
+  seul, mais un **processus enfant du banc encore en train de mourir** (l'API de test et Vite
+  gardent des poignées) quand la suite redémarre. À instruire : attendre la fin réelle des
+  processus du banc avant de lancer la suite, et capturer la sortie du harnais fautif.
 
 ### Après le salon
 

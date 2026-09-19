@@ -231,6 +231,47 @@ migrations est passée (détection du schéma, `api/_lib/store.detectSchema`).
 
 *(Liste complète des lots 2 à 5.)*
 
+### Rattrapage du statut de campagne — APRÈS le déploiement, jamais pendant (19/09)
+
+`scripts/rattrapage-statut-campagne-turso.ts`. Ce n'est **pas** une migration : c'est une
+correction de données qui dépend du code déployé. Elle passe donc **après** l'étape 7
+(déploiement) et après une sauvegarde, sur un GO **distinct** de celui du déploiement.
+
+Pourquoi elle existe : le correctif du 19/09 fait dériver le statut de campagne du statut
+du lead, mais seulement pour l'avenir. Les participations créées avant lui restent à
+« À contacter » alors que leurs leads ont avancé — sans cette passe, l'équipe verrait
+exactement le même écran qu'avant le déploiement.
+
+Ce qu'elle touche, et rien d'autre (quatre conditions cumulatives) : participation encore
+à la valeur par défaut « À contacter » ; campagne active ; statut du lead qui dit quelque
+chose (Signé, Perdu, Nouveau, À contacter ne proposent rien) ; et **`leads.updatedAt >
+campagne_leads.createdAt`**, c'est-à-dire un lead travaillé APRÈS son entrée dans la
+campagne.
+
+Ce dernier critère est **imparfait et volontairement conservateur** : `updatedAt` bouge
+aussi pour une note ou un téléphone corrigé, donc la passe peut proposer une ligne dont
+seul un détail a changé. En revanche elle écarte les leads déjà avancés AVANT leur entrée,
+qui sont l'essentiel du risque. **La vérification finale est humaine** : l'exécution à
+blanc affiche le compte, la répartition, les motifs d'écartement et un échantillon de
+20 lignes avec les DEUX dates. Si des lignes sont manifestement fausses, **on n'applique
+pas** — l'équipe corrige à la main.
+
+| # | Étape | Commande | Contrôle |
+|---|---|---|---|
+| a | Sauvegarde | `npm run backup:prod` | « Restaurable : oui ✅ » |
+| b | À blanc | `npx tsx scripts/rattrapage-statut-campagne-turso.ts --target=prod` | compte, répartition, motifs, échantillon relus par César |
+| c | **GO** (César) | — | l'échantillon montre bien des leads travaillés depuis l'ajout |
+| d | Écriture | `BOB_CONFIRM_PROD=bob-brestoceanboat npx tsx scripts/rattrapage-statut-campagne-turso.ts --target=prod --apply` | sauvegarde intégrée, puis tous les ✅ |
+| e | Rejeu | relancer la même commande | « Rien à rattraper (rejeu) : aucune écriture. » |
+
+La preuve porte sur : même nombre de participations, aucun autre champ de la participation
+modifié ligne à ligne, **aucun lead touché** (empreinte de toutes les colonnes de `leads`),
+chaque participation prévue porte le statut prévu, aucune ligne hors plan réécrite, plan
+rejoué vide. Un seul ❌ : restaurer la sauvegarde prise à l'étape d.
+
+Résultat légitime : **0 ligne**. Si aucune participation n'existait avant le déploiement,
+il n'y a rien à rattraper — le code déployé s'en charge désormais tout seul.
+
 ### Retour arrière
 
 > 🛑 **Uniquement dans l'heure qui suit la mise en production.**

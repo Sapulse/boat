@@ -56,6 +56,14 @@ const ALIASES: Record<string, string> = {
   // Nautique de Paris.
   salonprs: 'Salon – Nautique Paris',
   paris2026: 'Salon – Nautique Paris',
+
+  // Concessionnaire (19/09) : apporteur d'affaires. « concessionnaire » lui-même
+  // n'a pas besoin d'alias — la référence se reconnaît d'elle-même ; on couvre
+  // ce que l'équipe tape vraiment (pluriel, abréviation, le mot « apporteur »).
+  concessionnaires: 'Concessionnaire',
+  concession: 'Concessionnaire',
+  apporteur: 'Concessionnaire',
+  apporteurdaffaires: 'Concessionnaire',
 };
 
 /** Nom de référence d'une source, ou null si elle n'y correspond pas. */

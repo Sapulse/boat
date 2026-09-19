@@ -81,6 +81,17 @@ check("« GPS » n'est PAS capté par l'alias « gp »", normalizeSource('GPS') 
 check("« Cannes-la-Bocca » n'est PAS capté par l'alias « cannes »", normalizeSource('Cannes-la-Bocca') === 'Cannes-la-Bocca');
 check("« Paris » seul reste inchangé (l'alias est « paris 2026 »)", normalizeSource('Paris') === 'Paris');
 
+// Concessionnaire (19/09) — apporteur d'affaires, hors groupe Salon.
+check('« Concessionnaire » est une source de référence', (SOURCES as readonly string[]).includes('Concessionnaire'));
+check('« Concessionnaire » compte comme prospection active', PROSPECTION_SOURCES.includes('Concessionnaire'));
+check("« Concessionnaire » n'est PAS dans le groupe Salon", !isSourceSalon('Concessionnaire'));
+eq('concessionnaire', 'Concessionnaire');
+eq('Concessionnaires', 'Concessionnaire');
+eq('CONCESSION', 'Concessionnaire');
+eq('apporteur', 'Concessionnaire');
+eq("Apporteur d'affaires", 'Concessionnaire');
+check("« Concession Beneteau » n'est PAS capté (chaîne entière, pas sous-chaîne)", normalizeSource('Concession Beneteau') === 'Concession Beneteau');
+
 check('toutes les sources de référence sont stables (idempotent)', SOURCES.every(s => normalizeSource(s) === s));
 check('clés de référence toutes distinctes (pas d\'ambiguïté)', new Set(SOURCES.map(sourceKey)).size === SOURCES.length);
 check('BoatsGroup fait partie de la liste de référence', (SOURCES as readonly string[]).includes('BoatsGroup'));

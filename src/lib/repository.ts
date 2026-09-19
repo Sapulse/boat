@@ -801,10 +801,23 @@ export function createApiRepository(opts: ApiRepositoryOptions): CrmRepository {
       const plan = newPlanIds();
       dispatch({ type: 'UPDATE_LEAD', payload: { id, data } });
       remember({ kind: 'update', entity: 'leads', id });
+      // 19/09 : le formulaire peut changer le STATUT du lead -> le statut de
+      // campagne déduit doit suivre côté serveur (l'intention est sans effet si
+      // le lead ne participe à aucune campagne).
+      if (data.status !== undefined) remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId: id });
       if (data.nextActionType !== undefined || data.nextActionDate !== undefined) rememberPlanning(id, plan);
     },
     deleteLead: (id) => { base.deleteLead(id); remember({ kind: 'delete', entity: 'leads', id }); },
-    updateLeadStatus: (id, status, extras) => { base.updateLeadStatus(id, status, extras); remember({ kind: 'update', entity: 'leads', id }); },
+    // « Passer à : … » de la fiche, glisser-déposer du pipeline, réouverture
+    // depuis la boîte prospects : les trois passent ICI. C'est le chemin que
+    // l'équipe emprunte VRAIMENT (30 appels journalisés en 11 mois) — sans
+    // l'intention de déduction, le statut de campagne resterait à « À
+    // contacter » en base, et l'écran de campagne mentirait (19/09).
+    updateLeadStatus: (id, status, extras) => {
+      base.updateLeadStatus(id, status, extras);
+      remember({ kind: 'update', entity: 'leads', id });
+      remember({ kind: 'campagne-deduction', entity: 'campagne-leads', leadId: id });
+    },
     setNextAction: (id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime) => {
       const plan = newPlanIds();
       dispatch({ type: 'SET_NEXT_ACTION', payload: { id, nextActionType, nextActionDate, nextActionTime, nextActionEndTime }, plan });

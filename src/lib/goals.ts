@@ -91,8 +91,10 @@ const PROSPECTION_SOURCE_SET = new Set<string>(PROSPECTION_SOURCES);
 /**
  * Leads RENTRES dans le mois par PROSPECTION ACTIVE : crees par ce commercial
  * (createdAt du mois) ET dont la source est une source de prospection
- * (PROSPECTION_SOURCES). Le flux entrant (site, annonces, apporteurs…) et les
- * leads sans source ne comptent pas.
+ * (PROSPECTION_SOURCES). Le flux entrant (site, annonces, plateformes) et les
+ * leads sans source ne comptent pas. NB : « Concessionnaire » est une source de
+ * PROSPECTION depuis le 19/09 — un apporteur d'affaires se relance, il ne tombe
+ * pas du ciel ; la liste de constants.ts fait foi, ce commentaire la suit.
  */
 export function countLeadsCreated(
   leads: Lead[],

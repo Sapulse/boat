@@ -129,6 +129,10 @@ export const SOURCES = [
   'Beneteau',
   'Démarchage terrain',
   'Recommandation',
+  // Apporteur d'affaires (19/09) : les concessionnaires envoient des clients à
+  // BOB. Hors du groupe « Salon – » (pas de préfixe) : ce n'est pas une
+  // opération datée, c'est un canal permanent. Alias usuels dans lib/sources.
+  'Concessionnaire',
 ];
 
 // Sources de PROSPECTION ACTIVE (le commercial va chercher le lead) — par
@@ -146,6 +150,10 @@ export const PROSPECTION_SOURCES = [
   'Salon – Nautique La Rochelle',
   'Démarchage terrain',
   'Recommandation',
+  // Un concessionnaire ne tombe pas du ciel : c'est une relation qu'un
+  // commercial entretient et relance. Décision du 19/09 — donc prospection
+  // ACTIVE, comptée dans l'objectif « leads rentrés » (lib/goals).
+  'Concessionnaire',
 ];
 
 /** Préfixe qui identifie un salon dans SOURCES (regroupement des sélecteurs). */

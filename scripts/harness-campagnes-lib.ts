@@ -11,7 +11,9 @@ import {
   fenetreActivite, fenetreSalon, datesSalonARenseigner, compteurs, estContacte, rdvStand,
   lignesCampagne, filtrerLignes, preparerAjout, leadsSansCommercial, campagneParDefaut,
   statutDeduitParticipation, appliquerDeductions, actionProuveUnEchange,
+  statutCampagneDepuisLead, appliquerChangementStatutLead, STATUTS_MANUELS,
 } from '../src/lib/campagnes';
+import type { LeadStatus } from '../src/data/types';
 import type { AppState, Campagne, CampagneLead, Lead, LeadAction, PlannedAction, Commercial } from '../src/data/types';
 
 let passed = 0;
@@ -154,8 +156,13 @@ section('Liste de travail : tri, retards, filtres');
 
   check('filtre priorité', filtrerLignes(lignes, { priorite: 'Haute' }).length === 2);
   check('filtre « en retard seulement »', filtrerLignes(lignes, { enRetardSeulement: true }).length === 1);
-  check('filtre RDV oui / non', filtrerLignes(lignes, { rdv: 'oui' }).length === 1 && filtrerLignes(lignes, { rdv: 'non' }).length === 3);
-  check('filtre responsable', filtrerLignes(lignes, { responsableId: 'nicolas' }).length === 4 && filtrerLignes(lignes, { responsableId: 'fred' }).length === 0);
+  // Depuis le 19/09, l4 (Perdu) est masqué PAR DÉFAUT : les filtres comptent 3
+  // lignes, pas 4. C'est le comportement voulu — la case « inclure les leads
+  // fermés » les ramène, et on le vérifie ligne suivante.
+  check('filtre RDV oui / non (hors lead fermé)', filtrerLignes(lignes, { rdv: 'oui' }).length === 1 && filtrerLignes(lignes, { rdv: 'non' }).length === 2);
+  check('filtre responsable (hors lead fermé)', filtrerLignes(lignes, { responsableId: 'nicolas' }).length === 3 && filtrerLignes(lignes, { responsableId: 'fred' }).length === 0);
+  check('… et avec la case cochée, le lead Perdu revient dans le compte',
+    filtrerLignes(lignes, { responsableId: 'nicolas', inclureFermes: true }).length === 4);
   check('recherche par nom', filtrerLignes(lignes, { recherche: 'bbb' }).length === 1);
   check('aucun participant -> zéro ligne, aucune erreur', lignesCampagne(etat(), { campagne: campSalon, aujourdhui: AUJ, statutsFermes: FERMES }).length === 0);
   // Le RDV du 22 tombe hors de la fenêtre d'activité quand les dates du salon
@@ -255,7 +262,7 @@ section('S2c — le statut de campagne se DÉDUIT de ce qui a été fait');
     deduire(part({ statutCampagne: 'RDV confirmé' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })]) === 'RDV confirmé');
   check('« Échange en cours » + un appel sans réponse -> reste « Échange en cours »',
     deduire(part({ statutCampagne: 'Échange en cours' }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })]) === 'Échange en cours');
-  for (const manuel of ['Projet reporté', 'Injoignable', 'À relancer après salon'] as const) {
+  for (const manuel of ['Injoignable', 'Pas intéressé', 'À relancer après salon'] as const) {
     check(`« ${manuel} » n'est jamais écrasé par la déduction`,
       deduire(part({ statutCampagne: manuel }), [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })], [planned({ date: '2026-09-23' })]) === manuel);
   }
@@ -313,6 +320,132 @@ section('S2c — le statut de campagne se DÉDUIT de ce qui a été fait');
   const campArchivee = appliquerDeductions([{ ...camp, active: false }], etatCampagne.campagneLeads, etatCampagne.actions, [], AUJ);
   check('campagne archivée : aucune déduction', campArchivee === etatCampagne.campagneLeads);
   check('aucune participation : aucun plantage', appliquerDeductions([camp], [], etatCampagne.actions, [], AUJ)?.length === 0);
+}
+
+section('Le statut du LEAD est la vérité, le statut de campagne en dérive (19/09)');
+{
+  const camp = campagne({ dateDebut: '2026-09-18', dateFin: '2026-09-27', dateSalonDebut: '2026-09-22', dateSalonFin: '2026-09-27' });
+  const suivre = (statutCampagne: CampagneLead['statutCampagne'], statutLead: LeadStatus) =>
+    appliquerChangementStatutLead([camp], [part({ statutCampagne })], 'l1', statutLead)![0].statutCampagne;
+
+  // — Le mapping demandé, lu seul —
+  check('Contacté -> Contacté sans retour', statutCampagneDepuisLead('contacte') === 'Contacté sans retour');
+  check('Qualifié -> Échange en cours', statutCampagneDepuisLead('qualifie') === 'Échange en cours');
+  check('Devis envoyé -> Échange en cours', statutCampagneDepuisLead('devis_envoye') === 'Échange en cours');
+  check('Négociation -> Échange en cours', statutCampagneDepuisLead('negociation') === 'Échange en cours');
+  check('En conclusion -> Échange en cours', statutCampagneDepuisLead('en_conclusion') === 'Échange en cours');
+  check('Reporté -> Projet reporté', statutCampagneDepuisLead('reporte') === 'Projet reporté');
+  check('Signé -> aucune déduction (surtout pas « Pas intéressé », ce serait un jugement)', statutCampagneDepuisLead('signe') === null);
+  check('Perdu -> aucune déduction (idem)', statutCampagneDepuisLead('perdu') === null);
+  check('Nouveau / À contacter -> rien à déduire', statutCampagneDepuisLead('nouveau') === null && statutCampagneDepuisLead('a_contacter') === null);
+
+  // — LE CAS D'AURÉLIEN BILLECOQ : lead « Contacté », 0 appel 0 email, campagne
+  //   restée « À contacter ». C'est le trou de S2c, et c'est ce qui suit le bouche.
+  check('LE CAS RÉEL : lead passé « Contacté » depuis la fiche, ZÉRO action -> « Contacté sans retour »',
+    suivre('À contacter', 'contacte') === 'Contacté sans retour');
+  check('lead passé « Qualifié » depuis la fiche -> « Échange en cours »',
+    suivre('À contacter', 'qualifie') === 'Échange en cours');
+  check('lead passé « Reporté » -> « Projet reporté »', suivre('À contacter', 'reporte') === 'Projet reporté');
+
+  // — Signé / Perdu : le statut de campagne ne bouge PAS —
+  for (const ferme of ['signe', 'perdu'] as const) {
+    check('lead ' + ferme + ' -> statut de campagne INCHANGÉ',
+      appliquerChangementStatutLead([camp], [part({ statutCampagne: 'Échange en cours' })], 'l1', ferme)![0].statutCampagne === 'Échange en cours');
+  }
+  check('lead Perdu : même référence de tableau (aucune écriture, aucun rendu)',
+    (() => { const avant = [part({ statutCampagne: 'À contacter' })]; return appliquerChangementStatutLead([camp], avant, 'l1', 'perdu') === avant; })());
+
+  // — Les garde-fous d'hier, toujours là —
+  check('PAS DE RÉGRESSION : « RDV confirmé » + lead repassé « Contacté » -> reste « RDV confirmé »',
+    suivre('RDV confirmé', 'contacte') === 'RDV confirmé');
+  check('« Échange en cours » + lead « Contacté » -> reste « Échange en cours »',
+    suivre('Échange en cours', 'contacte') === 'Échange en cours');
+  for (const manuel of STATUTS_MANUELS) {
+    check('« ' + manuel + ' » (jugement humain) n\'est jamais écrasé, même par un lead Qualifié',
+      suivre(manuel, 'qualifie') === manuel);
+  }
+  check('« À relancer après salon » survit à un lead passé « Contacté » (marqueur du cercle 2)',
+    suivre('À relancer après salon', 'contacte') === 'À relancer après salon');
+
+  // — « Projet reporté » n'est plus collant (arbitrage du 19/09) —
+  check('« Projet reporté » : à avancement ÉGAL, la dérivation du lead l\'emporte',
+    suivre('Contacté sans retour', 'reporte') === 'Projet reporté');
+  check('« Projet reporté » + lead qui se réveille en Qualifié -> « Échange en cours »',
+    suivre('Projet reporté', 'qualifie') === 'Échange en cours');
+  check('« Projet reporté » + un échange enregistré -> progresse vers « Échange en cours »',
+    statutDeduitParticipation(part({ statutCampagne: 'Projet reporté' }), camp,
+      [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Joint' })], [], AUJ) === 'Échange en cours');
+  check('« Projet reporté » + un appel sans réponse -> reste « Projet reporté » (même marche, mieux renseignée)',
+    statutDeduitParticipation(part({ statutCampagne: 'Projet reporté' }), camp,
+      [action({ type: 'appel', date: '2026-09-19', result: 'Appel — Pas de réponse' })], [], AUJ) === 'Projet reporté');
+  check('« Projet reporté » + un RDV sur le stand -> « RDV confirmé »',
+    statutDeduitParticipation(part({ statutCampagne: 'Projet reporté' }), camp, [], [planned({ date: '2026-09-23' })], AUJ) === 'RDV confirmé');
+
+  // — LA FRONTIÈRE : la déduction ne vaut QUE pour ce qui survient APRÈS l'entrée —
+  // Un lead déjà « Contacté » depuis des mois qu'on ajoute aujourd'hui n'émet
+  // aucun événement : appliquerDeductions (le calcul d'ÉTAT) ne lit pas son
+  // statut. Sans cela, la campagne s'ouvrirait sur « Contactés : 132 sur 157 »
+  // avant le premier appel.
+  const dejaContactes = etat({
+    campagnes: [camp],
+    leads: [lead({ id: 'l1', status: 'contacte' }), lead({ id: 'l2', status: 'qualifie' }), lead({ id: 'l3', status: 'negociation' })],
+    campagneLeads: [
+      part({ id: 'p1', leadId: 'l1' }), part({ id: 'p2', leadId: 'l2' }), part({ id: 'p3', leadId: 'l3' }),
+    ],
+    actions: [],
+  });
+  const aLAjout = appliquerDeductions(dejaContactes.campagnes, dejaContactes.campagneLeads, dejaContactes.actions, [], AUJ);
+  check('À L\'AJOUT : trois leads déjà avancés entrent TOUS à « À contacter » (aucune déduction d\'état)',
+    aLAjout === dejaContactes.campagneLeads
+    && aLAjout!.every(p => p.statutCampagne === 'À contacter'));
+
+  // — Portée : les autres participations et les campagnes archivées —
+  const deuxLeads = [part({ id: 'p1', leadId: 'l1' }), part({ id: 'p2', leadId: 'l2' })];
+  const cible = appliquerChangementStatutLead([camp], deuxLeads, 'l1', 'qualifie')!;
+  check('seule la participation DU lead qui a bougé change',
+    cible[0].statutCampagne === 'Échange en cours' && cible[1].statutCampagne === 'À contacter');
+  check('campagne archivée : aucune déduction',
+    appliquerChangementStatutLead([{ ...camp, active: false }], deuxLeads, 'l1', 'qualifie') === deuxLeads);
+  check('lead sans participation : même référence, aucun plantage',
+    appliquerChangementStatutLead([camp], deuxLeads, 'inconnu', 'qualifie') === deuxLeads);
+  check('aucune participation / aucune campagne : aucun plantage',
+    appliquerChangementStatutLead([camp], [], 'l1', 'qualifie')?.length === 0
+    && appliquerChangementStatutLead(undefined, deuxLeads, 'l1', 'qualifie') === deuxLeads);
+  check('IDEMPOTENTE : rejouée avec le même statut, elle renvoie la MÊME référence',
+    appliquerChangementStatutLead([camp], cible, 'l1', 'qualifie') === cible);
+
+  // — SENS UNIQUE : rien ne remonte vers le lead —
+  // La signature l'interdit déjà (aucun Lead en entrée, des participations en
+  // sortie) ; on le vérifie tout de même sur un état complet : c'est la règle
+  // d'or de la journée, elle mérite une assertion qui la nomme.
+  const avantLeads = dejaContactes.leads;
+  appliquerChangementStatutLead(dejaContactes.campagnes, dejaContactes.campagneLeads, 'l1', 'qualifie');
+  check('AUCUNE RÉTRO-PROPAGATION : les leads sont intacts (même référence, mêmes statuts)',
+    dejaContactes.leads === avantLeads && dejaContactes.leads.map(l => l.status).join() === 'contacte,qualifie,negociation');
+}
+
+section('Leads fermés : hors de la liste de travail par défaut');
+{
+  const camp = campagne({ dateDebut: '2026-09-18', dateFin: '2026-09-27' });
+  const s = etat({
+    campagnes: [camp],
+    leads: [
+      lead({ id: 'l1', status: 'contacte', lastName: 'Actif', nextActionDate: '2026-09-10' }),
+      lead({ id: 'l2', status: 'signe', lastName: 'Signe', nextActionDate: '2026-09-10' }),
+      lead({ id: 'l3', status: 'perdu', lastName: 'Perdu', nextActionDate: '2026-09-10' }),
+    ],
+    campagneLeads: [part({ id: 'p1', leadId: 'l1' }), part({ id: 'p2', leadId: 'l2' }), part({ id: 'p3', leadId: 'l3' })],
+  });
+  const lignes = lignesCampagne(s, { campagne: camp, aujourdhui: AUJ, statutsFermes: FERMES });
+  check('la participation d\'un lead fermé RESTE dans la campagne (on n\'efface pas un client signé au salon)', lignes.length === 3);
+  check('elle est marquée « fermée »', lignes.filter(l => l.ferme).map(l => l.lead.id).sort().join() === 'l2,l3');
+  check('PAR DÉFAUT, la liste de travail ne montre que les leads ouverts', filtrerLignes(lignes, {}).map(l => l.lead.id).join() === 'l1');
+  check('case « inclure les leads fermés » cochée -> les trois reviennent', filtrerLignes(lignes, { inclureFermes: true }).length === 3);
+  check('un lead fermé ne compte pas dans « Relances en retard », même avec une date dépassée',
+    lignes.filter(l => l.enRetard).map(l => l.lead.id).join() === 'l1');
+  check('le filtre des fermés se combine aux autres (rechercher un signé ne le fait pas apparaître)',
+    filtrerLignes(lignes, { recherche: 'signe' }).length === 0
+    && filtrerLignes(lignes, { recherche: 'signe', inclureFermes: true }).length === 1);
 }
 
 section('Campagne par défaut');

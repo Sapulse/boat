@@ -7,6 +7,45 @@ App : SPA React + Vite + TypeScript, API + base Turso (compte unique partagé), 
 
 ---
 
+## [Non publié] — lot salons, correctifs du 19/09
+
+### Le statut du LEAD pilote le statut de campagne
+- La déduction de S2c ne s'appliquait qu'à l'enregistrement d'une **action**. L'équipe
+  fait avancer les **statuts** depuis la fiche (« Passer à : Qualifié ») : la
+  déduction écoute désormais aussi le statut du lead — fiche, pipeline en
+  glisser-déposer, boîte prospects, formulaire, fenêtre d'action.
+  Mapping : Contacté → *Contacté sans retour* ; Qualifié / Devis envoyé /
+  Négociation / En conclusion → *Échange en cours* ; Reporté → *Projet reporté* ;
+  Signé et Perdu → **inchangé**.
+- **Règle d'or** : le statut du lead est la vérité, le statut de campagne en dérive.
+  Aucune rétro-propagation campagne → lead.
+- **Frontière d'entrée** : la déduction depuis le statut du lead est un ÉVÉNEMENT
+  (comparaison avant / après dans le reducer), jamais un calcul d'état. Un lead déjà
+  avancé ajouté aujourd'hui entre à « À contacter » — sinon une campagne s'ouvrirait
+  sur « Contactés : 132 sur 157 » avant le premier appel.
+- « Projet reporté » n'est plus un statut de jugement : il rejoint l'échelle déduite au
+  niveau de « Contacté sans retour », donc un échange ultérieur le fait progresser.
+  Restent strictement manuels : *Injoignable*, *Pas intéressé*, *À relancer après salon*.
+- **Leads fermés** (Signé / Perdu) : hors de la liste de travail par défaut, case
+  « Inclure les leads fermés » pour les revoir, et le nombre de masqués est affiché.
+
+### Sources
+- Nouvelle source **« Concessionnaire »** (apporteur d'affaires), dans SOURCES et dans
+  PROSPECTION_SOURCES ; alias *concession*, *concessionnaires*, *apporteur*,
+  *apporteur d'affaires*. Aucune migration.
+
+### Rattrapage
+- `scripts/rattrapage-statut-campagne-turso.ts` (verrou de cible habituel, à blanc par
+  défaut) : recalcule le statut des participations **encore à « À contacter »** dont le
+  lead a bougé **après** son entrée dans la campagne. Sauvegarde intégrée, une seule
+  transaction, preuve ligne à ligne (aucun lead touché), rejeu à zéro ligne.
+
+### Tests
+- 50 harnais verts. `harness-campagnes-lib` 121 assertions, `harness-reducer` 239,
+  `harness-rattrapage-statut` 45 (nouveau), `harness-sources` 70.
+
+---
+
 ## [4.0.0] — 2026-09-17 — Lots 2 à 5 : prochaine action obligatoire, agenda, dashboard, objectifs de la semaine, réseaux sociaux
 
 Version MAJEURE : la journée se pilote désormais depuis l'Agenda et chaque lead en

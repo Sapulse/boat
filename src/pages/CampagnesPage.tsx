@@ -93,6 +93,11 @@ export default function CampagnesPage() {
   const contactes = lignes.filter(l => estContacte(l.compteurs)).length;
   const enRetard = lignes.filter(l => l.enRetard).length;
   const avecRdv = lignes.filter(l => l.rdv).length;
+  // Signé / Perdu : hors de la liste de travail par défaut. On ne les efface pas
+  // de la campagne (un client signé AU salon est justement le résultat), on les
+  // sort de la file d'appels — et on DIT combien sont masqués, pour que personne
+  // ne cherche un nom qui a disparu sans explication.
+  const fermes = lignes.filter(l => l.ferme).length;
 
   const responsables = useMemo(() => eligibleCommercials(state.commercials), [state.commercials]);
   const segmentsPresents = useMemo(
@@ -203,12 +208,28 @@ export default function CampagnesPage() {
             En retard
           </label>
         </div>
+        {/* Leads fermés : masqués par défaut (règle de l'Agenda v4 étendue aux
+            campagnes le 19/09). La case n'apparaît QUE s'il y en a — un écran
+            sans lead fermé n'a pas à porter une case qui ne sert à rien. */}
+        {fermes > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-gray-700 whitespace-nowrap col-span-2 sm:col-span-1">
+            <input
+              type="checkbox" className="w-4 h-4"
+              checked={!!filtres.inclureFermes}
+              onChange={e => majFiltre({ inclureFermes: e.target.checked })}
+            />
+            Inclure les leads fermés
+          </label>
+        )}
       </div>
 
       <div className="text-sm text-gray-500" data-testid="campagne-compte">
         {filtrees.length} participant{filtrees.length > 1 ? 's' : ''}
         {filtrees.length !== lignes.length && <> sur {lignes.length}</>}
         {filtrees.length > visibles.length && <> — {visibles.length} affichés</>}
+        {fermes > 0 && !filtres.inclureFermes && (
+          <> — {fermes} fermé{fermes > 1 ? 's' : ''} (Signé / Perdu) masqué{fermes > 1 ? 's' : ''}</>
+        )}
       </div>
 
       {/* MOBILE : une carte par participant. Téléphone, statut et repères sont
@@ -388,9 +409,13 @@ export default function CampagnesPage() {
       <p className="text-xs text-gray-500">
         Appels et emails sont <strong>comptés depuis l'historique</strong> sur la période de la campagne : aucun compteur
         n'est saisi à la main. La prochaine action et son retard sont ceux de la fiche du lead — une seule vérité.
-        Le <strong>statut de campagne avance tout seul</strong> quand un échange est enregistré (ici ou depuis la fiche) :
-        contacté, échange en cours, RDV confirmé. Les menus servent à <strong>corriger</strong>, et à poser ce qui relève
-        du jugement — « Pas intéressé », « Injoignable », « Projet reporté », « À relancer après salon » — que rien ne devine.
+        Le <strong>statut de campagne avance tout seul</strong> : quand le <strong>statut du lead</strong> change
+        (« Passer à : Qualifié » depuis la fiche, ou le pipeline), et quand un échange est enregistré. Il ne recule
+        jamais, et il ne part que de ce qui se passe <strong>après l'entrée du lead dans la campagne</strong> — un lead
+        déjà contacté l'an dernier entre à « À contacter ». Un lead <strong>Signé ou Perdu</strong> garde son statut de
+        campagne et sort de la liste (case « Inclure les leads fermés » pour le revoir). Les menus servent à
+        <strong>corriger</strong>, et à poser ce qui relève du jugement — « Pas intéressé », « Injoignable »,
+        « À relancer après salon » — que rien ne devine.
       </p>
     </div>
   );

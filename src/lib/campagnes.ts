@@ -1,5 +1,6 @@
 import type {
-  AppState, Campagne, CampagneLead, CampagnePriorite, Commercial, Lead, LeadAction, PlannedAction,
+  AppState, Campagne, CampagneLead, CampagnePriorite, CampagneStatut, Commercial, Lead, LeadAction,
+  LeadStatus, PlannedAction,
 } from '../data/types.js';
 // Suffixe .js : module aussi chargé côté Node (harnais, et API si besoin).
 
@@ -101,6 +102,12 @@ export interface LigneCampagne {
   prochaineActionType: string;
   /** Prochaine action en retard : même règle que l'Agenda (hors Signé / Perdu). */
   enRetard: boolean;
+  /**
+   * Lead FERMÉ (Signé / Perdu) : la participation reste dans la campagne — on
+   * n'efface pas un client signé au salon — mais elle sort de la liste de
+   * travail par défaut (règle de l'Agenda v4, étendue aux campagnes le 19/09).
+   */
+  ferme: boolean;
   rdv: PlannedAction | undefined;
 }
 
@@ -137,6 +144,7 @@ export function lignesCampagne(state: AppState, opts: OptionsLignes): LigneCampa
       prochaineAction,
       prochaineActionType: lead.nextActionType ?? '',
       enRetard: !!prochaineAction && prochaineAction < aujourdhui && !statutsFermes.includes(lead.status),
+      ferme: statutsFermes.includes(lead.status),
       rdv: rdvStand(planned, lead.id, fSalon),
     });
   }
@@ -163,6 +171,13 @@ export interface FiltresCampagne {
   /** 'oui' | 'non' | '' */
   rdv?: string;
   enRetardSeulement?: boolean;
+  /**
+   * Leads FERMÉS (Signé / Perdu) : masqués PAR DÉFAUT. Un lead signé n'a plus
+   * rien à faire dans la file d'appels du salon, et un lead perdu non plus ;
+   * ils restent consultables en cochant la case, pour les revoir sans avoir à
+   * les retrouver ailleurs.
+   */
+  inclureFermes?: boolean;
   /** Recherche libre : nom, prénom, société (via boatInterest), téléphone, email. */
   recherche?: string;
 }
@@ -170,6 +185,7 @@ export interface FiltresCampagne {
 export function filtrerLignes(lignes: LigneCampagne[], f: FiltresCampagne): LigneCampagne[] {
   const q = (f.recherche ?? '').trim().toLowerCase();
   return lignes.filter(l => {
+    if (l.ferme && !f.inclureFermes) return false;
     if (f.responsableId && l.participation.responsableId !== f.responsableId) return false;
     if (f.statutCampagne && l.participation.statutCampagne !== f.statutCampagne) return false;
     if (f.segment && l.participation.segment !== f.segment) return false;
@@ -270,35 +286,58 @@ export function campagneParDefaut(campagnes: Campagne[] | undefined): Campagne |
 //
 // DONC : le statut se DÉDUIT de ce qui a été fait, et l'édition manuelle sert à
 // CORRIGER. Trois règles de sûreté :
-//  1. on ne devine JAMAIS une intention : « Projet reporté », « Injoignable »,
-//     « Pas intéressé », « À relancer après salon » restent strictement manuels
-//     et ne sont jamais écrasés par une déduction ;
+//  1. on ne devine JAMAIS une intention : « Injoignable », « Pas intéressé »,
+//     « À relancer après salon » restent strictement manuels et ne sont jamais
+//     écrasés par une déduction (« Projet reporté » est sorti de cette liste le
+//     19/09 : il se déduit du lead Reporté — voir plus bas) ;
 //  2. la déduction ne REGRESSE jamais : un « RDV confirmé » ne redevient pas
 //     « Contacté sans retour » parce qu'on rappelle ;
 //  3. elle s'applique quel que soit le point de saisie (liste de travail OU fiche
 //     lead), parce qu'elle vit dans le reducer, pas dans un écran.
 // ===========================================================================
 
-/** Statuts que la déduction peut poser, DU MOINS AVANCÉ AU PLUS AVANCÉ. */
+/** Statuts que la déduction peut poser. */
 export const STATUTS_DEDUITS = [
   'À contacter',
   'Contacté sans retour',
+  'Projet reporté',
   'Échange en cours',
   'RDV confirmé',
 ] as const;
 
-/** Statuts de JUGEMENT : seul un humain les pose, la déduction n'y touche pas. */
+/**
+ * AVANCEMENT de chaque statut déductible — c'est LUI qui interdit la régression,
+ * pas l'ordre du tableau ci-dessus.
+ *
+ * « Projet reporté » est au MÊME niveau que « Contacté sans retour » (décision
+ * du 19/09) : pendant un salon, un projet reporté qu'on rappelle et qui se
+ * réveille est exactement la matière qu'on cherche. Au-dessus, il gèlerait le
+ * lead au moment où il redevient chaud ; au même niveau, un échange ultérieur le
+ * fait progresser tout seul vers « Échange en cours ».
+ */
+const RANG_DEDUIT: Record<string, number> = {
+  'À contacter': 0,
+  'Contacté sans retour': 1,
+  'Projet reporté': 1,
+  'Échange en cours': 2,
+  'RDV confirmé': 3,
+};
+
+/**
+ * Statuts de JUGEMENT : seul un humain les pose, aucune déduction n'y touche.
+ *
+ * « À relancer après salon » en particulier est le marqueur du cercle 2 : un
+ * appel ne doit JAMAIS le ramener dans la file urgente. « Projet reporté » n'en
+ * fait plus partie depuis le 19/09 (voir RANG_DEDUIT) : il se déduit du statut
+ * Reporté du lead, et se laisse dépasser par un échange.
+ */
 export const STATUTS_MANUELS = [
   'À relancer après salon',
-  'Projet reporté',
   'Injoignable',
   'Pas intéressé',
 ] as const;
 
-const rang = (s: string): number => {
-  const i = (STATUTS_DEDUITS as readonly string[]).indexOf(s);
-  return i === -1 ? -1 : i;
-};
+const rang = (s: string): number => RANG_DEDUIT[s] ?? -1;
 
 /**
  * L'action prouve-t-elle qu'on a PARLÉ au client ?
@@ -375,6 +414,102 @@ export function statutDeduitParticipation(
 
   // Règle 2 : jamais de régression — on garde le plus avancé des deux.
   return (rang(cible) > rang(p.statutCampagne) ? cible : p.statutCampagne) as CampagneLead['statutCampagne'];
+}
+
+// ===========================================================================
+// DÉDUCTION DEPUIS LE STATUT DU LEAD (19/09) — LE TROU DE S2c.
+//
+// CE QU'ON A RATÉ HIER : la déduction ne se déclenchait qu'à l'enregistrement
+// d'une ACTION. Or l'équipe ne journalise pas ses actions — 30 appels
+// enregistrés en 11 mois — elle fait avancer les STATUTS depuis la fiche
+// (« Passer à : Qualifié »). Cas vérifié : un lead « Contacté », participation
+// « À contacter », 0 appel 0 email. La déduction était câblée sur le chemin que
+// personne n'emprunte.
+//
+// RÈGLE D'OR : le statut du LEAD est la vérité, le statut de CAMPAGNE en dérive.
+// Jamais l'inverse — rien ici n'écrit `leads.status`, et le harnais le prouve.
+//
+// LA FRONTIÈRE, ET C'EST LE POINT DÉLICAT (arbitrage du 19/09) : le statut de
+// campagne ne dit pas où en est le lead, il dit où en est le lead POUR CETTE
+// OPÉRATION. Sur la grille du salon, 132 des 208 prospects actifs sont déjà
+// « Contacté » : déduire depuis l'état afficherait « Contactés : 132 sur 157 »
+// dès la constitution de la campagne, avant le moindre appel, et le commercial
+// ouvrirait son écran en croyant le travail fait aux trois quarts.
+//
+// DONC : cette déduction-ci est un ÉVÉNEMENT, pas un calcul d'état. Elle
+// s'applique aux changements de statut SURVENUS APRÈS l'entrée du lead dans la
+// campagne, et à eux seuls — le reducer compare le statut d'avant à celui
+// d'après et n'appelle cette fonction que pour les leads qui ont bougé. À
+// l'ajout (unitaire ou en masse), personne ne change de statut : tout le monde
+// entre à « À contacter », quel que soit l'état du lead. Même frontière que les
+// compteurs d'appels et d'emails, bornés eux à la fenêtre de campagne.
+// ===========================================================================
+
+/**
+ * Statut de campagne DÉRIVÉ du statut du lead. `null` = ce statut ne dit rien
+ * de l'avancement dans la campagne, on ne touche à rien.
+ *
+ *   Contacté                     -> Contacté sans retour
+ *   Qualifié                     -> Échange en cours
+ *   Devis envoyé / Négociation /
+ *   En conclusion                -> Échange en cours
+ *   Reporté                      -> Projet reporté
+ *   Signé / Perdu                -> null (INCHANGÉ)
+ *   Nouveau / À contacter        -> null (rien à déduire)
+ *
+ * Signé et Perdu ne deviennent PAS « Pas intéressé » : ce serait un jugement, et
+ * un client qui signe n'est pas un client qui refuse. À la place, ces leads
+ * sortent de la liste de travail par défaut (voir `LigneCampagne.ferme`) et ne
+ * comptent plus dans « Relances en retard ».
+ */
+export function statutCampagneDepuisLead(statutLead: LeadStatus): CampagneStatut | null {
+  switch (statutLead) {
+    case 'contacte': return 'Contacté sans retour';
+    case 'qualifie':
+    case 'devis_envoye':
+    case 'negociation':
+    case 'en_conclusion': return 'Échange en cours';
+    case 'reporte': return 'Projet reporté';
+    // Signé / Perdu : statut de campagne inchangé, la participation sort de la
+    // liste par défaut. Nouveau / À contacter : rien à déduire.
+    default: return null;
+  }
+}
+
+/**
+ * ÉVÉNEMENT « le lead vient de changer de statut » : ses participations aux
+ * campagnes ACTIVES suivent.
+ *
+ * Trois garde-fous, les mêmes qu'hier :
+ *  1. un statut de JUGEMENT posé à la main n'est jamais écrasé ;
+ *  2. pas de RÉGRESSION : un « RDV confirmé » ne retombe pas parce que le lead
+ *     repasse en « Contacté » ;
+ *  3. à avancement ÉGAL, la dérivation du lead l'emporte (« Contacté sans
+ *     retour » devient « Projet reporté » quand le lead passe Reporté) : c'est
+ *     la même marche de l'échelle, mieux renseignée, pas un recul.
+ *
+ * Renvoie le tableau d'ORIGINE (même référence) si rien ne change.
+ */
+export function appliquerChangementStatutLead(
+  campagnes: Campagne[] | undefined,
+  participations: CampagneLead[] | undefined,
+  leadId: string,
+  statutLead: LeadStatus,
+): CampagneLead[] | undefined {
+  if (!participations?.length || !campagnes?.length) return participations;
+  const cible = statutCampagneDepuisLead(statutLead);
+  if (!cible) return participations;
+  const actives = new Set(campagnes.filter(c => c.active).map(c => c.id));
+  let change = false;
+  const suivant = participations.map(p => {
+    if (p.leadId !== leadId || !actives.has(p.campagneId)) return p;
+    if ((STATUTS_MANUELS as readonly string[]).includes(p.statutCampagne)) return p;
+    if (p.statutCampagne === cible) return p;
+    if (rang(cible) < rang(p.statutCampagne)) return p; // régression : on garde
+    change = true;
+    return { ...p, statutCampagne: cible };
+  });
+  return change ? suivant : participations;
 }
 
 /**

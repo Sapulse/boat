@@ -4,7 +4,7 @@ import { applyObjectivePatch, carryOverObjective, newObjective, validateObjectiv
 import { defaultSocialNetworks, mergeStats, newNetwork, statErrors, validateNetworkName } from '../lib/social';
 import { DEFAULT_COMMERCIALS, DEFAULT_TEMPLATES, EMPTY_DEFAULT_GOAL } from '../data/constants';
 import { loadState } from '../lib/storage';
-import { appliquerDeductions } from '../lib/campagnes';
+import { appliquerChangementStatutLead, appliquerDeductions } from '../lib/campagnes';
 import { statusMilestoneDates, toISODate } from '../lib/utils';
 import { mergeAcquisition, type LegacyAcquisitionVolume } from '../lib/acquisition';
 import {
@@ -681,12 +681,68 @@ const DECLENCHE_DEDUCTION = new Set<Action['type']>([
   'ADD_CAMPAGNE_LEADS',         // à l'ajout : on tient compte de ce qui a déjà été fait
 ]);
 
+// ---------------------------------------------------------------------------
+// LE TROU DE S2c, BOUCHÉ (19/09) — LE STATUT DU LEAD EST LA VÉRITÉ.
+//
+// La déduction ci-dessus se déclenche sur l'enregistrement d'une ACTION. Or
+// l'équipe ne journalise pas ses actions (30 appels en 11 mois) : elle fait
+// avancer les STATUTS depuis la fiche. On écoutait le chemin que personne
+// n'emprunte.
+//
+// On écoute donc AUSSI le statut du lead — mais comme un ÉVÉNEMENT, pas comme un
+// état : on compare le statut d'AVANT à celui d'APRÈS, et seuls les leads qui
+// ont réellement bougé pendant ce dispatch entraînent une déduction. C'est ce
+// qui met la frontière au bon endroit : un lead déjà « Contacté » depuis six
+// mois qu'on ajoute aujourd'hui à la campagne n'émet aucun événement et entre à
+// « À contacter ». Sans cela, la campagne s'ouvrirait sur « Contactés : 132 sur
+// 157 » avant le premier appel.
+//
+// Aucune liste d'actions à tenir à jour ici : on regarde les leads, donc TOUS
+// les chemins comptent (fiche, pipeline en glisser-déposer, boîte prospects,
+// formulaire, statut changé depuis la fenêtre d'action). Le garde-fou de coût
+// est l'égalité de RÉFÉRENCE : si le tableau des leads n'a pas été reconstruit,
+// on ne compare rien.
+//
+// SENS UNIQUE : rien ici n'écrit `leads.status` — une participation ne remonte
+// JAMAIS vers son lead (prouvé au harnais).
+// ---------------------------------------------------------------------------
+/**
+ * SET_STATE est EXCLU : ce n'est pas un geste, c'est l'état du serveur qui
+ * arrive (chargement, synchronisation, restauration). Les statuts qui « bougent »
+ * y sont ceux d'un collègue — sa propre session a déjà déduit et enregistré. En
+ * déduire ici afficherait un statut que le serveur ignore, jusqu'au prochain
+ * rafraîchissement qui le reprendrait : un clignotement, et aucune écriture.
+ */
+function statutsLeadModifies(avant: AppState, apres: AppState, type: Action['type']): { leadId: string; statut: LeadStatus }[] {
+  if (type === 'SET_STATE') return [];
+  if (avant.leads === apres.leads) return [];
+  const statutAvant = new Map(avant.leads.map(l => [l.id, l.status]));
+  const bouges: { leadId: string; statut: LeadStatus }[] = [];
+  for (const l of apres.leads) {
+    const precedent = statutAvant.get(l.id);
+    // Lead absent d'avant = création : ce n'est pas un changement de statut, et
+    // un lead qui vient de naître n'a encore aucune participation.
+    if (precedent !== undefined && precedent !== l.status) bouges.push({ leadId: l.id, statut: l.status });
+  }
+  return bouges;
+}
+
 export function reducer(state: AppState, action: Action): AppState {
-  const suivant = reducerBase(state, action);
-  if (!DECLENCHE_DEDUCTION.has(action.type)) return suivant;
-  const campagneLeads = appliquerDeductions(
-    suivant.campagnes, suivant.campagneLeads, suivant.actions, suivant.plannedActions ?? [], toISODate(new Date()),
-  );
+  const base = reducerBase(state, action);
+  let campagneLeads = base.campagneLeads;
+
+  // 1) Le statut d'un lead a changé -> ses participations suivent.
+  for (const { leadId, statut } of statutsLeadModifies(state, base, action.type)) {
+    campagneLeads = appliquerChangementStatutLead(base.campagnes, campagneLeads, leadId, statut);
+  }
+
+  // 2) Déduction depuis les actions et les RDV (S2c), inchangée.
+  if (DECLENCHE_DEDUCTION.has(action.type)) {
+    campagneLeads = appliquerDeductions(
+      base.campagnes, campagneLeads, base.actions, base.plannedActions ?? [], toISODate(new Date()),
+    );
+  }
+
   // Même référence = rien n'a changé : on ne provoque pas de rendu inutile.
-  return campagneLeads === suivant.campagneLeads ? suivant : { ...suivant, campagneLeads };
+  return campagneLeads === base.campagneLeads ? base : { ...base, campagneLeads };
 }
