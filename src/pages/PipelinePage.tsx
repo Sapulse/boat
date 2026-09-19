@@ -22,8 +22,9 @@ import { pendingActionOf } from '../lib/plannedActions';
 import { StatusBadge, TemperatureBadge, AlertDot } from '../components/ui/StatusBadge';
 import StatusConfirmModal, { type StatusConfirmExtras } from '../components/leads/StatusConfirmModal';
 import { formatCurrency, getAlertLevel, getLeadFullName, leadMatchesSearch, daysSince, cn } from '../lib/utils';
-import { BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, NO_COMMERCIAL_FILTER, statusRequiresConfirmation } from '../data/constants';
+import { BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, NO_COMMERCIAL_FILTER, statusRequiresConfirmation } from '../data/constants';
 import type { Lead, LeadStatus } from '../data/types';
+import OptionsSource from '../components/ui/OptionsSource';
 
 const PRIMARY_STATUSES: LeadStatus[] = ['nouveau', 'a_contacter', 'contacte', 'qualifie', 'devis_envoye', 'negociation', 'en_conclusion'];
 const SECONDARY_STATUSES: LeadStatus[] = ['signe', 'perdu', 'reporte'];
@@ -303,7 +304,7 @@ export default function PipelinePage() {
             </select>
             <select className="select text-xs" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
               <option value="">Source</option>
-              {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+              <OptionsSource />
             </select>
             <select className="select text-xs" value={filterBoatType} onChange={e => setFilterBoatType(e.target.value)}>
               <option value="">Type</option>

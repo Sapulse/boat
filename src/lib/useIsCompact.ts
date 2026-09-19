@@ -36,7 +36,15 @@ export function useIsCompact(): boolean {
  * a 100 px en consequence (cf. GUTTER_COMPACT).
  */
 export function shortLabel(value: string, max = 15): string {
-  return value.length > max ? value.slice(0, max - 1) + '…' : value;
+  // Lot salons (S0) : sur un AXE, le préfixe « Salon – » est répété à chaque
+  // ligne de salon — il mange la gouttière sans rien apprendre, et il rendait
+  // « Salon – Nautique Paris » et « Salon – Nautique La Rochelle » IDENTIQUES
+  // après troncature (« Salon – Nautiq… »). On le retire d'abord : restent
+  // « Nautique Paris » et « Nautique La Ro… », qui se distinguent.
+  // Le libellé COMPLET est conservé partout ailleurs (menus, tableaux, export) :
+  // seule la lecture d'un axe compact est concernée.
+  const sansPrefixe = value.startsWith('Salon – ') ? value.slice('Salon – '.length) : value;
+  return sansPrefixe.length > max ? sansPrefixe.slice(0, max - 1) + '…' : sansPrefixe;
 }
 
 /**

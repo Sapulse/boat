@@ -129,7 +129,7 @@ section('countLeadsCreated — leads rentrés par PROSPECTION ACTIVE (source fil
     makeLead({ createdAt: '2026-06-28', source: 'Démarchage terrain' }), // prospection ✓
     makeLead({ createdAt: '2026-06-15', source: 'LBC' }),                // flux entrant -> exclu
     makeLead({ createdAt: '2026-06-12', source: '' }),                   // sans source -> exclu
-    makeLead({ createdAt: '2026-05-31', source: 'Salon GP' }),           // prospection mais autre mois
+    makeLead({ createdAt: '2026-05-31', source: 'Salon – Grand Pavois' }), // prospection mais autre mois
     makeLead({ createdAt: '2026-06-10', source: 'Recommandation', commercialId: 'tom' }), // autre commercial
   ];
   check('fred : 2 leads de prospection en juin (Passage + Démarchage)',
@@ -139,7 +139,7 @@ section('countLeadsCreated — leads rentrés par PROSPECTION ACTIVE (source fil
   check('sans source exclu',
     countLeadsCreated([makeLead({ createdAt: '2026-06-01', source: '' })], 'fred', 2026, 6) === 0);
   check('tom isolé (1 lead Recommandation)', countLeadsCreated(leads, 'tom', 2026, 6) === 1);
-  check('Salon GP de mai ne compte pas en juin (mais bien en mai)',
+  check('Salon de mai ne compte pas en juin (mais bien en mai)',
     countLeadsCreated(leads, 'fred', 2026, 5) === 1);
 }
 

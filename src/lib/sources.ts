@@ -26,9 +26,36 @@ function stripWebAddress(value: string): string {
   return m && /^https?:\/\/|^www\.|\/$/i.test(value.trim()) ? m[1] : value;
 }
 
-/** Variantes ÉCRITES AUTREMENT d'une source de référence (clé -> nom de référence). */
+/**
+ * Variantes ÉCRITES AUTREMENT d'une source de référence (clé -> nom de référence).
+ *
+ * La clé est la forme NORMALISÉE (minuscules, sans accents, sans espaces ni
+ * ponctuation) et la comparaison porte sur la chaîne ENTIÈRE, jamais sur une
+ * sous-chaîne : « gp » ne peut donc pas attraper « GPS ».
+ *
+ * Salons (lot salons, S0) : on couvre les ANCIENS libellés — des leads ou des
+ * imports peuvent encore les porter — et les formes que l'équipe tape vraiment
+ * au stand, où l'on saisit vite. Aucune année ici : le millésime appartient à la
+ * campagne, pas à la source.
+ */
 const ALIASES: Record<string, string> = {
   leboncoin: 'LBC',
+
+  // Grand Pavois — anciens libellés et raccourcis d'usage.
+  salongp: 'Salon – Grand Pavois',
+  gp: 'Salon – Grand Pavois',
+  gp2026: 'Salon – Grand Pavois',
+  grandpavois: 'Salon – Grand Pavois',
+  pavois: 'Salon – Grand Pavois',
+  larochelle2026: 'Salon – Nautique La Rochelle',
+
+  // Cannes.
+  saloncan: 'Salon – Cannes',
+  cannes: 'Salon – Cannes',
+
+  // Nautique de Paris.
+  salonprs: 'Salon – Nautique Paris',
+  paris2026: 'Salon – Nautique Paris',
 };
 
 /** Nom de référence d'une source, ou null si elle n'y correspond pas. */

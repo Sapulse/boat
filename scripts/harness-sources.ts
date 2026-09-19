@@ -8,7 +8,7 @@ import { fingerprint } from './apply-planned-actions-turso';
 import { createClient } from '@libsql/client';
 import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { SOURCES } from '../src/data/constants';
+import { SOURCES, PROSPECTION_SOURCES, isSourceSalon } from '../src/data/constants';
 import { dbJetable } from './lib/dbJetable';
 
 let passed = 0;
@@ -22,7 +22,7 @@ const eq = (input: string, expected: string) => check(`« ${input} » -> « ${ex
 console.log('\n— Casse, accents, espaces, ponctuation');
 eq('Site BOB', 'Site BOB');
 eq('  site   bob ', 'Site BOB');
-eq('SALON GP', 'Salon GP');
+eq('SALON GP', 'Salon – Grand Pavois'); // ancien libellé, désormais alias (lot salons, S0)
 eq('annonces du bateau', 'Annonces du bateau');
 eq('demarchage-terrain', 'Démarchage terrain');
 eq('BOATS.COM', 'boats.com');
@@ -52,6 +52,35 @@ check('vide -> vide', normalizeSource('   ') === '' && normalizeSource(undefined
 check('« Annonce du bateau » (nom des stats mensuelles) n\'est pas modifié en silence', normalizeSource('Annonce du bateau') === 'Annonce du bateau');
 
 console.log('\n— Liste de référence');
+// --- Lot salons (S0) : libellés SANS millésime, anciens libellés en alias ---
+eq('Salon GP', 'Salon – Grand Pavois');
+eq('salon gp', 'Salon – Grand Pavois');
+eq('GP', 'Salon – Grand Pavois');
+eq('gp 2026', 'Salon – Grand Pavois');
+eq('Grand Pavois', 'Salon – Grand Pavois');
+eq('grand  pavois', 'Salon – Grand Pavois');
+eq('pavois', 'Salon – Grand Pavois');
+eq('Salon CAN', 'Salon – Cannes');
+eq('Cannes', 'Salon – Cannes');
+eq('cannes ', 'Salon – Cannes');
+eq('Salon PRS', 'Salon – Nautique Paris');
+eq('Paris 2026', 'Salon – Nautique Paris');
+eq('La Rochelle 2026', 'Salon – Nautique La Rochelle');
+eq('Salon – Grand Pavois', 'Salon – Grand Pavois');
+check('les 4 salons sont dans SOURCES', ['Salon – Grand Pavois', 'Salon – Cannes', 'Salon – Nautique Paris', 'Salon – Nautique La Rochelle'].every(s => (SOURCES as readonly string[]).includes(s)));
+check("aucun libellé de salon ne porte d'année (le millésime est celui de la campagne)",
+  (SOURCES as readonly string[]).filter(isSourceSalon).every(s => !/\d{4}/.test(s)));
+check('le préfixe « Salon – » identifie exactement les 4 salons',
+  (SOURCES as readonly string[]).filter(isSourceSalon).length === 4);
+check('INVARIANT : PROSPECTION_SOURCES reste un sous-ensemble de SOURCES (les salons compris)',
+  PROSPECTION_SOURCES.every(s => (SOURCES as readonly string[]).includes(s)));
+check('les 4 salons comptent comme prospection active (objectif « leads rentrés »)',
+  (SOURCES as readonly string[]).filter(isSourceSalon).every(s => PROSPECTION_SOURCES.includes(s)));
+// Pas de faux positif : la comparaison porte sur la chaîne ENTIÈRE.
+check("« GPS » n'est PAS capté par l'alias « gp »", normalizeSource('GPS') === 'GPS');
+check("« Cannes-la-Bocca » n'est PAS capté par l'alias « cannes »", normalizeSource('Cannes-la-Bocca') === 'Cannes-la-Bocca');
+check("« Paris » seul reste inchangé (l'alias est « paris 2026 »)", normalizeSource('Paris') === 'Paris');
+
 check('toutes les sources de référence sont stables (idempotent)', SOURCES.every(s => normalizeSource(s) === s));
 check('clés de référence toutes distinctes (pas d\'ambiguïté)', new Set(SOURCES.map(sourceKey)).size === SOURCES.length);
 check('BoatsGroup fait partie de la liste de référence', (SOURCES as readonly string[]).includes('BoatsGroup'));

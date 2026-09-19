@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { Lead, LeadStatus, BoatType, BoatCondition, Temperature, ActionType, Priority } from '../../data/types';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, DEFAULT_TEMPERATURE, SOURCES, PRIORITIES } from '../../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, DEFAULT_TEMPERATURE, PRIORITIES } from '../../data/constants';
 import { useApp } from '../../context/useApp';
 import { toISODate } from '../../lib/utils';
 import { useSubmitLock } from '../../hooks/useSubmitLock';
 import { findDuplicateLeads } from '../../lib/duplicateLeads';
+import OptionsSource from '../../components/ui/OptionsSource';
 
 interface LeadFormProps {
   lead?: Lead;
@@ -131,8 +132,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
             >
               <option value="">--</option>
               {/* Source hors liste (ancienne donnée, import) : affichée telle quelle plutôt que « -- ». */}
-              {form.source && !(SOURCES as readonly string[]).includes(form.source) && <option value={form.source}>{form.source}</option>}
-              {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+              <OptionsSource valeur={form.source} />
             </select>
             {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}
           </div>
@@ -235,8 +235,7 @@ export default function LeadForm({ lead, onSave, onCancel, quickMode = false }: 
           >
             <option value="">--</option>
             {/* Source hors liste (ancienne donnée, import) : affichée telle quelle plutôt que « -- ». */}
-            {form.source && !(SOURCES as readonly string[]).includes(form.source) && <option value={form.source}>{form.source}</option>}
-            {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            <OptionsSource valeur={form.source} />
           </select>
           {sourceError && <p className="text-xs text-danger-600 mt-1">La source est obligatoire.</p>}
         </div>

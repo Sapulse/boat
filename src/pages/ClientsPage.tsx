@@ -7,8 +7,9 @@ import { SortIcon, type SortDir } from '../components/ui/SortIcon';
 import { formatDate, formatCurrency, getLeadFullName, isoDateDaysAgo } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
-import { BOAT_TYPES, SOURCES, NO_COMMERCIAL_FILTER } from '../data/constants';
+import { BOAT_TYPES, NO_COMMERCIAL_FILTER } from '../data/constants';
 import type { Lead } from '../data/types';
+import OptionsSource from '../components/ui/OptionsSource';
 
 // Colonnes triables de la liste Clients (même mécanisme que Leads).
 type SortField = 'name' | 'commercial' | 'amount' | 'signedAt' | 'deliveryDate';
@@ -166,9 +167,7 @@ export default function ClientsPage() {
           onChange={e => setFilterSource(e.target.value)}
         >
           <option value="">Toutes les sources</option>
-          {SOURCES.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          <OptionsSource valeur={filterSource} />
         </select>
 
         <button onClick={triggerExport} disabled={exportDone} className="btn-secondary btn-sm ml-auto disabled:opacity-70">

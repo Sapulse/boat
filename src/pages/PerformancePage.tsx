@@ -11,10 +11,11 @@ import PrintHeader from '../components/print/PrintHeader';
 import { formatCurrency, isoDateDaysAgo } from '../lib/utils';
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, ACTIVE_STATUSES } from '../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, ACTIVE_STATUSES } from '../data/constants';
 import type { LeadStatus } from '../data/types';
 import { useSearchParams } from 'react-router-dom';
 import { useIsCompact, shortLabel, GUTTER_COMPACT, GUTTER_WIDE } from '../lib/useIsCompact';
+import OptionsSource from '../components/ui/OptionsSource';
 
 const COLORS = ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#22c55e', '#14b8a6', '#f97316', '#84cc16', '#a855f7'];
 
@@ -200,7 +201,7 @@ export default function PerformancePage() {
           </select>
           <select className="select text-sm" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
             <option value="">Toutes les sources</option>
-            {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            <OptionsSource />
           </select>
           <select className="select text-sm" value={filterBoatType} onChange={e => setFilterBoatType(e.target.value)}>
             <option value="">Tous les types</option>

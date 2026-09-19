@@ -15,7 +15,8 @@ import { formatCurrency, formatDateShort, getAlertLevel, getLeadFullName, leadMa
 import { exportCSV } from '../lib/csv';
 import { useExportFeedback } from '../lib/useExportFeedback';
 import { parseVCards, splitNewVsDuplicates, createLeadFromContact, type ParsedContact, type DuplicateMatch } from '../lib/vcard';
-import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, SOURCES, TEMPERATURES, ACTION_TYPES, QUOTE_STATUSES, NO_COMMERCIAL_FILTER } from '../data/constants';
+import { LEAD_STATUSES, BOAT_TYPES, BOAT_CONDITIONS, TEMPERATURES, ACTION_TYPES, QUOTE_STATUSES, NO_COMMERCIAL_FILTER } from '../data/constants';
+import OptionsSource from '../components/ui/OptionsSource';
 
 type SavedView = { label: string; key: string; apply: () => void };
 
@@ -282,7 +283,7 @@ export default function LeadsPage() {
           </select>
           <select className="select text-xs" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
             <option value="">Source</option>
-            {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            <OptionsSource valeur={filterSource} />
           </select>
           <select className="select text-xs" value={filterTemp} onChange={e => setFilterTemp(e.target.value)}>
             <option value="">Température</option>
@@ -581,7 +582,7 @@ export default function LeadsPage() {
               <div>
                 <label htmlFor="vcf-source" className="label">Source</label>
                 <select id="vcf-source" className="select" value={importSource} onChange={e => setImportSource(e.target.value)}>
-                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <OptionsSource valeur={importSource} />
                 </select>
               </div>
             </div>

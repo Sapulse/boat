@@ -112,9 +112,19 @@ export const SOURCES = [
   'Inautia',
   'Top barcos',
   'Boats and outboards',
-  'Salon GP',
-  'Salon CAN',
-  'Salon PRS',
+  // Salons (lot salons, S0). Libellés SANS millésime, et c'est une décision de
+  // fond : la source dit D'OÙ vient le lead, la campagne dit QUELLE OPÉRATION
+  // l'a produit. L'édition — 2026, 2027 — appartient donc à la campagne, pas à
+  // la source. Sinon on se retrouverait dans cinq ans avec cinq « Grand Pavois »
+  // dans le même menu. L'année reste lisible sans ambiguïté : `createdAt` du
+  // lead la donne, et sa participation donne l'édition exacte.
+  // Préfixe « Salon – » (tiret demi-cadratin) : c'est LUI qui regroupe les
+  // salons en tête des sélecteurs (composant OptionsSource) — ajouter un salon
+  // ne demande rien d'autre que d'ajouter sa valeur ici.
+  'Salon – Grand Pavois',
+  'Salon – Cannes',
+  'Salon – Nautique Paris',
+  'Salon – Nautique La Rochelle',
   'Band of Boats',
   'Beneteau',
   'Démarchage terrain',
@@ -127,12 +137,20 @@ export const SOURCES = [
 // INVARIANT : sous-ensemble de SOURCES (verifie au harnais goals).
 export const PROSPECTION_SOURCES = [
   'Passage',
-  'Salon GP',
-  'Salon CAN',
-  'Salon PRS',
+  // Les quatre salons : un salon EST de la prospection active. Renommer dans
+  // SOURCES sans renommer ici ferait sortir les leads de salon de l'objectif
+  // « leads rentrés » — sans aucune erreur visible.
+  'Salon – Grand Pavois',
+  'Salon – Cannes',
+  'Salon – Nautique Paris',
+  'Salon – Nautique La Rochelle',
   'Démarchage terrain',
   'Recommandation',
 ];
+
+/** Préfixe qui identifie un salon dans SOURCES (regroupement des sélecteurs). */
+export const PREFIXE_SOURCE_SALON = 'Salon – ';
+export const isSourceSalon = (s: string): boolean => s.startsWith(PREFIXE_SOURCE_SALON);
 
 export const MONTHLY_STAT_SOURCES = [
   'Site web BOB',

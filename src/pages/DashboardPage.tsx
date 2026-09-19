@@ -13,12 +13,13 @@ import { StatusBadge, AlertDot } from '../components/ui/StatusBadge';
 import PrintButton from '../components/print/PrintButton';
 import PrintHeader from '../components/print/PrintHeader';
 import { cn, formatCurrency, getAlertLevel, getLeadFullName, daysSince, isLeadActive, hasPlannedNextAction, hasFutureNextAction, isoDateDaysAgo, isInactiveOverWeek, isHotLeadWithoutAction, toISODate } from '../lib/utils';
-import { ACTIVE_STATUSES, LEAD_STATUSES, SOURCES, QUOTE_STATUSES } from '../data/constants';
+import { ACTIVE_STATUSES, LEAD_STATUSES, QUOTE_STATUSES } from '../data/constants';
 import { activateOnKey } from '../lib/a11y';
 import { useIsCompact } from '../lib/useIsCompact';
 import { eligibleCommercials, planningIndicators } from '../lib/plannedActions';
 import { agendaLink } from '../lib/agenda';
 import type { Lead } from '../data/types';
+import OptionsSource from '../components/ui/OptionsSource';
 
 // Graphiques recharts (~340 kB) CHARGÉS EN DIFFÉRÉ (audit perf). Lot 4 : ils
 // vivent dans « Plus d'indicateurs », replié par défaut — le chunk n'est
@@ -299,7 +300,7 @@ export default function DashboardPage() {
               </select>
               <select aria-label="Source" className="select text-xs w-auto" value={filterSource} onChange={e => setFilterSource(e.target.value)}>
                 <option value="">Toutes les sources</option>
-                {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                <OptionsSource valeur={filterSource} />
               </select>
               {(filterSource || filterPeriod) && (
                 <button onClick={() => { setFilterSource(''); setFilterPeriod(''); }} className="btn-ghost btn-sm text-xs text-gray-500">Réinitialiser</button>
